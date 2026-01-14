@@ -9,11 +9,11 @@
 ## 一键部署
 需要docker与docker compose环境，需要能够拉取镜像源，国内需要配置镜像源或代理。
 ```sh
-bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server/master/manifest/install/install.sh)
+bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/install.sh)
 ```
 服务器无法连接github也可以下载脚本，手动上传都服务器运行。或者使用github加速，如
 ```sh
-bash <(curl -sL https://gh.dpik.top/https://raw.githubusercontent.com/LaoYutang/l4d2-server/master/manifest/install/install.sh)
+bash <(curl -sL https://gh.dpik.top/https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/install.sh)
 ```
 镜像中带有完整的游戏服务端，需要下载5.XGB的数据，所以安装时间取决于服务器的带宽和cpu性能。
 
