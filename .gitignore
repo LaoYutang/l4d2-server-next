@@ -1,0 +1,4 @@
+/backend/addons/
+private.key
+/backend/static/
+*.exe

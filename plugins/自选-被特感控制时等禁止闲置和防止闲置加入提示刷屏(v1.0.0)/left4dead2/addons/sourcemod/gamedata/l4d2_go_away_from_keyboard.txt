@@ -1,0 +1,15 @@
+"Games"
+{
+	"left4dead2"
+	{
+		"Signatures"
+		{
+			"CTerrorPlayer::GoAwayFromKeyboard"
+			{
+				"library"	"server"
+				"linux"	"@_ZN13CTerrorPlayer18GoAwayFromKeyboardEv"
+				"windows"	"\x2A\x2A\x2A\x2A\x2A\x2A\x53\x56\x57\x8B\xF1\x8B\x06\x8B\x90\xC8\x08\x00\x00"
+			}
+		}
+	}
+}
