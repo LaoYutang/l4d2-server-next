@@ -102,6 +102,32 @@ class ApiService {
     return response.text();
   }
 
+  async getPlugins() {
+    const response = await this.post('/plugins/list');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async uploadPlugin(file: File) {
+    const response = await this.post('/plugins/upload', { file });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async enablePlugin(name: string) {
+    const response = await this.post('/plugins/enable', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async disablePlugin(name: string) {
+    const response = await this.post('/plugins/disable', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async deletePlugin(name: string) {
+    const response = await this.post('/plugins/delete', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
   async clearMaps() {
     const response = await this.post('/clear');
     if (!response.ok) throw new Error(await response.text());

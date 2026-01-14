@@ -9,6 +9,7 @@
     LogoutOutlined,
     MenuOutlined,
     ReadOutlined,
+    AppstoreAddOutlined,
   } from '@ant-design/icons-vue';
 
   const authStore = useAuthStore();
@@ -92,6 +93,10 @@
           <template #icon><CodeOutlined /></template>
           <span>RCON 控制台</span>
         </a-menu-item>
+        <a-menu-item key="/plugins">
+          <template #icon><AppstoreAddOutlined /></template>
+          <span>插件管理</span>
+        </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -148,6 +153,10 @@
         <a-menu-item key="/rcon">
           <template #icon><CodeOutlined /></template>
           RCON 控制台
+        </a-menu-item>
+        <a-menu-item key="/plugins">
+          <template #icon><AppstoreAddOutlined /></template>
+          插件管理
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>

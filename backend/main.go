@@ -65,6 +65,15 @@ func main() {
 	router.POST("/getUserPlaytime", middlewares.Auth(privateKey), controller.GetUserPlaytime)
 	router.POST("/rcon", middlewares.Auth(privateKey), controller.Rcon)
 
+	plugins := router.Group("/plugins", middlewares.Auth(privateKey))
+	{
+		plugins.POST("/list", controller.GetPlugins)
+		plugins.POST("/upload", controller.UploadPlugin)
+		plugins.POST("/enable", controller.EnablePlugin)
+		plugins.POST("/disable", controller.DisablePlugin)
+		plugins.POST("/delete", controller.DeletePlugin)
+	}
+
 	port := os.Getenv("L4D2_MANAGER_PORT")
 	if port == "" {
 		port = "27020"

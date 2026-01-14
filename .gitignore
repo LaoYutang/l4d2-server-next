@@ -1,4 +1,5 @@
 /backend/left4dead2/
 private.key
 /backend/static/
+/backend/plugins/
 *.exe

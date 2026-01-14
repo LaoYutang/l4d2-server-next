@@ -41,6 +41,7 @@ mkdir -p /data/l4d2
 cat > /data/l4d2/docker-compose.yaml << EOF
 volumes:
   l4d2-data:
+  l4d2-plugins:
 
 networks:
   l4d2-network:
@@ -73,6 +74,7 @@ services:
       - "$manager_port:27020"
     volumes:
       - l4d2-data:/left4dead2
+      - l4d2-plugins:/plugins
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - L4D2_RESTART_BY_RCON=true
@@ -97,8 +99,8 @@ if curl -s ipinfo.io | grep -q '"country": "CN"'; then
     read -r -p "请输入国内镜像源地址 (默认: docker.1ms.run): " mirror_url
     mirror_url=${mirror_url:-docker.1ms.run}
     echo "正在配置compose文件使用国内镜像源..."
-    sed -i "s|laoyutang/l4d2:nightly|$mirror_url/laoyutang/l4d2:nightly|" /data/l4d2/docker-compose.yaml
-    sed -i "s|laoyutang/l4d2-manager:latest|$mirror_url/laoyutang/l4d2-manager:latest|" /data/l4d2/docker-compose.yaml
+    sed -i "s|laoyutang/l4d2-pure:latest|$mirror_url/laoyutang/l4d2-pure:latest|" /data/l4d2/docker-compose.yaml
+    sed -i "s|laoyutang/l4d2-manager-next:latest|$mirror_url/laoyutang/l4d2-manager-next:latest|" /data/l4d2/docker-compose.yaml
   fi
 fi
 
@@ -107,8 +109,8 @@ cd /data/l4d2
 docker compose up -d
 
 # 增加软连接
-ln -s /var/lib/docker/volumes/l4d2_addons/_data ./addons
-ln -s /var/lib/docker/volumes/l4d2_cfg/_data ./cfg
+ln -sf /var/lib/docker/volumes/l4d2_l4d2-data/_data/addons ./addons
+ln -sf /var/lib/docker/volumes/l4d2_l4d2-data/_data/cfg ./cfg
 
 # 输出提示信息
 echo "L4D2 服务器和管理面板已安装并启动。"
