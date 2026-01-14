@@ -165,9 +165,9 @@
 
     <a-layout>
       <!-- Mobile Header -->
-      <a-layout-header class="lg:hidden !bg-white p-0 px-4 flex items-center shadow-sm z-10 h-16">
-        <MenuOutlined class="text-lg cursor-pointer p-2" @click="mobileOpen = true" />
-        <span class="ml-4 text-lg font-bold text-blue-600">L4D2 Manager</span>
+      <a-layout-header class="lg:hidden !bg-white !px-4 flex items-center shadow-sm z-10 h-16">
+        <MenuOutlined class="text-lg cursor-pointer" @click="mobileOpen = true" />
+        <span class="ml-3 text-lg font-bold text-blue-600">L4D2 Manager</span>
       </a-layout-header>
 
       <a-layout-content
