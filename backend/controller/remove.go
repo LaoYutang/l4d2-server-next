@@ -14,7 +14,7 @@ func Remove(c *gin.Context) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	mapPath := filepath.Join(consts.BasePath, c.PostForm("map"))
+	mapPath := filepath.Join(consts.AddonsBasePath, c.PostForm("map"))
 	err := os.Remove(mapPath)
 	if err != nil {
 		c.String(http.StatusBadRequest, "地图不存在")

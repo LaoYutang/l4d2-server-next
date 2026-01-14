@@ -5,8 +5,8 @@ set L4D2_MANAGER_PORT=27020
 :: 设置管理器密码，不要提供给别人，临时请使用授权码
 set L4D2_MANAGER_PASSWORD=管理器密码
 
-:: 设置addons路径
-set L4D2_ADDONS_PATH=addons文件夹目录
+:: 设置left4dead2游戏目录
+set L4D2_GAME_PATH=left4dead2游戏目录
 
 :: 设置对应的游戏服务器 RCON 地址
 set L4D2_RCON_URL=127.0.0.1:27015

@@ -35,7 +35,7 @@ func List(c *gin.Context) {
 		}
 
 		// 构建vpk文件路径
-		vpkPath := filepath.Join(consts.BasePath, mapName)
+		vpkPath := filepath.Join(consts.AddonsBasePath, mapName)
 
 		// 获取文件大小
 		fileInfo, err := os.Stat(vpkPath)

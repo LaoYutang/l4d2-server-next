@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 )
 
-var BasePath string
+var AddonsBasePath string
+var GamePath string
 var MapListFilePath string
 
 func init() {
-	BasePath = os.Getenv("L4D2_ADDONS_PATH")
-	if BasePath == "" {
-		BasePath = "./addons/"
+	GamePath = os.Getenv("L4D2_GAME_PATH")
+	if GamePath == "" {
+		GamePath = "./left4dead2"
 	}
-	MapListFilePath = filepath.Join(BasePath, "maplist.txt")
+	AddonsBasePath = filepath.Join(GamePath, "addons")
+	MapListFilePath = filepath.Join(AddonsBasePath, "maplist.txt")
 }

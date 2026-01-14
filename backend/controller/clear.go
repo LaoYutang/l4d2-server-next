@@ -26,7 +26,7 @@ func Clear(c *gin.Context) {
 		if len(file) == 0 {
 			continue
 		}
-		if err := os.Remove(filepath.Join(consts.BasePath, file)); err != nil {
+		if err := os.Remove(filepath.Join(consts.AddonsBasePath, file)); err != nil {
 			errFileList = append(errFileList, file)
 		}
 	}

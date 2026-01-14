@@ -14,7 +14,7 @@ import (
 )
 
 func Upload(c *gin.Context) {
-	if stat, err := disk.Usage(consts.BasePath); err != nil {
+	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
 		c.String(http.StatusInternalServerError, "获取磁盘使用信息失败: %v", err)
 		return
 	} else if stat.UsedPercent > 90 {
@@ -87,7 +87,7 @@ func Upload(c *gin.Context) {
 	}
 
 	// 保存上传的文件
-	tempPath := filepath.Join(consts.BasePath, "temp_"+cleanFilename)
+	tempPath := filepath.Join(consts.AddonsBasePath, "temp_"+cleanFilename)
 	if err := c.SaveUploadedFile(file, tempPath); err != nil {
 		c.String(http.StatusInternalServerError, "文件写入失败")
 		return
@@ -106,7 +106,7 @@ func Upload(c *gin.Context) {
 
 func handleZipFile(c *gin.Context, file *multipart.FileHeader) error {
 	// 保存临时zip文件
-	tempZipPath := filepath.Join(consts.BasePath, "temp_"+file.Filename)
+	tempZipPath := filepath.Join(consts.AddonsBasePath, "temp_"+file.Filename)
 	if err := c.SaveUploadedFile(file, tempZipPath); err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func handleZipFile(c *gin.Context, file *multipart.FileHeader) error {
 
 func handleRarFile(c *gin.Context, file *multipart.FileHeader) error {
 	// 保存临时rar文件
-	tempRarPath := filepath.Join(consts.BasePath, "temp_"+file.Filename)
+	tempRarPath := filepath.Join(consts.AddonsBasePath, "temp_"+file.Filename)
 	if err := c.SaveUploadedFile(file, tempRarPath); err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func handleRarFile(c *gin.Context, file *multipart.FileHeader) error {
 
 func handle7zFile(c *gin.Context, file *multipart.FileHeader) error {
 	// 保存临时7z文件
-	temp7zPath := filepath.Join(consts.BasePath, "temp_"+file.Filename)
+	temp7zPath := filepath.Join(consts.AddonsBasePath, "temp_"+file.Filename)
 	if err := c.SaveUploadedFile(file, temp7zPath); err != nil {
 		return err
 	}

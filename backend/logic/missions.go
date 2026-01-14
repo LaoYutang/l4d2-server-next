@@ -18,14 +18,14 @@ func GetChapterList() []*Campaign {
 	temp := make([]*Campaign, 0, 16)
 
 	// 扫描addons下的所有vpk文件
-	entries, err := os.ReadDir(filepath.Join(consts.BasePath))
+	entries, err := os.ReadDir(filepath.Join(consts.AddonsBasePath))
 	if err != nil {
 		log.Printf("读取目录失败: %v", err)
 		return nil
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".vpk") {
-			opener := vpk.Single(filepath.Join(consts.BasePath, entry.Name()))
+			opener := vpk.Single(filepath.Join(consts.AddonsBasePath, entry.Name()))
 			defer opener.Close()
 
 			archive, err := opener.ReadArchive()

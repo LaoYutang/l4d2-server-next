@@ -152,7 +152,7 @@ func ProcessZipFile(zipPath string) error {
 			}
 
 			// 解压文件到目标目录
-			destPath := filepath.Join(consts.BasePath, cleanName)
+			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
 			if err := extractFile(f, destPath); err != nil {
 				return fmt.Errorf("解压文件失败: %v", err)
 			}
@@ -214,7 +214,7 @@ func ProcessRarFile(rarPath string) error {
 			}
 
 			// 解压文件到目标目录
-			destPath := filepath.Join(consts.BasePath, cleanName)
+			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
 			outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 			if err != nil {
 				return fmt.Errorf("创建目标文件失败: %v", err)
@@ -266,7 +266,7 @@ func Process7zFile(sevenZipPath string) error {
 			}
 
 			// 解压文件到目标目录
-			destPath := filepath.Join(consts.BasePath, cleanName)
+			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
 
 			rc, err := f.Open()
 			if err != nil {
@@ -317,7 +317,7 @@ func ProcessVpkFile(vpkPath string) error {
 	}
 
 	// 移动文件到目标目录
-	destPath := filepath.Join(consts.BasePath, cleanName)
+	destPath := filepath.Join(consts.AddonsBasePath, cleanName)
 	if err := os.Rename(vpkPath, destPath); err != nil {
 		// 如果重命名失败，尝试复制
 		if err := copyFile(vpkPath, destPath); err != nil {

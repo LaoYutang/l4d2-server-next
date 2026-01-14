@@ -20,53 +20,50 @@ bash <(curl -sL https://gh.dpik.top/https://raw.githubusercontent.com/LaoYutang/
 ## 手动部署
 稳定版使用lastest标签，如果L4D2有更新，可以尝试使用nightly标签，该镜像每晚打包。
 ```sh
-docker volume create addons
-docker volume create cfg
+docker volume create l4d2-data
 docker run -d \
   --name l4d2 \
   --restart unless-stopped \
   -p 27015:27015 \
   -p 27015:27015/udp \
-  -v addons:/l4d2/left4dead2/addons \
-  -v cfg:/l4d2/left4dead2/cfg \
+  -v l4d2-data:/l4d2/left4dead2 \
   -e L4D2_TICK=60 \
   -e L4D2_RCON_PASSWORD=rcon密码 \
-  laoyutang/l4d2:latest
+  laoyutang/l4d2-pure:latest
 
 # 地图管理器，可选
 docker run -d \
   --name l4d2-manager \
   --restart unless-stopped \
   -p 27020:27020 \
-  -v addons:/addons \
+  -v l4d2-data:/left4dead2 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e L4D2_RESTART_BY_RCON=true \
   -e L4D2_MANAGER_PASSWORD=设置上传地图的密码 \
   -e L4D2_RCON_URL=localhost:27015 \
   -e L4D2_RCON_PASSWORD=rcon密码 \
-  laoyutang/l4d2-manager:latest
+  -e L4D2_GAME_PATH=/left4dead2 \
+  laoyutang/l4d2-manager-next:latest
 ```
 docker-compose启动
 ```yaml
 # docker-compose.yaml
 volumes:
-  addons:
-  cfg:
+  l4d2-data:
 
 networks:
   l4d2-network:
 
 services:
   l4d2:
-    image: laoyutang/l4d2:latest
+    image: laoyutang/l4d2-pure:latest
     container_name: l4d2
     restart: unless-stopped
     ports:
       - "27015:27015"
       - "27015:27015/udp"
     volumes:
-      - addons:/l4d2/left4dead2/addons
-      - cfg:/l4d2/left4dead2/cfg
+      - l4d2-data:/l4d2/left4dead2
     networks:
       - l4d2-network
     environment:
@@ -75,19 +72,20 @@ services:
 
   # 地图管理器，可选
   l4d2-manager:
-    image: laoyutang/l4d2-manager:latest
+    image: laoyutang/l4d2-manager-next:latest
     container_name: l4d2-manager
     restart: unless-stopped
     ports:
       - "27020:27020"
     volumes:
-      - addons:/addons
+      - l4d2-data:/left4dead2
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - L4D2_RESTART_BY_RCON=true
       - L4D2_MANAGER_PASSWORD=[web管理密码]
       - L4D2_RCON_URL=l4d2:27015
       - L4D2_RCON_PASSWORD=[rcon密码]
+      - L4D2_GAME_PATH=/left4dead2
     networks:
       - l4d2-network
 ```
@@ -101,7 +99,7 @@ services:
 - L4D2_MANAGER_PASSWORD: 管理器密码，必填
 - L4D2_RCON_URL: RCON 地址，可选，否则不支持状态获取与切图功能
 - L4D2_RCON_PASSWORD: RCON 密码，可选，否则不支持状态获取与切图功能
-- L4D2_ADDONS_PATH: addons 路径
+- L4D2_GAME_PATH: left4dead2 游戏目录路径
 - L4D2_RESTART_BY_RCON: 是否通过RCON命令重启服务器，默认false
 - L4D2_RESTART_CMD: 重启命令，可选，默认使用docker重启
 - L4D2_CONTAINER_NAME: 需要重启的docker容器名称，可选，未设置L4D2_RESTART_CMD时有效，默认为"l4d2"
@@ -109,7 +107,7 @@ services:
 
 ## 地图管理
 ### 手动操作
-1. docker volume目录下操作即可  ```/var/lib/docker/volume/addons``` 
+1. docker volume目录下操作即可  ```/var/lib/docker/volume/l4d2-data/_data/addons``` 
 2. 重启服务器```docker restart l4d2```
 3. 进入服务器后管理员切图
 ### 使用地图管理器（推荐）
@@ -120,8 +118,8 @@ services:
 5. 点击查看以加载地图，切换对应的地图即可
 
 ## 插件修改与替换
-插件目录为 ```/var/lib/docker/volume/addons``` 
-配置目录为 ```/var/lib/docker/volume/cfg```
+插件目录为 ```/var/lib/docker/volume/l4d2-data/_data/addons``` 
+配置目录为 ```/var/lib/docker/volume/l4d2-data/_data/cfg```
 可以自行按需修改替换
 
 ## 管理员设置
@@ -130,9 +128,9 @@ services:
 
 ## windows服务器管理器使用说明
 windows服务器可以自行下载服务器启动，使用编译好的l4d2-manager.exe和static文件夹，设置好环境变量启动即可！
-***注意***: 非docker启动的l4d2服务器，重启功能需要自行配置环境变量```L4D2_RESTART_BY_RCON``` 或者```L4D2_RESTART_CMD```与```L4D2_ADDONS_PATH```，重启脚本可参考项目目录下的```restart.dat```。
+***注意***: 非docker启动的l4d2服务器，重启功能需要自行配置环境变量```L4D2_RESTART_BY_RCON``` 或者```L4D2_RESTART_CMD```与```L4D2_GAME_PATH```，重启脚本可参考项目目录下的```restart.dat```。
 
 
 ## 自行打包docker镜像
-```docker build -f l4d2.Dockerfile -t l4d2 .```
-```docker build -f manager.Dockerfile -t l4d2-manager .```
+```docker build -f manifest/docker/l4d2.Dockerfile -t l4d2 .```
+```docker build -f manifest/docker/manager.Dockerfile -t l4d2-manager .```

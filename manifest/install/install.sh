@@ -40,23 +40,21 @@ mkdir -p /data/l4d2
 # 写入docker-compose文件
 cat > /data/l4d2/docker-compose.yaml << EOF
 volumes:
-  addons:
-  cfg:
+  l4d2-data:
 
 networks:
   l4d2-network:
 
 services:
   l4d2:
-    image: laoyutang/l4d2:nightly
+    image: laoyutang/l4d2-pure:latest
     container_name: l4d2
     restart: unless-stopped
     ports:
       - "$game_port:27015"
       - "$game_port:27015/udp"
     volumes:
-      - addons:/l4d2/left4dead2/addons
-      - cfg:/l4d2/left4dead2/cfg
+      - l4d2-data:/l4d2/left4dead2
     networks:
       - l4d2-network
     environment:
@@ -68,19 +66,20 @@ services:
         max-file: "3"
 
   l4d2-manager:
-    image: laoyutang/l4d2-manager:latest
+    image: laoyutang/l4d2-manager-next:latest
     container_name: l4d2-manager
     restart: unless-stopped
     ports:
       - "$manager_port:27020"
     volumes:
-      - addons:/addons
+      - l4d2-data:/left4dead2
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - L4D2_RESTART_BY_RCON=true
       - L4D2_MANAGER_PASSWORD=$admin_password
       - L4D2_RCON_PASSWORD=$L4D2_RCON_PASSWORD
       - L4D2_RCON_URL=l4d2:27015
+      - L4D2_GAME_PATH=/left4dead2
     networks:
       - l4d2-network
     logging:
