@@ -2,9 +2,8 @@ name: Build and Push Manager Image
 
 on:
   push:
-    branches:
-      - master
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -27,17 +26,16 @@ jobs:
         id: meta-manager
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/l4d2-manager
+          images: laoyutang/l4d2-manager-next
           tags: |
             type=raw,value=latest
-            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
-            type=sha
+            type=ref,event=tag
 
       - name: Build Manager and Push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: manager.Dockerfile
+          file: manifest/docker/manager.Dockerfile
           push: true
           tags: ${{ steps.meta-manager.outputs.tags }}
           labels: ${{ steps.meta-manager.outputs.labels }}

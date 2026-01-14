@@ -1,9 +1,6 @@
 name: Build and Push L4D2 Image
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
 jobs:
@@ -27,17 +24,16 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/l4d2
+          images: laoyutang/l4d2-pure
           tags: |
             type=raw,value=latest
             type=raw,value={{date 'YYYYMMDD-HHmmss'}}
-            type=sha
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: l4d2.Dockerfile
+          file: manifest/docker/l4d2.Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
