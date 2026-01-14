@@ -37,6 +37,11 @@
       const rawStatus = await api.getStatus();
       status.value = parseStatus(rawStatus);
 
+      // 更新页面标题
+      if (status.value?.Hostname?.value) {
+        document.title = status.value.Hostname.value;
+      }
+
       // 如果有地图信息，尝试获取地图真实名称
       if (status.value?.Map?.value) {
         const mapCode = status.value.Map.value;
@@ -521,8 +526,8 @@
 </template>
 
 <style scoped>
-:deep(.ant-statistic-content) {
-  display: flex;
-  align-items: center;
-}
+  :deep(.ant-statistic-content) {
+    display: flex;
+    align-items: center;
+  }
 </style>
