@@ -54,6 +54,7 @@ func main() {
 	router.POST("/rcon/changemap", middlewares.Auth(privateKey), controller.ChangeMap)
 	router.POST("/rcon/getstatus", controller.GetStatus)
 	router.POST("/rcon/kickuser", middlewares.Auth(privateKey), controller.KickUser)
+	router.POST("/rcon/banuser", middlewares.Auth(privateKey), controller.BanUser)
 	router.POST("/rcon/changedifficulty", middlewares.Auth(privateKey), controller.ChangeDifficulty)
 	router.POST("/rcon/changegamemode", middlewares.Auth(privateKey), controller.ChangeGameMode)
 	router.POST("/download/add", middlewares.Auth(privateKey), controller.AddDownloadTask)

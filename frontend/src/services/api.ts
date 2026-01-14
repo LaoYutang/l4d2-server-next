@@ -215,6 +215,12 @@ class ApiService {
     return response.text();
   }
 
+  async banUser(steamId: string, kick: boolean = true) {
+    const response = await this.post('/rcon/banuser', { steamId, kick });
+    if (!response.ok) throw new Error(await response.text());
+    return response.text();
+  }
+
   async getUserPlaytime(steamid: string) {
     const response = await this.post('/getUserPlaytime', { steamid });
     if (!response.ok) throw new Error(await response.text());

@@ -356,6 +356,67 @@ func KickUser(c *gin.Context) {
 	c.String(http.StatusOK, "用户踢出成功")
 }
 
+func BanUser(c *gin.Context) {
+	url := os.Getenv("L4D2_RCON_URL")
+	if url == "" {
+		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
+		return
+	}
+	pwd := os.Getenv("L4D2_RCON_PASSWORD")
+	if pwd == "" {
+		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
+		return
+	}
+
+	// BanUser 需要 SteamID (status中的uniqueid) 或 UserID
+	// 推荐使用 SteamID 进行永久封禁，因为 UserID 会变
+	// banid <minutes> <userid | uniqueid> { kick }
+	// minutes=0 表示永久
+	userId := c.PostForm("userId")
+	steamId := c.PostForm("steamId")
+	kick := c.PostForm("kick") == "true"
+
+	var banTarget string
+	if steamId != "" {
+		banTarget = steamId
+	} else if userId != "" {
+		banTarget = userId
+	} else {
+		c.String(http.StatusBadRequest, "SteamID或用户ID不能为空")
+		return
+	}
+
+	conn, err := rcon.Dial(url, pwd)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// 1. 执行 banid 0 <target>
+	// 2. 执行 writeid 保存到 cfg
+	// 3. 可选：执行 kick 踢出
+
+	cmdBan := fmt.Sprintf("banid 0 %s", banTarget)
+	if kick {
+		cmdBan += " kick"
+	}
+
+	_, err = conn.Execute(cmdBan)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "RCON封禁命令执行失败: %v", err)
+		return
+	}
+
+	_, err = conn.Execute("writeid")
+	if err != nil {
+		// writeid 失败不致命，但最好记录
+		fmt.Printf("Warning: writeid failed: %v\n", err)
+	}
+
+	c.String(http.StatusOK, "用户封禁成功")
+}
+
 func ChangeDifficulty(c *gin.Context) {
 	url := os.Getenv("L4D2_RCON_URL")
 	if url == "" {

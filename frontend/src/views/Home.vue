@@ -12,15 +12,35 @@
     ExclamationCircleOutlined,
     UserOutlined,
     SettingOutlined,
-    DeleteOutlined,
     WifiOutlined,
     ClockCircleOutlined,
     CopyOutlined,
+    StopOutlined,
   } from '@ant-design/icons-vue';
   import { Modal, message } from 'ant-design-vue';
   import MapSelectorModal from '../components/MapSelectorModal.vue';
   import DifficultyModal from '../components/DifficultyModal.vue';
   import GameModeModal from '../components/GameModeModal.vue';
+
+  // Custom Kick Icon (Kicking Person)
+  const KickIcon = {
+    render: () =>
+      h(
+        'svg',
+        {
+          viewBox: '0 0 24 24',
+          width: '1em',
+          height: '1em',
+          fill: 'currentColor',
+          'aria-hidden': 'true',
+        },
+        [
+          h('path', {
+            d: 'M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7',
+          }),
+        ]
+      ),
+  };
 
   const status = ref<ParsedServerStatus | null>(null);
   const loading = ref(false);
@@ -102,6 +122,25 @@
           loadStatus();
         } catch (e: any) {
           message.error('踢出失败: ' + e.message);
+        }
+      },
+    });
+  };
+
+  const banUser = async (userName: string, steamId: string) => {
+    Modal.confirm({
+      title: `确定要封禁玩家 ${userName} 吗？`,
+      icon: () => h(StopOutlined, { style: { color: 'red' } }),
+      content: '该玩家将被永久封禁并踢出服务器 (banid 0)。',
+      okText: '确认封禁',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          await api.banUser(steamId, true);
+          message.success(`玩家 ${userName} 已被永久封禁`);
+          loadStatus();
+        } catch (e: any) {
+          message.error('封禁失败: ' + e.message);
         }
       },
     });
@@ -280,7 +319,7 @@
         >
           <!-- User Info (Left) -->
           <div
-            class="flex justify-between items-center w-full md:w-auto md:justify-start md:min-w-[200px] gap-3"
+            class="flex justify-between items-center w-full md:w-auto md:justify-start md:min-w-[180px] gap-3"
           >
             <div class="flex items-center gap-3 min-w-0">
               <div
@@ -321,14 +360,26 @@
                 class="!flex !items-center !justify-center"
                 @click="kickUser(user.name, user.id)"
               >
-                <DeleteOutlined />
+                <KickIcon />
+              </a-button>
+              <a-button
+                type="primary"
+                danger
+                ghost
+                shape="circle"
+                size="small"
+                class="!flex !items-center !justify-center"
+                :disabled="!user.steamid"
+                @click="banUser(user.name, user.steamid)"
+              >
+                <StopOutlined />
               </a-button>
             </div>
           </div>
 
           <!-- Details (Middle) -->
           <div
-            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-600 bg-gray-50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
+            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 bg-gray-50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
           >
             <div
               v-if="user.steamid"
@@ -406,7 +457,20 @@
                 class="!flex !items-center !justify-center"
                 @click="kickUser(user.name, user.id)"
               >
-                <DeleteOutlined />
+                <KickIcon />
+              </a-button>
+            </a-tooltip>
+            <a-tooltip title="永久封禁">
+              <a-button
+                type="primary"
+                danger
+                ghost
+                shape="circle"
+                class="!flex !items-center !justify-center"
+                :disabled="!user.steamid"
+                @click="banUser(user.name, user.steamid)"
+              >
+                <StopOutlined />
               </a-button>
             </a-tooltip>
           </div>
