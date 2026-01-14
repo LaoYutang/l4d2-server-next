@@ -1,7 +1,8 @@
 <script setup lang="ts">
-  import { ref, watch } from 'vue';
+  import { ref, watch, onErrorCaptured } from 'vue';
   import { useAuthStore } from '../stores/auth';
   import { useRouter, useRoute } from 'vue-router';
+  import { message } from 'ant-design-vue';
   import {
     DashboardOutlined,
     CodeOutlined,
@@ -46,6 +47,12 @@
       mobileOpen.value = false;
     }
   };
+
+  onErrorCaptured((err) => {
+    console.error('Captured Error:', err);
+    message.error('页面加载出现错误，请刷新重试');
+    return false; // Prevent error from propagating further
+  });
 </script>
 
 <template>
@@ -185,7 +192,7 @@
         <div class="max-w-6xl mx-auto w-full animate-fade-in">
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
-              <component :is="Component" />
+              <component :is="Component" :key="route.fullPath" v-if="Component" />
             </transition>
           </router-view>
         </div>

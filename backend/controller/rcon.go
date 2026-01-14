@@ -18,26 +18,15 @@ func GetRconMapList(c *gin.Context) {
 }
 
 func ChangeMap(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
 	mapName := c.PostForm("mapName")
 	if mapName == "" {
 		c.String(http.StatusBadRequest, "地图名称不能为空")
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -51,20 +40,9 @@ func ChangeMap(c *gin.Context) {
 }
 
 func GetStatus(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -316,17 +294,6 @@ func parseUser(line string) *User {
 }
 
 func KickUser(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
 	// 优先接收用户名，如果没有则接收用户ID
 	userName := c.PostForm("userName")
 	userId := c.PostForm("userId")
@@ -341,9 +308,9 @@ func KickUser(c *gin.Context) {
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -357,17 +324,6 @@ func KickUser(c *gin.Context) {
 }
 
 func BanUser(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
 	// BanUser 需要 SteamID (status中的uniqueid) 或 UserID
 	// 推荐使用 SteamID 进行永久封禁，因为 UserID 会变
 	// banid <minutes> <userid | uniqueid> { kick }
@@ -386,9 +342,9 @@ func BanUser(c *gin.Context) {
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -418,17 +374,6 @@ func BanUser(c *gin.Context) {
 }
 
 func ChangeDifficulty(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
 	difficulty := c.PostForm("difficulty")
 	if difficulty == "" {
 		c.String(http.StatusBadRequest, "难度不能为空")
@@ -449,9 +394,9 @@ func ChangeDifficulty(c *gin.Context) {
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -465,17 +410,6 @@ func ChangeDifficulty(c *gin.Context) {
 }
 
 func ChangeGameMode(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
-
 	gameMode := c.PostForm("gameMode")
 	if gameMode == "" {
 		c.String(http.StatusBadRequest, "游戏模式不能为空")
@@ -523,9 +457,9 @@ func ChangeGameMode(c *gin.Context) {
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -539,25 +473,15 @@ func ChangeGameMode(c *gin.Context) {
 }
 
 func Rcon(c *gin.Context) {
-	url := os.Getenv("L4D2_RCON_URL")
-	if url == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON链接")
-		return
-	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		c.String(http.StatusInternalServerError, "服务端未配置RCON密码")
-		return
-	}
 	cmd := c.PostForm("cmd")
 	if cmd == "" {
 		c.String(http.StatusBadRequest, "命令不能为空")
 		return
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := getRconConnection()
 	if err != nil {
-		c.String(http.StatusInternalServerError, "RCON连接失败: %v", err)
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer conn.Close()
@@ -568,4 +492,21 @@ func Rcon(c *gin.Context) {
 		return
 	}
 	c.String(http.StatusOK, res)
+}
+
+func getRconConnection() (*rcon.Conn, error) {
+	url := os.Getenv("L4D2_RCON_URL")
+	if url == "" {
+		return nil, fmt.Errorf("服务端未配置RCON链接")
+	}
+	pwd := os.Getenv("L4D2_RCON_PASSWORD")
+	if pwd == "" {
+		return nil, fmt.Errorf("服务端未配置RCON密码")
+	}
+
+	conn, err := rcon.Dial(url, pwd)
+	if err != nil {
+		return nil, fmt.Errorf("RCON连接失败: %v", err)
+	}
+	return conn, nil
 }

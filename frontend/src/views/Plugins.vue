@@ -1,15 +1,27 @@
 <script setup lang="ts">
-  import { ref, computed, onMounted } from 'vue';
-  import { message } from 'ant-design-vue';
+  import { ref, computed, onMounted, onErrorCaptured } from 'vue';
+  import {
+    message,
+    Card as ACard,
+    Tabs as ATabs,
+    TabPane as ATabPane,
+    Input as AInput,
+    Button as AButton,
+    Table as ATable,
+    Popconfirm as APopconfirm,
+    Upload as AUpload,
+  } from 'ant-design-vue';
   import {
     UploadOutlined,
     DeleteOutlined,
     PoweroffOutlined,
     SearchOutlined,
     ReloadOutlined,
+    SettingOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
   import type { UploadProps } from 'ant-design-vue';
+  import PluginConfigModal from '../components/PluginConfigModal.vue';
 
   interface Plugin {
     name: string;
@@ -25,6 +37,15 @@
   const selectedRowKeys = ref<string[]>([]);
   const searchText = ref('');
   const filterText = ref('');
+
+  const configModalVisible = ref(false);
+  const currentConfigPlugin = ref('');
+
+  onErrorCaptured((err) => {
+    console.error('Plugins.vue Error:', err);
+    message.error('插件管理页面发生错误');
+    return false;
+  });
 
   const enabledPlugins = computed(() =>
     plugins.value.filter((p) => p.status === 'enabled').sort((a, b) => a.name.localeCompare(b.name))
@@ -160,6 +181,11 @@
     selectedRowKeys.value = keys;
   };
 
+  const openConfig = async (plugin: Plugin) => {
+    currentConfigPlugin.value = plugin.name;
+    configModalVisible.value = true;
+  };
+
   onMounted(() => {
     fetchPlugins();
   });
@@ -254,22 +280,33 @@
               </template>
 
               <template v-else-if="column.key === 'actions'">
-                <a-popconfirm
-                  title="确定要禁用这个插件吗？"
-                  ok-text="确定"
-                  cancel-text="取消"
-                  @confirm="togglePlugin(record as Plugin)"
-                >
+                <div class="flex gap-2">
                   <a-button
                     type="default"
-                    danger
                     size="small"
                     class="!flex !items-center !justify-center"
+                    @click="openConfig(record as Plugin)"
                   >
-                    <template #icon><PoweroffOutlined /></template>
-                    禁用
+                    <template #icon><SettingOutlined /></template>
+                    配置
                   </a-button>
-                </a-popconfirm>
+                  <a-popconfirm
+                    title="确定要禁用这个插件吗？"
+                    ok-text="确定"
+                    cancel-text="取消"
+                    @confirm="togglePlugin(record as Plugin)"
+                  >
+                    <a-button
+                      type="default"
+                      danger
+                      size="small"
+                      class="!flex !items-center !justify-center"
+                    >
+                      <template #icon><PoweroffOutlined /></template>
+                      禁用
+                    </a-button>
+                  </a-popconfirm>
+                </div>
               </template>
             </template>
           </a-table>
@@ -403,5 +440,7 @@
         </a-tab-pane>
       </a-tabs>
     </a-card>
+
+    <PluginConfigModal v-model:open="configModalVisible" :plugin-name="currentConfigPlugin" />
   </div>
 </template>

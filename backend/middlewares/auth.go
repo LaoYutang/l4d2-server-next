@@ -42,6 +42,9 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 		mutex.Unlock()
 
 		password := c.PostForm("password")
+		if password == "" {
+			password = c.Query("password")
+		}
 		realPassword := os.Getenv("L4D2_MANAGER_PASSWORD")
 		if realPassword == "" {
 			realPassword = "laoyutangnb"

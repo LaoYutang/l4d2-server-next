@@ -1,7 +1,15 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
+  import { ref, onErrorCaptured } from 'vue';
   import { api } from '../services/api';
-  import { message } from 'ant-design-vue';
+  import {
+    message,
+    Card as ACard,
+    Select as ASelect,
+    SelectOption as ASelectOption,
+    Button as AButton,
+    Input as AInput,
+    Divider as ADivider,
+  } from 'ant-design-vue';
   import {
     KeyOutlined,
     InfoCircleOutlined,
@@ -16,6 +24,12 @@
   const expirationTime = ref('');
   const copied = ref(false);
   const codeInput = ref<any>(null);
+
+  onErrorCaptured((err) => {
+    console.error('System.vue Error:', err);
+    message.error('系统管理页面发生错误');
+    return false;
+  });
 
   const generateCode = async () => {
     generating.value = true;
@@ -66,7 +80,7 @@
     <a-card class="shadow-xl" :bordered="false">
       <template #title>
         <span class="flex items-center gap-2 text-lg">
-          <key-outlined class="text-primary" />
+          <key-outlined class="text-blue-500" />
           临时授权管理
         </span>
       </template>

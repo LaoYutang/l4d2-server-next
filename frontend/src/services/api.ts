@@ -37,6 +37,49 @@ class ApiService {
     return response;
   }
 
+  async get(url: string, params?: Record<string, any>) {
+    const urlObj = new URL(url, window.location.origin);
+    urlObj.searchParams.append('password', this.getPassword());
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        urlObj.searchParams.append(key, String(value));
+      });
+    }
+
+    const response = await fetch(urlObj.toString(), {
+      method: 'GET',
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      const authStore = useAuthStore();
+      authStore.logout();
+      throw new Error('Authentication failed');
+    }
+
+    return response;
+  }
+
+  async postJson(url: string, data: any) {
+    const urlObj = new URL(url, window.location.origin);
+    urlObj.searchParams.append('password', this.getPassword());
+
+    const response = await fetch(urlObj.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      const authStore = useAuthStore();
+      authStore.logout();
+      throw new Error('Authentication failed');
+    }
+
+    return response;
+  }
+
   async validatePassword() {
     const fd = new FormData();
     fd.append('password', this.getPassword());
@@ -126,6 +169,21 @@ class ApiService {
   async deletePlugin(name: string) {
     const response = await this.post('/plugins/delete', { name });
     if (!response.ok) throw new Error(await response.text());
+  }
+
+  async getPluginConfigs(pluginName: string) {
+    const response = await this.post('/plugins/config', { name: pluginName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async updatePluginConfig(configName: string, updates: Record<string, string>) {
+    const response = await this.postJson('/plugins/config/update', {
+      config_name: configName,
+      updates,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async clearMaps() {

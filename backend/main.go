@@ -72,6 +72,8 @@ func main() {
 		plugins.POST("/enable", controller.EnablePlugin)
 		plugins.POST("/disable", controller.DisablePlugin)
 		plugins.POST("/delete", controller.DeletePlugin)
+		plugins.POST("/config", controller.GetPluginConfig)
+		plugins.POST("/config/update", controller.UpdatePluginConfig)
 	}
 
 	port := os.Getenv("L4D2_MANAGER_PORT")
