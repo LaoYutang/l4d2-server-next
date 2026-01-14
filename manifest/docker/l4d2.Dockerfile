@@ -29,7 +29,7 @@ RUN for i in 1 2 3 4 5; do ./steamcmd.sh +@sSteamCmdForcePlatformType windows +f
 RUN for i in 1 2 3; do ./steamcmd.sh +@sSteamCmdForcePlatformType linux +force_install_dir /l4d2 +login anonymous +app_update 222860 validate +quit && break || sleep 15; done
 
 # 复制cfg文件
-COPY ./manifest/docker/cfg/ /l4d2/cfg
+COPY ./manifest/docker/cfg/ /l4d2/left4dead2/cfg/
 
 # 复制启动脚本
 COPY ./manifest/docker/start.sh /start.sh
