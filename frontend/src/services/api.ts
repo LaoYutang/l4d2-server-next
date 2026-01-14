@@ -75,6 +75,27 @@ class ApiService {
     return response.json();
   }
 
+  async fetchMapName(mapCode: string) {
+    if (!mapCode) return mapCode;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const response = await fetch(`http://l4d2-maps.laoyutang.cn/${mapCode}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const name = await response.text();
+        return name.trim() || mapCode;
+      }
+    } catch (e) {
+      console.warn('Map name fetch failed', e);
+    }
+    return mapCode;
+  }
+
   async restartServer() {
     const response = await this.post('/restart');
     if (!response.ok) throw new Error(await response.text());

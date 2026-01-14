@@ -4,11 +4,11 @@
   import { useRouter, useRoute } from 'vue-router';
   import {
     DashboardOutlined,
-    EnvironmentOutlined,
     CodeOutlined,
     SettingOutlined,
     LogoutOutlined,
     MenuOutlined,
+    ReadOutlined,
   } from '@ant-design/icons-vue';
 
   const authStore = useAuthStore();
@@ -85,7 +85,7 @@
           <span>服务器状态</span>
         </a-menu-item>
         <a-menu-item key="/maps">
-          <template #icon><EnvironmentOutlined /></template>
+          <template #icon><ReadOutlined /></template>
           <span>地图管理</span>
         </a-menu-item>
         <a-menu-item key="/rcon">
@@ -142,7 +142,7 @@
           服务器状态
         </a-menu-item>
         <a-menu-item key="/maps">
-          <template #icon><EnvironmentOutlined /></template>
+          <template #icon><ReadOutlined /></template>
           地图管理
         </a-menu-item>
         <a-menu-item key="/rcon">
