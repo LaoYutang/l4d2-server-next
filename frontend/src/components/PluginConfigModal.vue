@@ -8,7 +8,6 @@
     FormItem as AFormItem,
     Input as AInput,
     Button as AButton,
-    Divider as ADivider,
     Tag as ATag,
   } from 'ant-design-vue';
   import { api } from '../services/api';
@@ -96,7 +95,7 @@
   <a-modal
     :open="open"
     :title="`配置插件: ${pluginName}`"
-    width="800px"
+    width="min(800px, 95vw)"
     :footer="null"
     @cancel="handleCancel"
   >
@@ -109,54 +108,56 @@
     >
       该插件没有找到可配置的文件，请确保插件已启用且生成了配置文件。
     </div>
-    <div v-else class="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+    <div v-else class="space-y-6 max-h-[70vh] overflow-y-auto pr-1 sm:pr-2">
       <div v-for="file in pluginConfigs" :key="file.file_name" class="mb-6">
-        <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-          <span class="text-gray-400 text-sm">配置文件:</span> {{ file.file_name }}
+        <h3 class="text-base sm:text-lg font-bold mb-4 flex flex-wrap items-center gap-2">
+          <span class="text-gray-400 text-sm">配置文件:</span>
+          <span class="break-all">{{ file.file_name }}</span>
         </h3>
         <a-form layout="vertical">
           <div
             v-for="cvar in file.cvars"
             :key="cvar.name"
-            class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-100 transition-colors"
+            class="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-100 transition-colors"
           >
-            <div class="flex justify-between items-start mb-2">
-              <label class="text-base font-medium text-gray-800 break-all mr-2">{{
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
+              <label class="text-sm sm:text-base font-medium text-gray-800 break-all">{{
                 cvar.name
               }}</label>
               <div class="flex flex-wrap gap-1 shrink-0">
-                <a-tag v-if="cvar.default" color="blue">Default: {{ cvar.default }}</a-tag>
-                <a-tag v-if="cvar.min" color="orange">Min: {{ cvar.min }}</a-tag>
-                <a-tag v-if="cvar.max" color="red">Max: {{ cvar.max }}</a-tag>
+                <a-tag v-if="cvar.default" color="blue" class="mr-0">Def: {{ cvar.default }}</a-tag>
+                <a-tag v-if="cvar.min" color="orange" class="mr-0">Min: {{ cvar.min }}</a-tag>
+                <a-tag v-if="cvar.max" color="red" class="mr-0">Max: {{ cvar.max }}</a-tag>
               </div>
             </div>
 
             <div
               v-if="cvar.description"
-              class="mb-3 text-sm text-gray-500 whitespace-pre-wrap bg-white p-2 rounded border border-gray-100"
+              class="mb-3 text-xs sm:text-sm text-gray-500 whitespace-pre-wrap bg-white p-2 rounded border border-gray-100"
             >
               {{ cvar.description }}
             </div>
 
             <a-form-item class="mb-0">
-              <a-input v-model:value="cvar.value">
-                <template #addonAfter>
-                  <div class="flex items-center gap-2">
-                    <a-button
-                      type="link"
-                      size="small"
-                      :loading="tempApplying[cvar.name]"
-                      @click="applyTempConfig(cvar)"
-                    >
-                      临时设置
-                    </a-button>
-                    <a-divider type="vertical" />
-                    <a-button type="link" size="small" @click="saveConfig(file.file_name, cvar)">
-                      保存
-                    </a-button>
-                  </div>
-                </template>
-              </a-input>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <a-input v-model:value="cvar.value" class="flex-1" />
+                <div class="flex gap-2 justify-end sm:justify-start shrink-0">
+                  <a-button
+                    class="flex-1 sm:flex-none"
+                    :loading="tempApplying[cvar.name]"
+                    @click="applyTempConfig(cvar)"
+                  >
+                    临时设置
+                  </a-button>
+                  <a-button
+                    type="primary"
+                    class="flex-1 sm:flex-none"
+                    @click="saveConfig(file.file_name, cvar)"
+                  >
+                    保存
+                  </a-button>
+                </div>
+              </div>
             </a-form-item>
           </div>
         </a-form>
