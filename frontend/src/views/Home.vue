@@ -36,6 +36,24 @@
     try {
       const rawStatus = await api.getStatus();
       status.value = parseStatus(rawStatus);
+
+      // 如果有地图信息，尝试获取地图真实名称
+      if (status.value?.Map?.value) {
+        const mapCode = status.value.Map.value;
+        fetch(`http://l4d2-maps.laoyutang.cn/${mapCode}`)
+          .then((res) => {
+            if (res.ok) return res.text();
+            throw new Error('Network response was not ok');
+          })
+          .then((text) => {
+            if (text && text.trim() && status.value?.Map) {
+              status.value.Map.value = text;
+            }
+          })
+          .catch(() => {
+            // 忽略错误，保持原有显示
+          });
+      }
     } catch (e: any) {
       message.error(e.message || '获取状态失败');
       if (autoRefresh.value) {
