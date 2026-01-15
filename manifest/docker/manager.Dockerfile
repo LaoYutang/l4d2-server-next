@@ -14,7 +14,7 @@ RUN go build -o /app/l4d2-manager
 # Stage 3: Final Image
 FROM docker:29.1.1-cli-alpine3.22
 EXPOSE 27020
+COPY ./plugins /plugins
 COPY --from=builder /app/l4d2-manager /
 COPY --from=web-builder /app/backend/static /static
-COPY ./plugins /plugins
 ENTRYPOINT ["/l4d2-manager"]
