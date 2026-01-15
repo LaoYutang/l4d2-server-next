@@ -17,6 +17,12 @@ func GetPlugins(c *gin.Context) {
 }
 
 func UploadPlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "需要管理员权限"})
+		return
+	}
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
@@ -32,6 +38,12 @@ func UploadPlugin(c *gin.Context) {
 }
 
 func EnablePlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "需要管理员权限"})
+		return
+	}
+
 	name := c.PostForm("name")
 	if name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
@@ -60,6 +72,12 @@ func DisablePlugin(c *gin.Context) {
 }
 
 func DeletePlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "需要管理员权限"})
+		return
+	}
+
 	name := c.PostForm("name")
 	if name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})

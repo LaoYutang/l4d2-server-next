@@ -23,6 +23,9 @@
   import { api } from '../services/api';
   import type { UploadProps } from 'ant-design-vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
+  import { useAuthStore } from '../stores/auth';
+
+  const authStore = useAuthStore();
 
   interface Plugin {
     name: string;
@@ -305,12 +308,14 @@
                     ok-text="确定"
                     cancel-text="取消"
                     @confirm="togglePlugin(record as Plugin)"
+                    :disabled="!authStore.isAdmin"
                   >
                     <a-button
                       type="default"
                       danger
                       size="small"
                       class="!flex !items-center !justify-center"
+                      :disabled="!authStore.isAdmin"
                     >
                       <template #icon><PoweroffOutlined /></template>
                       禁用
@@ -356,6 +361,7 @@
 
             <div class="flex flex-wrap gap-2 w-full lg:w-auto">
               <a-popconfirm
+                v-if="authStore.isAdmin"
                 title="确定要删除选中的插件吗？"
                 ok-text="确定"
                 cancel-text="取消"
@@ -373,6 +379,7 @@
               </a-popconfirm>
 
               <a-upload
+                v-if="authStore.isAdmin"
                 v-model:file-list="fileList"
                 :before-upload="handleUpload"
                 accept=".zip"
@@ -416,11 +423,13 @@
                     ok-text="确定"
                     cancel-text="取消"
                     @confirm="togglePlugin(record as Plugin)"
+                    :disabled="!authStore.isAdmin"
                   >
                     <a-button
                       type="primary"
                       size="small"
                       class="!flex !items-center !justify-center"
+                      :disabled="!authStore.isAdmin"
                     >
                       <template #icon><PoweroffOutlined /></template>
                       启用
@@ -428,6 +437,7 @@
                   </a-popconfirm>
 
                   <a-popconfirm
+                    v-if="authStore.isAdmin"
                     title="确定要删除这个插件吗？"
                     ok-text="确定"
                     cancel-text="取消"

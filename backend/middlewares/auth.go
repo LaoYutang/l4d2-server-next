@@ -51,17 +51,21 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 		}
 
 		success := false
+		role := ""
 		if password == realPassword {
 			success = true
+			role = "admin"
 			c.Set("privateKey", privateKey)
 		} else if parsedToken, err := jwt.Parse(password, getKeyfunc(privateKey)); err == nil && parsedToken.Valid {
 			success = true
+			role = "guest"
 		}
 
 		if success {
 			mutex.Lock()
 			delete(ipAttempts, ip)
 			mutex.Unlock()
+			c.Set("role", role)
 			c.Next()
 		} else {
 			mutex.Lock()
@@ -83,7 +87,7 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 			}
 			mutex.Unlock()
 
-			c.String(http.StatusBadRequest, "密码错误或令牌已失效")
+			c.String(http.StatusUnauthorized, "密码错误或令牌已失效")
 			c.Abort()
 		}
 	}

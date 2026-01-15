@@ -28,7 +28,7 @@ class ApiService {
       body: fd,
     });
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401 || response.status === 403 || response.status === 429) {
       const authStore = useAuthStore();
       authStore.logout();
       throw new Error('Authentication failed');
@@ -50,7 +50,7 @@ class ApiService {
       method: 'GET',
     });
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401 || response.status === 403 || response.status === 429) {
       const authStore = useAuthStore();
       authStore.logout();
       throw new Error('Authentication failed');
@@ -71,7 +71,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401 || response.status === 403 || response.status === 429) {
       const authStore = useAuthStore();
       authStore.logout();
       throw new Error('Authentication failed');
@@ -104,15 +104,7 @@ class ApiService {
   }
 
   async getStatus() {
-    // Try without password first (public status)
-    try {
-      const response = await fetch('/rcon/getstatus', { method: 'POST' });
-      if (response.ok) return response.json();
-    } catch (e) {
-      console.warn('Public status fetch failed, trying authenticated', e);
-    }
-
-    // Fallback to authenticated request
+    // Authenticated request
     const response = await this.post('/rcon/getstatus');
     if (!response.ok) throw new Error(await response.text());
     return response.json();

@@ -10,7 +10,11 @@ import (
 
 func Auth(c *gin.Context) {
 	// 中间件已经验证密码
-	c.Next()
+	role, _ := c.Get("role")
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"role":   role,
+	})
 }
 
 func GetTempAuthCode(c *gin.Context) {

@@ -11,6 +11,9 @@
     Tag as ATag,
   } from 'ant-design-vue';
   import { api } from '../services/api';
+  import { useAuthStore } from '../stores/auth';
+
+  const authStore = useAuthStore();
 
   interface CvarConfig {
     name: string;
@@ -156,6 +159,7 @@
                     type="primary"
                     class="flex-1 sm:flex-none"
                     @click="saveConfig(file.file_name, cvar)"
+                    :disabled="!authStore.isAdmin"
                   >
                     保存
                   </a-button>

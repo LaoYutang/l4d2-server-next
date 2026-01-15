@@ -52,7 +52,7 @@ func main() {
 	router.POST("/remove", middlewares.Auth(privateKey), controller.Remove)
 	router.POST("/rcon/maplist", middlewares.Auth(privateKey), controller.GetRconMapList)
 	router.POST("/rcon/changemap", middlewares.Auth(privateKey), controller.ChangeMap)
-	router.POST("/rcon/getstatus", controller.GetStatus)
+	router.POST("/rcon/getstatus", middlewares.Auth(privateKey), controller.GetStatus)
 	router.POST("/rcon/kickuser", middlewares.Auth(privateKey), controller.KickUser)
 	router.POST("/rcon/banuser", middlewares.Auth(privateKey), controller.BanUser)
 	router.POST("/rcon/changedifficulty", middlewares.Auth(privateKey), controller.ChangeDifficulty)
