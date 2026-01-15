@@ -8,6 +8,7 @@ const Maps = () => import('../views/Maps.vue');
 const Rcon = () => import('../views/Rcon.vue');
 const System = () => import('../views/System.vue');
 const Plugins = () => import('../views/Plugins.vue');
+const Monitor = () => import('../views/Monitor.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -37,6 +38,11 @@ const router = createRouter({
           path: 'plugins',
           name: 'Plugins',
           component: Plugins,
+        },
+        {
+          path: 'monitor',
+          name: 'Monitor',
+          component: Monitor,
         },
         {
           path: 'rcon',
