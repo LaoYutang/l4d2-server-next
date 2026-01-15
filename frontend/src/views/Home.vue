@@ -505,7 +505,7 @@
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-red-500 group-hover:scale-110 transition-transform duration-300"
+              class="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-700 rounded-full shadow-sm text-red-500 group-hover:scale-110 transition-transform duration-300"
             >
               <ReloadOutlined class="text-lg" />
             </div>
@@ -526,7 +526,7 @@
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-purple-500 group-hover:scale-110 transition-transform duration-300"
+              class="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-700 rounded-full shadow-sm text-purple-500 group-hover:scale-110 transition-transform duration-300"
             >
               <EnvironmentOutlined class="text-lg" />
             </div>
@@ -547,7 +547,7 @@
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-blue-500 group-hover:scale-110 transition-transform duration-300"
+              class="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-700 rounded-full shadow-sm text-blue-500 group-hover:scale-110 transition-transform duration-300"
             >
               <DashboardOutlined class="text-lg" />
             </div>
@@ -568,7 +568,7 @@
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-green-500 group-hover:scale-110 transition-transform duration-300"
+              class="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-700 rounded-full shadow-sm text-green-500 group-hover:scale-110 transition-transform duration-300"
             >
               <ThunderboltOutlined class="text-lg" />
             </div>
