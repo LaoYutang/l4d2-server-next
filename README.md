@@ -128,7 +128,7 @@ services:
 
 ## windows服务器管理器使用说明
 windows服务器可以自行下载服务器启动，使用编译好的l4d2-manager.exe和static文件夹，设置好环境变量启动即可！
-***注意***: 非docker启动的l4d2服务器，重启功能需要自行配置环境变量```L4D2_RESTART_BY_RCON``` 或者```L4D2_RESTART_CMD```与```L4D2_GAME_PATH```，重启脚本可参考项目目录下的```restart.dat```。
+***注意***: 非docker启动的l4d2服务器，重启功能需要自行配置环境变量```L4D2_RESTART_BY_RCON``` 或者```L4D2_RESTART_CMD```与```L4D2_GAME_PATH```。
 
 
 ## 自行打包docker镜像

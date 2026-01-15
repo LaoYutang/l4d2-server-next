@@ -1,0 +1,59 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Build Backend (Windows)
+        run: |
+          cd backend
+          GOOS=windows GOARCH=amd64 go build -o l4d2-manager.exe main.go
+
+      - name: Prepare Release Package
+        run: |
+          mkdir release
+          mv backend/l4d2-manager.exe release/
+          cp manifest/boot/start_manager.bat release/
+          cp -r backend/static release/static
+          cp -r plugins release/plugins
+
+      - name: Create Zip Archive
+        run: |
+          cd release
+          zip -r ../l4d2-manager-windows-amd64-${{ github.ref_name }}.zip .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: l4d2-manager-windows-amd64-${{ github.ref_name }}.zip
+          generate_release_notes: true
