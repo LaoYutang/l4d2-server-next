@@ -182,7 +182,15 @@
     DatabaseOutlined,
   } from '@ant-design/icons-vue';
   import { message } from 'ant-design-vue';
-  import * as echarts from 'echarts';
+
+  // ECharts Core
+  import * as echarts from 'echarts/core';
+  import { LineChart } from 'echarts/charts';
+  import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components';
+  import { CanvasRenderer } from 'echarts/renderers';
+
+  echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
+
   import { api } from '../services/api';
   import { useThemeStore } from '../stores/theme';
 
@@ -246,7 +254,10 @@
         type: 'category',
         boundaryGap: false,
         data: timestamps.value,
-        axisLabel: { color: getChartThemeColor() },
+        axisLabel: {
+          color: getChartThemeColor(),
+          rotate: 45,
+        },
         axisLine: { lineStyle: { color: getChartThemeColor() } },
       },
       yAxis: {
