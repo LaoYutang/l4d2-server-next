@@ -13,6 +13,14 @@ class ApiService {
       Object.entries(data).forEach(([key, value]) => {
         if (value instanceof File) {
           fd.append(key, value);
+        } else if (Array.isArray(value)) {
+          value.forEach((v) => {
+            if (v instanceof File) {
+              fd.append(key, v);
+            } else {
+              fd.append(key, String(v));
+            }
+          });
         } else {
           fd.append(key, String(value));
         }
@@ -143,7 +151,7 @@ class ApiService {
     return response.json();
   }
 
-  async uploadPlugin(file: File) {
+  async uploadPlugin(file: File | File[]) {
     const response = await this.post('/plugins/upload', { file });
     if (!response.ok) throw new Error(await response.text());
   }

@@ -44,6 +44,8 @@
 
   const configModalVisible = ref(false);
   const currentConfigPlugin = ref('');
+  const pendingFiles = ref<File[]>([]);
+  let uploadTimer: any = null;
 
   onErrorCaptured((err) => {
     console.error('Plugins.vue Error:', err);
@@ -91,16 +93,16 @@
     }
   };
 
-  const handleUpload = async (file: File) => {
-    if (!file.name.endsWith('.zip')) {
-      message.error('只允许上传 .zip 格式的文件');
-      return false;
-    }
+  const processPendingUploads = async () => {
+    const filesToUpload = [...pendingFiles.value];
+    pendingFiles.value = [];
 
-    const hide = message.loading('正在上传插件...', 0);
+    if (filesToUpload.length === 0) return;
+
+    const hide = message.loading(`正在上传 ${filesToUpload.length} 个插件...`, 0);
     uploading.value = true;
     try {
-      await api.uploadPlugin(file);
+      await api.uploadPlugin(filesToUpload);
       message.success('插件上传成功');
       fileList.value = [];
       fetchPlugins();
@@ -110,6 +112,21 @@
       uploading.value = false;
       hide();
     }
+  };
+
+  const handleUpload = (file: File) => {
+    if (!file.name.endsWith('.zip')) {
+      message.error('只允许上传 .zip 格式的文件');
+      return false;
+    }
+
+    pendingFiles.value.push(file);
+
+    if (uploadTimer) clearTimeout(uploadTimer);
+    uploadTimer = setTimeout(() => {
+      processPendingUploads();
+    }, 100);
+
     return false; // Prevent default upload behavior
   };
 
@@ -385,6 +402,7 @@
                 accept=".zip"
                 :show-upload-list="false"
                 :disabled="uploading"
+                multiple
                 class="flex-1 sm:flex-none"
               >
                 <a-button

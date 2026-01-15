@@ -10,9 +10,12 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/spf13/viper"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -145,39 +148,170 @@ func GetPlugins() ([]Plugin, error) {
 	return plugins, nil
 }
 
+// Convert zip filename from possible GBK to UTF-8
+func decodeZipName(name string) string {
+	if utf8.ValidString(name) {
+		return name
+	}
+	// Try GBK
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	utf8Name, _, err := transform.String(decoder, name)
+	if err == nil {
+		return utf8Name
+	}
+	// Fallback to original if conversion fails
+	return name
+}
+
 func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	pluginName := strings.TrimSuffix(filename, filepath.Ext(filename))
-	storePath := getStorePath()
-	destDir := filepath.Join(storePath, pluginName)
-
-	if _, err := os.Stat(destDir); !os.IsNotExist(err) {
-		return fmt.Errorf("plugin %s already exists", pluginName)
-	}
-
-	// Unzip
 	zipReader, err := zip.NewReader(file, size)
 	if err != nil {
 		return err
 	}
 
-	// Validate structure: must contain left4dead2 folder at root
-	validStructure := false
+	// Filter valid files and fix encoding
+	var validFiles []*zip.File
+	// Map to store decoded names to avoid re-decoding
+	decodedNames := make(map[*zip.File]string)
+
 	for _, f := range zipReader.File {
-		if strings.HasPrefix(f.Name, "left4dead2/") {
-			validStructure = true
+		decodedName := decodeZipName(f.Name)
+		// Normalize path separators to forward slash
+		decodedName = strings.ReplaceAll(decodedName, "\\", "/")
+
+		if isJunkFile(decodedName) {
+			continue
+		}
+		decodedNames[f] = decodedName
+		validFiles = append(validFiles, f)
+	}
+
+	if len(validFiles) == 0 {
+		return fmt.Errorf("empty zip file or only junk files")
+	}
+
+	// Case A: Single plugin (Root is left4dead2)
+	isSinglePlugin := true
+	for _, f := range validFiles {
+		name := decodedNames[f]
+		if !strings.HasPrefix(name, "left4dead2/") {
+			isSinglePlugin = false
 			break
 		}
 	}
-	if !validStructure {
-		return fmt.Errorf("invalid plugin structure: must contain left4dead2 folder")
+
+	storePath := getStorePath()
+
+	if isSinglePlugin {
+		pluginName := strings.TrimSuffix(filename, filepath.Ext(filename))
+		destDir := filepath.Join(storePath, pluginName)
+
+		if _, err := os.Stat(destDir); !os.IsNotExist(err) {
+			return fmt.Errorf("plugin %s already exists", pluginName)
+		}
+
+		return extractFiles(validFiles, destDir, "", decodedNames)
 	}
 
-	// Extract
-	for _, f := range zipReader.File {
-		fpath := filepath.Join(destDir, f.Name)
+	// Case B: Multiple plugins
+	// Group by root directory
+	pluginDirs := make(map[string][]*zip.File)
+
+	for _, f := range validFiles {
+		name := decodedNames[f]
+		// Zip uses forward slash
+		parts := strings.Split(name, "/")
+		if len(parts) < 2 {
+			// File at root (e.g. "readme.txt") -> Invalid for multi-plugin
+			return fmt.Errorf("invalid structure: file %s at root", name)
+		}
+		rootDir := parts[0]
+		pluginDirs[rootDir] = append(pluginDirs[rootDir], f)
+	}
+
+	// Validate each plugin dir
+	for rootDir, files := range pluginDirs {
+		// Strict check: every file must be either inside rootDir/left4dead2/ OR be the rootDir/left4dead2/ folder itself
+		expectedPrefix := rootDir + "/left4dead2/"
+
+		for _, f := range files {
+			name := decodedNames[f]
+
+			// Allow the directory itself (rootDir/left4dead2/)
+			if name == expectedPrefix || name == strings.TrimSuffix(expectedPrefix, "/") {
+				continue
+			}
+
+			if !strings.HasPrefix(name, expectedPrefix) {
+				// Also allow rootDir/ itself if it's explicitly in the zip
+				if name == rootDir || name == rootDir+"/" {
+					continue
+				}
+				return fmt.Errorf("invalid structure in %s: must only contain left4dead2 folder, found %s", rootDir, name)
+			}
+		}
+
+		// Ensure left4dead2 folder exists (either explicitly or implicitly)
+		hasL4D2 := false
+		for _, f := range files {
+			name := decodedNames[f]
+			if strings.HasPrefix(name, expectedPrefix) {
+				hasL4D2 = true
+				break
+			}
+		}
+
+		if !hasL4D2 {
+			return fmt.Errorf("invalid structure in %s: left4dead2 folder missing", rootDir)
+		}
+
+		// Check collision
+		destDir := filepath.Join(storePath, rootDir)
+		if _, err := os.Stat(destDir); !os.IsNotExist(err) {
+			return fmt.Errorf("plugin %s already exists", rootDir)
+		}
+	}
+
+	// Extract all
+	for rootDir, files := range pluginDirs {
+		destDir := filepath.Join(storePath, rootDir)
+		if err := extractFiles(files, destDir, rootDir+"/", decodedNames); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isJunkFile(name string) bool {
+	if strings.HasPrefix(name, "__MACOSX/") {
+		return true
+	}
+	if strings.HasSuffix(name, ".DS_Store") {
+		return true
+	}
+	return false
+}
+
+func extractFiles(files []*zip.File, destDir string, stripPrefix string, decodedNames map[*zip.File]string) error {
+	for _, f := range files {
+		// Get decoded name
+		name := decodedNames[f]
+
+		// Strip prefix
+		relPath := name
+		if stripPrefix != "" {
+			relPath = strings.TrimPrefix(name, stripPrefix)
+		}
+
+		if relPath == "" {
+			continue
+		}
+
+		fpath := filepath.Join(destDir, relPath)
 
 		// Prevent Zip Slip
 		if !strings.HasPrefix(fpath, filepath.Clean(destDir)+string(os.PathSeparator)) {
@@ -212,7 +346,6 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 			return err
 		}
 	}
-
 	return nil
 }
 

@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"fmt"
 	"l4d2-manager-next/logic"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,18 +25,40 @@ func UploadPlugin(c *gin.Context) {
 		return
 	}
 
-	file, header, err := c.Request.FormFile("file")
+	form, err := c.MultipartForm()
 	if err != nil {
+		if err = c.Request.ParseMultipartForm(32 << 20); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form: " + err.Error()})
+			return
+		}
+		form = c.Request.MultipartForm
+	}
+
+	files := form.File["file"]
+	if len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
 		return
 	}
-	defer file.Close()
 
-	if err := logic.UploadPlugin(file, header.Size, header.Filename); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	var errs []string
+	for _, header := range files {
+		file, err := header.Open()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", header.Filename, err))
+			continue
+		}
+
+		if err := logic.UploadPlugin(file, header.Size, header.Filename); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", header.Filename, err))
+		}
+		file.Close()
+	}
+
+	if len(errs) > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": strings.Join(errs, "; ")})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Plugin uploaded successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Plugins uploaded successfully"})
 }
 
 func EnablePlugin(c *gin.Context) {
