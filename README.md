@@ -1,53 +1,79 @@
-# l4d2-server
-求生2服务器快速启动
+# l4d2-server-next
 
-完整的求生之路2服务端镜像，内置了完整的豆瓣整合包和大量优质插件，开箱即用！
-管理界面，不再需要登录服务器传图重启，页面操作即可！支持切图、下载任务与服务器状态显示。
+新一代求生之路 2 (L4D2) 服务器与 Web 管理后台。
+提供 Docker 镜像与 Windows 原生程序，内置完整的整合包和大量优质插件，开箱即用！
+支持地图管理、插件管理、服务器状态监控、RCON 控制台等功能，让服务器管理变得简单高效。
 
-> 新版本的docker修改了sock的api版本，使用docker容器方式重启l4d2需要docker版本<=28，下方部署方式已经全部修改为RCON方式，以兼容所有版本
+## ✨ 功能特性
 
-## 一键部署
-需要docker与docker compose环境，需要能够拉取镜像源，国内需要配置镜像源或代理。
+*   **🖥️ 多平台支持**
+    *   **Docker**: 提供完整的游戏服镜像（`l4d2-pure`）与管理器镜像（`l4d2-manager-next`），一键部署。
+    *   **Windows**: 提供原生 `.exe` 管理器，无需 Docker 即可管理现有的 Windows 服务器。
+    *   **Linux**: 支持管理宿主机直接运行的 L4D2 服务端。
+*   **🗺️ 地图管理**
+    *   支持 `.vpk` 及 `.zip/.rar/.7z` 压缩包拖拽上传。
+    *   自动解压安装地图文件到正确目录。
+    *   地图下载任务：支持后台下载地图文件到服务器。
+    *   可视化地图列表，支持一键切换地图、修改游戏模式、修改难度。
+*   **🔌 插件管理**
+    *   Web 端查看已安装的所有 SourceMod 插件。
+    *   支持在线上传插件文件。
+    *   支持在线启用/禁用插件。
+    *   **内置整合包**: 镜像中已包含 SourceMod、Metamod 以及大量热门实用插件，开箱即玩。
+*   **📊 服务器监控**
+    *   实时仪表盘：显示 CPU、内存占用率。
+    *   网络状态：监控服务器网络延迟与丢包率。
+    *   游戏状态：显示当前地图、模式、难度、玩家数等。
+    *   玩家列表：查看当前在线玩家、SteamID、连接时长、Ping 值。
+*   **💻 RCON 控制台**
+    *   Web 端直接发送 RCON 指令，无需登录游戏。
+    *   支持快捷指令菜单。
+    *   快捷操作：踢出玩家、封禁 SteamID、修改服务器参数。
+*   **🛡️ 安全与权限**
+    *   Web 后台密码保护，防止未授权访问。
+    *   内置 `!root` 游戏内指令，通过密码快速获取管理员权限（无需手动编辑 admins_simple.ini）。
+*   **📂 文件管理** (部分实现)
+    *   支持下载任务管理，远程下载大文件到服务器。
+
+## 📸 预览截图
+
+<div align="center">
+  <img src="docs/images/首页.png" alt="首页" width="45%" />
+  <img src="docs/images/系统信息与授权码.png" alt="系统信息与授权码" width="45%" />
+  <br/>
+  <img src="docs/images/插件管理.png" alt="插件管理" width="45%" />
+  <img src="docs/images/插件配置.png" alt="插件配置" width="45%" />
+  <br/>
+  <img src="docs/images/rcon控制台.png" alt="rcon控制台" width="45%" />
+  <img src="docs/images/性能监控.png" alt="性能监控" width="45%" />
+  <br/>
+  <img src="docs/images/地图管理.png" alt="地图管理" width="45%" />
+  <img src="docs/images/地图下载.png" alt="地图下载" width="45%" />
+</div>
+
+---
+
+## 🚀 Linux 部署
+
+### 1. 完整部署 (游戏服务器 + 管理器)
+
+适合从零开始搭建服务器的用户。
+
+#### 方式一：一键脚本 (推荐)
+
 ```sh
 bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/install.sh)
 ```
-服务器无法连接github也可以下载脚本，手动上传都服务器运行。或者使用github加速，如
+国内加速：
 ```sh
 bash <(curl -sL https://gh.dpik.top/https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/install.sh)
 ```
-镜像中带有完整的游戏服务端，需要下载5.XGB的数据，所以安装时间取决于服务器的带宽和cpu性能。
 
-## 手动部署
-稳定版使用lastest标签，如果L4D2有更新，可以尝试使用nightly标签，该镜像每晚打包。
-```sh
-docker volume create l4d2-data
-docker run -d \
-  --name l4d2 \
-  --restart unless-stopped \
-  -p 27015:27015 \
-  -p 27015:27015/udp \
-  -v l4d2-data:/l4d2/left4dead2 \
-  -e L4D2_TICK=60 \
-  -e L4D2_RCON_PASSWORD=rcon密码 \
-  laoyutang/l4d2-pure:latest
+#### 方式二：Docker Compose
 
-# 地图管理器，可选
-docker run -d \
-  --name l4d2-manager \
-  --restart unless-stopped \
-  -p 27020:27020 \
-  -v l4d2-data:/left4dead2 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e L4D2_RESTART_BY_RCON=true \
-  -e L4D2_MANAGER_PASSWORD=设置上传地图的密码 \
-  -e L4D2_RCON_URL=localhost:27015 \
-  -e L4D2_RCON_PASSWORD=rcon密码 \
-  -e L4D2_GAME_PATH=/left4dead2 \
-  laoyutang/l4d2-manager-next:latest
-```
-docker-compose启动
+创建 `docker-compose.yaml`：
+
 ```yaml
-# docker-compose.yaml
 volumes:
   l4d2-data:
 
@@ -55,6 +81,7 @@ networks:
   l4d2-network:
 
 services:
+  # 游戏服务器
   l4d2:
     image: laoyutang/l4d2-pure:latest
     container_name: l4d2
@@ -68,9 +95,9 @@ services:
       - l4d2-network
     environment:
       - L4D2_TICK=60 # 30,60,100
-      - L4D2_RCON_PASSWORD=[rcon密码]
+      - L4D2_RCON_PASSWORD=[rcon密码] # 请修改此处
 
-  # 地图管理器，可选
+  # 管理器
   l4d2-manager:
     image: laoyutang/l4d2-manager-next:latest
     container_name: l4d2-manager
@@ -78,59 +105,78 @@ services:
     ports:
       - "27020:27020"
     volumes:
-      - l4d2-data:/left4dead2
-      - /var/run/docker.sock:/var/run/docker.sock
+      - l4d2-data:/left4dead2 # 与游戏服务器共享数据卷
     environment:
       - L4D2_RESTART_BY_RCON=true
-      - L4D2_MANAGER_PASSWORD=[web管理密码]
+      - L4D2_MANAGER_PASSWORD=[web管理密码] # 请修改此处
       - L4D2_RCON_URL=l4d2:27015
-      - L4D2_RCON_PASSWORD=[rcon密码]
+      - L4D2_RCON_PASSWORD=[rcon密码] # 与上方保持一致
       - L4D2_GAME_PATH=/left4dead2
     networks:
       - l4d2-network
 ```
+启动：
+```sh
+docker-compose up -d
+```
 
-## 环境变量
-### L4D2
-- L4D2_TICK: 游戏 tickrate，可选，默认为 60
-- L4D2_RCON_PASSWORD: RCON 密码，必填
-- L4D2_PORT: 游戏端口，可选，默认为 27015
-### L4D2-MANAGER
-- L4D2_MANAGER_PASSWORD: 管理器密码，必填
-- L4D2_RCON_URL: RCON 地址，可选，否则不支持状态获取与切图功能
-- L4D2_RCON_PASSWORD: RCON 密码，可选，否则不支持状态获取与切图功能
-- L4D2_GAME_PATH: left4dead2 游戏目录路径
-- L4D2_RESTART_BY_RCON: 是否通过RCON命令重启服务器，默认false
-- L4D2_RESTART_CMD: 重启命令，可选，默认使用docker重启
-- L4D2_CONTAINER_NAME: 需要重启的docker容器名称，可选，未设置L4D2_RESTART_CMD时有效，默认为"l4d2"
-- STEAM_API_KEY：Steam API 密钥，可选，用于查询玩家游戏时长，可以在[steam](https://steamcommunity.com/dev/apikey)获取
+### 2. 仅部署管理器 (Linux)
 
-## 地图管理
-### 手动操作
-1. docker volume目录下操作即可  ```/var/lib/docker/volume/l4d2-data/_data/addons``` 
-2. 重启服务器```docker restart l4d2```
-3. 进入服务器后管理员切图
-### 使用地图管理器（推荐）
-1. 浏览器登录```ip:27020```
-2. 选择地图vpk文件或者zip/rar/7z文件（可多选）
-3. 点击上传
-4. 上传后点击重启服务器以重新加载地图
-5. 点击查看以加载地图，切换对应的地图即可
+适合已有 L4D2 服务器（Docker 或宿主机部署），只需添加 Web 管理功能的用户。
 
-## 插件修改与替换
-插件目录为 ```/var/lib/docker/volume/l4d2-data/_data/addons``` 
-配置目录为 ```/var/lib/docker/volume/l4d2-data/_data/cfg```
-可以自行按需修改替换
+```sh
+docker run -d \
+  --name l4d2-manager \
+  --restart unless-stopped \
+  --net host \
+  -v /path/to/your/l4d2/left4dead2:/left4dead2 \
+  -e L4D2_MANAGER_PORT=27020 \
+  -e L4D2_MANAGER_PASSWORD=[web管理密码] \
+  -e L4D2_GAME_PATH=/left4dead2 \
+  -e L4D2_RCON_URL=127.0.0.1:27015 \
+  -e L4D2_RCON_PASSWORD=[游戏服RCON密码] \
+  -e L4D2_RESTART_BY_RCON=true \
+  laoyutang/l4d2-manager-next:latest
+```
+注意修改 `/path/to/your/l4d2/left4dead2` 为实际的游戏目录。
 
-## 管理员设置
-进入服务器后，输入```!root 管理员密码```即可在线添加删除管理员
-***注意：管理员密码在```addons/sourcemod/configs/l4d2_admins_simple.cfg```中设置，请及时修改默认密码，重启生效***
+---
 
-## windows服务器管理器使用说明
-windows服务器可以自行下载服务器启动，使用编译好的l4d2-manager.exe和static文件夹，设置好环境变量启动即可！
-***注意***: 非docker启动的l4d2服务器，重启功能需要自行配置环境变量```L4D2_RESTART_BY_RCON``` 或者```L4D2_RESTART_CMD```与```L4D2_GAME_PATH```。
+## 💻 Windows 部署
 
+适合在 Windows 机器上运行 L4D2 服务器的用户。
 
-## 自行打包docker镜像
-```docker build -f manifest/docker/l4d2.Dockerfile -t l4d2 .```
-```docker build -f manifest/docker/manager.Dockerfile -t l4d2-manager .```
+1. **下载管理器**：
+   前往 [Releases](https://github.com/LaoYutang/l4d2-server-next/releases) 页面，下载最新的 `l4d2-manager-windows-amd64-vX.X.X.zip`。
+
+2. **解压**：
+   解压压缩包到任意目录（建议不要包含中文路径）。
+
+3. **配置**：
+   右键编辑 `start_manager.bat` 文件，修改以下配置：
+   *   `L4D2_MANAGER_PASSWORD`: 设置 Web 管理后台密码。
+   *   `L4D2_GAME_PATH`: 设置 L4D2 游戏目录（例如 `D:\SteamCMD\steamapps\common\Left 4 Dead 2 Dedicated Server\left4dead2`）。
+   *   `L4D2_RCON_URL`: 游戏服务器 IP:端口（通常是 `127.0.0.1:27015`）。
+   *   `L4D2_RCON_PASSWORD`: 游戏服务器的 RCON 密码（需在 `server.cfg` 中配置 `rcon_password`）。
+
+4. **启动**：
+   双击运行 `start_manager.bat`。
+
+5. **访问**：
+   打开浏览器访问 `http://localhost:27020`（或服务器 IP:27020）。
+
+---
+
+## ⚙️ 环境变量说明
+
+| 变量名                    | 描述                                  | 默认值/必填                   |
+| :------------------------ | :------------------------------------ | :---------------------------- |
+| **L4D2_MANAGER_PASSWORD** | Web 管理后台登录密码                  | **必填**                      |
+| **L4D2_GAME_PATH**        | L4D2 游戏目录路径 (left4dead2 文件夹) | **必填**                      |
+| **L4D2_RCON_URL**         | RCON 地址 (IP:Port)                   | 推荐配置，否则无法切图/看状态 |
+| **L4D2_RCON_PASSWORD**    | RCON 密码                             | 推荐配置                      |
+| **L4D2_RESTART_BY_RCON**  | 是否通过 RCON 命令重启服务器          | `false` (推荐 `true`)         |
+| **STEAM_API_KEY**         | Steam API Key (用于查询玩家时长)      | 可选                          |
+| **L4D2_MANAGER_PORT**     | 管理器监听端口                        | `27020`                       |
+
+---
