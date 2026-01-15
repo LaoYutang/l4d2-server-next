@@ -18,6 +18,7 @@
     SearchOutlined,
     ReloadOutlined,
     SettingOutlined,
+    SyncOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
   import type { UploadProps } from 'ant-design-vue';
@@ -226,6 +227,15 @@
         <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">插件管理</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-1">管理服务器插件和模组</p>
       </div>
+      <a-button
+        type="default"
+        @click="fetchPlugins"
+        :loading="loading"
+        class="!flex !items-center !justify-center"
+      >
+        <template #icon><SyncOutlined /></template>
+        刷新列表
+      </a-button>
     </div>
 
     <a-card :bordered="false" class="shadow-sm dark:bg-gray-800">
