@@ -379,11 +379,11 @@
 
           <!-- Details (Middle) -->
           <div
-            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
+            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-transparent md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
           >
             <div
               v-if="user.steamid"
-              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 min-w-[140px] group cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 -ml-1 transition-colors"
+              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 min-w-[140px] group cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded px-1 -ml-1 transition-colors"
               @click="copyToClipboard(user.steamid)"
               title="点击复制 SteamID"
             >
