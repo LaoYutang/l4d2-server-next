@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, computed, onMounted, onUnmounted, h } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, h, watch } from 'vue';
   import { api } from '../services/api';
   import { message, Modal } from 'ant-design-vue';
   import {
@@ -243,14 +243,36 @@
     }
   };
 
+  const startPolling = () => {
+    if (downloadRefreshInterval) return;
+    loadDownloadTasks(); // Immediate load
+    downloadRefreshInterval = window.setInterval(loadDownloadTasks, 3000);
+  };
+
+  const stopPolling = () => {
+    if (downloadRefreshInterval) {
+      clearInterval(downloadRefreshInterval);
+      downloadRefreshInterval = null;
+    }
+  };
+
+  watch(activeTab, (newTab) => {
+    if (newTab === 'download') {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  });
+
   onMounted(() => {
     loadMaps();
-    loadDownloadTasks();
-    downloadRefreshInterval = window.setInterval(loadDownloadTasks, 3000);
+    if (activeTab.value === 'download') {
+      startPolling();
+    }
   });
 
   onUnmounted(() => {
-    if (downloadRefreshInterval) clearInterval(downloadRefreshInterval);
+    stopPolling();
   });
 </script>
 
