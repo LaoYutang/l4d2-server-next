@@ -163,7 +163,7 @@
           />
           <div class="mt-6 text-center text-gray-500 dark:text-gray-400">
             <p class="text-lg font-medium">总空间使用率</p>
-            <p class="text-xs mt-1 text-gray-400">当前程序所在磁盘分区</p>
+            <p class="text-xs mt-1 text-gray-400">当前left4dead2所在磁盘分区</p>
           </div>
         </div>
       </div>
