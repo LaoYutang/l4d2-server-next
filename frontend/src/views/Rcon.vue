@@ -2,7 +2,14 @@
   import { ref, nextTick, onMounted } from 'vue';
   import { api } from '../services/api';
   import { message } from 'ant-design-vue';
-  import { CodeOutlined, ClearOutlined, RightOutlined, SendOutlined } from '@ant-design/icons-vue';
+  import {
+    CodeOutlined,
+    ClearOutlined,
+    RightOutlined,
+    SendOutlined,
+    HistoryOutlined,
+    QuestionCircleOutlined,
+  } from '@ant-design/icons-vue';
 
   interface LogEntry {
     type: 'sent' | 'received' | 'error';
@@ -12,6 +19,7 @@
 
   const command = ref('');
   const logs = ref<LogEntry[]>([]);
+  const history = ref<string[]>([]);
   const sending = ref(false);
   const logContainer = ref<HTMLElement | null>(null);
   const commandInput = ref<any>(null);
@@ -32,6 +40,24 @@
     focusInput();
   };
 
+  const loadHistory = () => {
+    try {
+      const stored = localStorage.getItem('rcon_history');
+      if (stored) {
+        history.value = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Failed to load history', e);
+    }
+  };
+
+  const addToHistory = (cmd: string) => {
+    // Remove duplicates and add to front
+    const newHistory = [cmd, ...history.value.filter((h) => h !== cmd)].slice(0, 8);
+    history.value = newHistory;
+    localStorage.setItem('rcon_history', JSON.stringify(newHistory));
+  };
+
   const addLog = (type: LogEntry['type'], text: string) => {
     const time = new Date().toLocaleTimeString();
     logs.value.push({ type, text, time });
@@ -42,6 +68,7 @@
     const cmd = command.value.trim();
     if (!cmd) return;
 
+    addToHistory(cmd);
     sending.value = true;
     addLog('sent', cmd);
     command.value = '';
@@ -65,7 +92,14 @@
     message.success('日志已清空');
   };
 
+  const clearHistory = () => {
+    history.value = [];
+    localStorage.removeItem('rcon_history');
+    message.success('历史记录已清空');
+  };
+
   onMounted(() => {
+    loadHistory();
     commandInput.value?.focus();
   });
 </script>
@@ -86,6 +120,47 @@
           <div class="w-3 h-3 rounded-full bg-green-500"></div>
           <h2 class="text-lg font-bold ml-2 font-mono flex items-center gap-2 dark:text-gray-100">
             <code-outlined /> RCON 终端
+            <a-popover title="常用指令参考" placement="bottomLeft">
+              <template #content>
+                <div class="space-y-2 text-sm font-mono">
+                  <p>
+                    <span class="font-bold text-blue-500">status</span> :
+                    <span class="text-gray-600 dark:text-gray-400">查看服务器状态</span>
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">z_difficulty [difficulty]</span> :
+                    <span class="text-gray-600 dark:text-gray-400"
+                      >修改难度 (easy/normal/hard/impossible)</span
+                    >
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">sm_cvar mp_gamemode [mode]</span> :
+                    <span class="text-gray-600 dark:text-gray-400"
+                      >修改模式 (coop/versus/survival)</span
+                    >
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">sm_cvar [var] [val]</span> :
+                    <span class="text-gray-600 dark:text-gray-400">修改服务器变量</span>
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">kick [user]</span> :
+                    <span class="text-gray-600 dark:text-gray-400">踢出玩家</span>
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">changelevel [map]</span> :
+                    <span class="text-gray-600 dark:text-gray-400">切换地图</span>
+                  </p>
+                  <p>
+                    <span class="font-bold text-blue-500">banid [minutes] [userid]</span> :
+                    <span class="text-gray-600 dark:text-gray-400">封禁玩家(0为永久)</span>
+                  </p>
+                </div>
+              </template>
+              <question-circle-outlined
+                class="text-gray-400 hover:text-blue-500 cursor-help text-sm transition-colors"
+              />
+            </a-popover>
           </h2>
         </div>
         <a-button
@@ -134,42 +209,39 @@
       <div
         class="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 transition-colors"
       >
-        <!-- Quick Commands -->
-        <div class="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-          <a-tag color="blue" class="cursor-pointer" @click="fillCommand('status ')">status</a-tag>
-          <a-tag color="cyan" class="cursor-pointer" @click="fillCommand('z_difficulty ')"
-            >z_difficulty</a-tag
+        <!-- Quick Commands (History) -->
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+            <history-outlined /> 最近使用的指令
+          </span>
+          <a-button
+            v-if="history.length > 0"
+            type="link"
+            size="small"
+            class="!text-xs !p-0 !h-auto text-gray-400 hover:text-red-500"
+            @click="clearHistory"
           >
-          <a-tag color="green" class="cursor-pointer" @click="fillCommand('sm_cvar mp_gamemode ')"
-            >mp_gamemode</a-tag
+            清空历史
+          </a-button>
+        </div>
+        <div class="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide min-h-[32px]">
+          <template v-if="history.length > 0">
+            <a-tag
+              v-for="cmd in history"
+              :key="cmd"
+              color="blue"
+              class="cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap"
+              @click="fillCommand(cmd)"
+            >
+              {{ cmd }}
+            </a-tag>
+          </template>
+          <div
+            v-else
+            class="text-gray-400 text-xs italic w-full text-center py-1 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-700"
           >
-          <a-tag color="orange" class="cursor-pointer" @click="fillCommand('sv_maxplayers ')"
-            >sv_maxplayers</a-tag
-          >
-          <a-tag color="orange" class="cursor-pointer" @click="fillCommand('sv_visiblemaxplayers ')"
-            >sv_visiblemaxplayers</a-tag
-          >
-          <a-tag color="purple" class="cursor-pointer" @click="fillCommand('sm_timer ')"
-            >sm_timer</a-tag
-          >
-          <a-tag
-            color="magenta"
-            class="cursor-pointer"
-            @click="fillCommand('sm_cvar sar_respawn_survivor_limit ')"
-            >survivor_limit</a-tag
-          >
-          <a-tag
-            color="magenta"
-            class="cursor-pointer"
-            @click="fillCommand('sm_cvar sar_respawn_survivor_time ')"
-            >survivor_time</a-tag
-          >
-          <a-tag
-            color="magenta"
-            class="cursor-pointer"
-            @click="fillCommand('sm_cvar sar_respawn_survivor_time_add ')"
-            >survivor_time_add</a-tag
-          >
+            暂无历史指令，发送的指令将显示在这里
+          </div>
         </div>
 
         <div class="flex gap-2">
