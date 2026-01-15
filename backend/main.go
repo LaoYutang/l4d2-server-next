@@ -65,6 +65,8 @@ func main() {
 	router.POST("/getUserPlaytime", middlewares.Auth(privateKey), controller.GetUserPlaytime)
 	router.POST("/monitor/status", middlewares.Auth(privateKey), controller.GetMonitorStatus)
 	router.POST("/rcon", middlewares.Auth(privateKey), controller.Rcon)
+	router.POST("/server-info/get", middlewares.Auth(privateKey), controller.GetServerInfo)
+	router.POST("/server-info/update", middlewares.Auth(privateKey), controller.UpdateServerInfo)
 
 	plugins := router.Group("/plugins", middlewares.Auth(privateKey))
 	{

@@ -354,6 +354,18 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
+
+  async getServerInfo() {
+    const response = await this.post('/server-info/get');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async updateServerInfo(data: { hostname: string; motd: string; host: string }) {
+    const response = await this.postJson('/server-info/update', data);
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

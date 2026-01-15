@@ -9,6 +9,7 @@ const Rcon = () => import('../views/Rcon.vue');
 const System = () => import('../views/System.vue');
 const Plugins = () => import('../views/Plugins.vue');
 const Monitor = () => import('../views/Monitor.vue');
+const ServerInfo = () => import('../views/ServerInfo.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -53,6 +54,11 @@ const router = createRouter({
           path: 'system',
           name: 'System',
           component: System,
+        },
+        {
+          path: 'server-info',
+          name: 'ServerInfo',
+          component: ServerInfo,
         },
       ],
     },

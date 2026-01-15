@@ -13,6 +13,7 @@
     AppstoreAddOutlined,
     BulbOutlined,
     LineChartOutlined,
+    EditOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -120,6 +121,12 @@
           <template #icon><CodeOutlined /></template>
           <span>RCON 控制台</span>
         </a-menu-item>
+
+        <a-menu-item key="/server-info">
+          <template #icon><EditOutlined /></template>
+          <span>服务器信息</span>
+        </a-menu-item>
+
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -188,6 +195,10 @@
         <a-menu-item key="/plugins">
           <template #icon><AppstoreAddOutlined /></template>
           插件管理
+        </a-menu-item>
+        <a-menu-item key="/server-info">
+          <template #icon><EditOutlined /></template>
+          服务器信息
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
