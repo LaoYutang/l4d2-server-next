@@ -99,9 +99,11 @@
       content: '所有玩家将断开连接。',
       onOk: async () => {
         try {
+          if (autoRefresh.value) {
+            toggleAutoRefresh();
+          }
           await api.restartServer();
-          message.success('服务器重启指令已发送');
-          loadStatus();
+          message.success('服务器重启指令已发送，请稍后手动刷新查看状态');
         } catch (e: any) {
           message.error('重启失败: ' + e.message);
         }
