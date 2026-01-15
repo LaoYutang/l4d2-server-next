@@ -89,7 +89,9 @@
       </p>
 
       <div class="mb-6">
-        <label class="block text-sm font-bold mb-2">选择有效期</label>
+        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
+          >选择有效期</label
+        >
         <div class="flex gap-2">
           <a-select v-model:value="expiredHours" class="flex-1">
             <a-select-option :value="1">1 小时</a-select-option>
@@ -108,20 +110,22 @@
       <!-- Result Display -->
       <div
         v-if="generatedCode"
-        class="bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in"
+        class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 animate-fade-in"
       >
-        <div class="flex items-center gap-2 text-green-600 font-bold mb-1">
+        <div class="flex items-center gap-2 text-green-600 dark:text-green-400 font-bold mb-1">
           <check-circle-outlined />
           生成成功
         </div>
-        <div class="text-xs text-gray-500 mb-3">有效期至: {{ expirationTime }}</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          有效期至: {{ expirationTime }}
+        </div>
 
         <div class="flex gap-2">
           <a-input
             v-model:value="generatedCode"
             readonly
             ref="codeInput"
-            class="font-mono text-center text-lg text-blue-600"
+            class="font-mono text-center text-lg text-blue-600 dark:text-blue-400"
           />
           <a-button @click="copyCode" class="!flex !items-center !justify-center">
             <template #icon>
@@ -135,9 +139,9 @@
     </a-card>
 
     <!-- System Info Section -->
-    <a-card class="shadow-xl" :bordered="false">
+    <a-card class="shadow-xl dark:shadow-gray-900/50 dark:bg-gray-800" :bordered="false">
       <template #title>
-        <span class="flex items-center gap-2 text-lg">
+        <span class="flex items-center gap-2 text-lg dark:text-gray-100">
           <info-circle-outlined class="text-blue-500" />
           关于系统
         </span>
@@ -145,27 +149,27 @@
 
       <div class="space-y-6">
         <div>
-          <h3 class="font-bold text-gray-800 mb-2 flex items-center gap-2">
+          <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
             <span>⚖️</span> 开源协议
           </h3>
-          <p class="text-gray-600 leading-relaxed">
+          <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
             本项目基于 Apache License 2.0 开源协议发布<br />
             欢迎贡献代码和提出建议
           </p>
         </div>
 
         <div>
-          <h3 class="font-bold text-gray-800 mb-2 flex items-center gap-2">
+          <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
             <span>ℹ️</span> 项目信息
           </h3>
-          <p class="text-gray-600 leading-relaxed">
+          <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
             L4D2 服务器管理工具<br />
             作者: LaoYutang<br />
             GitHub:
             <a
               href="https://github.com/LaoYutang/l4d2-server"
               target="_blank"
-              class="text-blue-500 hover:underline break-all"
+              class="text-blue-500 dark:text-blue-400 hover:underline break-all"
               >https://github.com/LaoYutang/l4d2-server</a
             ><br />
             © 2025 开源社区贡献
@@ -174,12 +178,12 @@
 
         <a-divider />
 
-        <div class="text-center text-gray-500 text-sm">
+        <div class="text-center text-gray-500 dark:text-gray-400 text-sm">
           <span>Made with ❤️ by the community | </span>
           <a
             href="https://github.com/LaoYutang/l4d2-server/blob/master/LICENSE"
             target="_blank"
-            class="text-blue-500 hover:underline"
+            class="text-blue-500 dark:text-blue-400 hover:underline"
           >
             查看许可证
           </a>

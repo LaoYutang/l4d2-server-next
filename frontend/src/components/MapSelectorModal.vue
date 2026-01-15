@@ -169,11 +169,11 @@
 
       <!-- Map List -->
       <div class="max-h-[60vh] overflow-y-auto custom-scrollbar">
-        <div v-if="loading && allMaps.length === 0" class="py-8 text-center text-gray-500">
+        <div v-if="loading && allMaps.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
           <a-spin /> 加载地图列表中...
         </div>
 
-        <div v-else-if="filteredMaps.length === 0" class="py-8 text-center text-gray-500">
+        <div v-else-if="filteredMaps.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
           未找到匹配的地图
         </div>
 
@@ -181,7 +181,7 @@
           <a-collapse-panel
             v-for="(campaign, index) in filteredMaps"
             :key="index.toString()"
-            class="mb-2 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden"
+            class="mb-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden"
           >
             <template #header>
               <div class="flex items-center gap-2 py-1 w-full">
@@ -189,13 +189,13 @@
                   {{ campaign.IsCustom ? '🗺️' : '🏛️' }}
                 </span>
                 <div class="flex flex-col">
-                  <span class="font-bold text-base flex items-center gap-2">
+                  <span class="font-bold text-base flex items-center gap-2 dark:text-gray-200">
                     {{ campaign.Title }}
                     <a-tag v-if="campaign.IsCustom" color="purple">三方</a-tag>
                     <a-tag v-else color="blue">官方</a-tag>
                     <a-tag> {{ campaign.Chapters?.length || 0 }} 章 </a-tag>
                   </span>
-                  <span v-if="campaign.IsCustom && campaign.VpkName" class="text-xs text-gray-400">
+                  <span v-if="campaign.IsCustom && campaign.VpkName" class="text-xs text-gray-400 dark:text-gray-500">
                     {{ campaign.VpkName }}
                   </span>
                 </div>
@@ -204,10 +204,10 @@
 
             <a-list :data-source="campaign.Chapters" size="small">
               <template #renderItem="{ item: chapter }">
-                <a-list-item class="hover:bg-gray-100 transition-colors px-4 py-3">
+                <a-list-item class="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors px-4 py-3">
                   <div class="flex items-center justify-between w-full">
                     <div class="flex flex-col gap-1">
-                      <span class="font-medium text-gray-800">
+                      <span class="font-medium text-gray-800 dark:text-gray-200">
                         {{ chapter.Title || chapter.Code }}
                       </span>
                       <div class="flex flex-wrap gap-1">
@@ -242,20 +242,6 @@
 </template>
 
 <style scoped>
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: #e5e7eb;
-    border-radius: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: #d1d5db;
-  }
-
   /* Fix collapse arrow vertical alignment */
   :deep(.ant-collapse-header) {
     align-items: center !important;

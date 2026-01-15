@@ -104,26 +104,29 @@
     </div>
     <div
       v-else-if="!pluginConfigs || pluginConfigs.length === 0"
-      class="text-center py-8 text-gray-500"
+      class="text-center py-8 text-gray-500 dark:text-gray-400"
     >
       该插件没有找到可配置的文件，请确保插件已启用且生成了配置文件。
     </div>
-    <div v-else class="space-y-6 max-h-[70vh] overflow-y-auto pr-1 sm:pr-2">
+    <div v-else class="space-y-6 max-h-[70vh] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar">
       <div v-for="file in pluginConfigs" :key="file.file_name" class="mb-6">
-        <h3 class="text-base sm:text-lg font-bold mb-4 flex flex-wrap items-center gap-2">
-          <span class="text-gray-400 text-sm">配置文件:</span>
+        <h3
+          class="text-base sm:text-lg font-bold mb-4 flex flex-wrap items-center gap-2 dark:text-gray-200"
+        >
+          <span class="text-gray-400 dark:text-gray-500 text-sm">配置文件:</span>
           <span class="break-all">{{ file.file_name }}</span>
         </h3>
         <a-form layout="vertical">
           <div
             v-for="cvar in file.cvars"
             :key="cvar.name"
-            class="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-100 transition-colors"
+            class="mb-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-100 dark:hover:border-blue-900 transition-colors"
           >
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
-              <label class="text-sm sm:text-base font-medium text-gray-800 break-all">{{
-                cvar.name
-              }}</label>
+              <label
+                class="text-sm sm:text-base font-medium text-gray-800 dark:text-gray-200 break-all"
+                >{{ cvar.name }}</label
+              >
               <div class="flex flex-wrap gap-1 shrink-0">
                 <a-tag v-if="cvar.default" color="blue" class="mr-0">Def: {{ cvar.default }}</a-tag>
                 <a-tag v-if="cvar.min" color="orange" class="mr-0">Min: {{ cvar.min }}</a-tag>
@@ -133,7 +136,7 @@
 
             <div
               v-if="cvar.description"
-              class="mb-3 text-xs sm:text-sm text-gray-500 whitespace-pre-wrap bg-white p-2 rounded border border-gray-100"
+              class="mb-3 text-xs sm:text-sm text-gray-500 dark:text-gray-400 whitespace-pre-wrap bg-white dark:bg-gray-900 p-2 rounded border border-gray-100 dark:border-gray-700"
             >
               {{ cvar.description }}
             </div>

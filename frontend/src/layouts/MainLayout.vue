@@ -11,9 +11,12 @@
     MenuOutlined,
     ReadOutlined,
     AppstoreAddOutlined,
+    BulbOutlined,
   } from '@ant-design/icons-vue';
+  import { useThemeStore } from '../stores/theme';
 
   const authStore = useAuthStore();
+  const themeStore = useThemeStore();
   const router = useRouter();
   const route = useRoute();
 
@@ -42,6 +45,9 @@
     } else if (keyStr === 'toggle-collapse') {
       collapsed.value = !collapsed.value;
       selectedKeys.value = [route.path];
+    } else if (keyStr === 'toggle-theme') {
+      themeStore.toggleTheme();
+      selectedKeys.value = [route.path];
     } else {
       router.push(keyStr);
       mobileOpen.value = false;
@@ -56,19 +62,19 @@
 </script>
 
 <template>
-  <a-layout class="min-h-screen">
+  <a-layout class="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-gray-950">
     <!-- Desktop Sider -->
     <a-layout-sider
       collapsed-width="80"
       v-model:collapsed="collapsed"
       collapsible
       :trigger="null"
-      class="hidden lg:block !bg-white shadow-md z-20"
-      theme="light"
+      class="hidden lg:block shadow-md z-20 transition-colors duration-300 bg-white dark:bg-gray-900"
+      :theme="themeStore.isDark ? 'dark' : 'light'"
       width="260"
     >
       <div
-        class="flex items-center overflow-hidden whitespace-nowrap transition-all duration-300 h-20"
+        class="flex items-center overflow-hidden whitespace-nowrap transition-all duration-300 h-20 bg-white dark:bg-gray-900"
         :class="collapsed ? 'justify-center w-full' : 'px-6 gap-3'"
       >
         <img src="/logo.png" alt="Logo" class="w-10 h-10 min-w-[2.5rem] rounded-lg object-cover" />
@@ -76,8 +82,8 @@
           :class="{ 'opacity-0 w-0': collapsed, 'opacity-100 w-auto': !collapsed }"
           class="transition-all duration-300 overflow-hidden"
         >
-          <div class="font-bold text-lg text-gray-800">L4D2 Manager</div>
-          <div class="text-xs text-gray-500">Server Admin Panel</div>
+          <div class="font-bold text-lg text-gray-800 dark:text-gray-100">L4D2 Manager</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">Server Admin Panel</div>
         </div>
       </div>
 
@@ -87,6 +93,7 @@
         :style="{ borderRight: 0 }"
         @click="handleMenuClick"
         class="flex flex-col h-[calc(100vh-80px)]"
+        :theme="themeStore.isDark ? 'dark' : 'light'"
       >
         <a-menu-item key="/">
           <template #icon><DashboardOutlined /></template>
@@ -110,6 +117,11 @@
         </a-menu-item>
 
         <a-menu-divider />
+
+        <a-menu-item key="toggle-theme">
+          <template #icon><BulbOutlined /></template>
+          <span>{{ themeStore.isDark ? '切换亮色' : '切换暗色' }}</span>
+        </a-menu-item>
 
         <a-menu-item key="logout" class="!text-red-500 hover:!text-red-600">
           <template #icon><LogoutOutlined /></template>
@@ -135,11 +147,13 @@
       :body-style="{ padding: 0 }"
       width="260"
     >
-      <div class="p-6 flex items-center gap-3 bg-white">
+      <div
+        class="p-6 flex items-center gap-3 transition-colors duration-300 bg-white dark:bg-gray-900"
+      >
         <img src="/logo.png" alt="Logo" class="w-10 h-10 rounded-lg object-cover" />
         <div>
-          <div class="font-bold text-lg text-gray-800">L4D2 Manager</div>
-          <div class="text-xs text-gray-500">Server Admin Panel</div>
+          <div class="font-bold text-lg text-gray-800 dark:text-gray-100">L4D2 Manager</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">Server Admin Panel</div>
         </div>
       </div>
 
@@ -148,6 +162,7 @@
         mode="inline"
         :style="{ borderRight: 0 }"
         @click="handleMenuClick"
+        :theme="themeStore.isDark ? 'dark' : 'light'"
       >
         <a-menu-item key="/">
           <template #icon><DashboardOutlined /></template>
@@ -172,6 +187,11 @@
 
         <a-menu-divider />
 
+        <a-menu-item key="toggle-theme">
+          <template #icon><BulbOutlined /></template>
+          {{ themeStore.isDark ? '切换亮色' : '切换暗色' }}
+        </a-menu-item>
+
         <a-menu-item key="logout" class="!text-red-500 hover:!text-red-600">
           <template #icon><LogoutOutlined /></template>
           退出登录
@@ -181,13 +201,24 @@
 
     <a-layout>
       <!-- Mobile Header -->
-      <a-layout-header class="lg:hidden !bg-white !px-4 flex items-center shadow-sm z-10 h-16">
-        <MenuOutlined class="text-lg cursor-pointer" @click="mobileOpen = true" />
-        <span class="ml-3 text-lg font-bold text-blue-600">L4D2 Manager</span>
+      <a-layout-header
+        class="lg:hidden !px-4 flex items-center justify-between shadow-sm z-10 h-16 transition-colors duration-300 bg-white dark:bg-gray-900"
+      >
+        <div class="flex items-center">
+          <MenuOutlined
+            class="text-lg cursor-pointer dark:text-gray-200"
+            @click="mobileOpen = true"
+          />
+          <span class="ml-3 text-lg font-bold text-blue-600 dark:text-blue-400">L4D2 Manager</span>
+        </div>
+        <BulbOutlined
+          class="text-lg cursor-pointer p-2 dark:text-gray-200"
+          @click="themeStore.toggleTheme()"
+        />
       </a-layout-header>
 
       <a-layout-content
-        class="p-4 md:p-6 overflow-y-auto bg-gray-50 h-[calc(100vh-64px)] lg:h-screen"
+        class="p-4 md:p-6 overflow-y-auto h-[calc(100vh-64px)] lg:h-screen transition-colors duration-300 bg-gray-50 dark:bg-gray-950"
       >
         <div class="max-w-6xl mx-auto w-full animate-fade-in">
           <router-view v-slot="{ Component }">

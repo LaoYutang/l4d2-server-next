@@ -77,12 +77,14 @@
       :bodyStyle="{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }"
     >
       <!-- Header -->
-      <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
+      <div
+        class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-white dark:bg-gray-800 transition-colors"
+      >
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded-full bg-red-500"></div>
           <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
           <div class="w-3 h-3 rounded-full bg-green-500"></div>
-          <h2 class="text-lg font-bold ml-2 font-mono flex items-center gap-2">
+          <h2 class="text-lg font-bold ml-2 font-mono flex items-center gap-2 dark:text-gray-100">
             <code-outlined /> RCON 终端
           </h2>
         </div>
@@ -129,7 +131,9 @@
       </div>
 
       <!-- Quick Actions & Input -->
-      <div class="p-4 bg-white border-t border-gray-200">
+      <div
+        class="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 transition-colors"
+      >
         <!-- Quick Commands -->
         <div class="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
           <a-tag color="blue" class="cursor-pointer" @click="fillCommand('status ')">status</a-tag>

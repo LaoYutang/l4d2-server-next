@@ -223,12 +223,12 @@
   <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-gray-800">插件管理</h1>
-        <p class="text-gray-500 mt-1">管理服务器插件和模组</p>
+        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">插件管理</h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">管理服务器插件和模组</p>
       </div>
     </div>
 
-    <a-card :bordered="false" class="shadow-sm">
+    <a-card :bordered="false" class="shadow-sm dark:bg-gray-800">
       <a-tabs v-model:activeKey="activeTab">
         <!-- Enabled Plugins Tab -->
         <a-tab-pane key="enabled" tab="已启用插件">
@@ -273,8 +273,8 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="font-medium text-gray-700">{{ record.name }}</div>
-                <div v-if="record.description" class="text-xs text-gray-400">
+                <div class="font-medium text-gray-700 dark:text-gray-200">{{ record.name }}</div>
+                <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
               </template>
@@ -393,8 +393,8 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="font-medium text-gray-700">{{ record.name }}</div>
-                <div v-if="record.description" class="text-xs text-gray-400">
+                <div class="font-medium text-gray-700 dark:text-gray-200">{{ record.name }}</div>
+                <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
               </template>

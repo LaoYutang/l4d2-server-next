@@ -11,7 +11,6 @@
     DashboardOutlined,
     ExclamationCircleOutlined,
     UserOutlined,
-    SettingOutlined,
     WifiOutlined,
     ClockCircleOutlined,
     CopyOutlined,
@@ -183,13 +182,18 @@
     <!-- Header & Status -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
       <div>
-        <h2 class="text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-          <span class="text-blue-600 bg-blue-50 p-2 rounded-xl flex items-center justify-center"
+        <h2
+          class="text-3xl font-extrabold text-gray-900 dark:text-gray-100 flex items-center gap-3"
+        >
+          <span
+            class="text-blue-600 bg-blue-50 dark:bg-blue-900/30 p-2 rounded-xl flex items-center justify-center"
             ><DashboardOutlined class="text-xl"
           /></span>
           服务器状态
         </h2>
-        <p class="text-gray-500 mt-2 text-base ml-1">实时监控与管理您的 L4D2 服务器状态</p>
+        <p class="text-gray-500 dark:text-gray-400 mt-2 text-base ml-1">
+          实时监控与管理您的 L4D2 服务器状态
+        </p>
       </div>
       <div class="flex gap-4">
         <a-button
@@ -217,7 +221,7 @@
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <a-card
         hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-indigo-500 transition-all duration-300 hover:-translate-y-1"
+        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-indigo-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
         :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
       >
         <a-statistic
@@ -225,7 +229,6 @@
           :value="status?.Hostname?.value || 'Unknown'"
           class="break-words w-full"
           :value-style="{
-            color: '#111827',
             fontWeight: '700',
             fontSize: '1.125rem',
             lineHeight: '1.5rem',
@@ -237,7 +240,7 @@
 
       <a-card
         hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-pink-500 transition-all duration-300 hover:-translate-y-1"
+        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-pink-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
         :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
       >
         <a-statistic
@@ -245,7 +248,6 @@
           :value="status?.Map?.value || 'Unknown'"
           class="w-full"
           :value-style="{
-            color: '#111827',
             fontWeight: '700',
             fontSize: '1.125rem',
             lineHeight: '1.5rem',
@@ -258,7 +260,7 @@
       <!-- Difficulty Card -->
       <a-card
         hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-blue-500 transition-all duration-300 hover:-translate-y-1"
+        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-blue-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
         :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
       >
         <a-statistic
@@ -266,7 +268,6 @@
           :value="status?.Difficulty?.value || 'Unknown'"
           class="w-full"
           :value-style="{
-            color: '#111827',
             fontWeight: '700',
             fontSize: '1.125rem',
             lineHeight: '1.5rem',
@@ -279,7 +280,7 @@
       <!-- Game Mode Card -->
       <a-card
         hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-green-500 transition-all duration-300 hover:-translate-y-1"
+        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-green-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
         :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
       >
         <a-statistic
@@ -287,7 +288,6 @@
           :value="status?.GameMode?.value || 'Unknown'"
           class="w-full"
           :value-style="{
-            color: '#111827',
             fontWeight: '700',
             fontSize: '1.125rem',
             lineHeight: '1.5rem',
@@ -300,13 +300,13 @@
 
     <!-- Player List Section -->
     <div>
-      <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-gray-900">
+      <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
         <span
-          class="text-indigo-500 bg-indigo-50 p-1.5 rounded-lg text-lg flex items-center justify-center"
+          class="text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-lg text-lg flex items-center justify-center"
           ><UserOutlined
         /></span>
         在线玩家列表
-        <span class="text-sm font-normal text-gray-500 ml-2">
+        <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
           ({{ status?.Players?.value || '0/0' }})
         </span>
       </h3>
@@ -315,7 +315,7 @@
         <div
           v-for="user in status.Users.users"
           :key="user.id"
-          class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 hover:shadow-md transition-shadow duration-300 flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-4"
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 hover:shadow-md transition-shadow duration-300 flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-4 leading-normal"
         >
           <!-- User Info (Left) -->
           <div
@@ -323,18 +323,18 @@
           >
             <div class="flex items-center gap-3 min-w-0">
               <div
-                class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 text-blue-600 flex items-center justify-center font-bold text-lg shrink-0"
+                class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800 text-blue-600 dark:text-blue-200 flex items-center justify-center font-bold text-lg shrink-0"
               >
                 {{ user.name ? user.name.charAt(0).toUpperCase() : '?' }}
               </div>
               <div class="min-w-0 flex-1">
                 <div
-                  class="font-bold text-gray-900 truncate max-w-[150px] md:max-w-[150px]"
+                  class="font-bold text-gray-900 dark:text-gray-100 truncate max-w-[150px] md:max-w-[150px]"
                   :title="user.name"
                 >
                   {{ user.name }}
                 </div>
-                <div class="text-xs text-gray-500">ID: #{{ user.id }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">ID: #{{ user.id }}</div>
               </div>
             </div>
 
@@ -379,28 +379,29 @@
 
           <!-- Details (Middle) -->
           <div
-            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 bg-gray-50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
+            class="flex-1 w-full md:w-auto grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none"
           >
             <div
               v-if="user.steamid"
-              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 min-w-[140px] group cursor-pointer hover:bg-gray-100 rounded px-1 -ml-1 transition-colors"
+              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 min-w-[140px] group cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 -ml-1 transition-colors"
               @click="copyToClipboard(user.steamid)"
               title="点击复制 SteamID"
             >
-              <span class="text-gray-400">SteamID</span>
-              <span class="font-mono truncate group-hover:text-blue-600 transition-colors">{{
-                user.steamid
-              }}</span>
+              <span class="text-gray-400 dark:text-gray-500">SteamID</span>
+              <span
+                class="font-mono truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
+                >{{ user.steamid }}</span
+              >
               <CopyOutlined
                 class="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
               />
             </div>
             <div v-if="user.ip" class="flex items-center gap-1.5 min-w-[120px]">
-              <span class="text-gray-400">IP</span>
+              <span class="text-gray-400 dark:text-gray-500">IP</span>
               <span class="font-mono select-all truncate">{{ user.ip.split(':')[0] }}</span>
             </div>
             <div class="flex items-center gap-1.5 min-w-[80px]" title="Latency">
-              <WifiOutlined class="text-gray-400" />
+              <WifiOutlined class="text-gray-400 dark:text-gray-500" />
               <span>{{ user.delay || 0 }}ms</span>
             </div>
             <div class="flex items-center gap-1.5 min-w-[80px]" title="Packet Loss">
@@ -415,7 +416,7 @@
               class="flex items-center gap-1.5 min-w-[80px]"
               title="Duration"
             >
-              <ClockCircleOutlined class="text-gray-400" />
+              <ClockCircleOutlined class="text-gray-400 dark:text-gray-500" />
               <span>{{ user.duration }}</span>
             </div>
             <div
@@ -423,12 +424,12 @@
               class="flex items-center gap-1.5 min-w-[80px]"
               title="Link Rate"
             >
-              <ThunderboltOutlined class="text-gray-400" />
+              <ThunderboltOutlined class="text-gray-400 dark:text-gray-500" />
               <span>{{ user.linkrate }}</span>
             </div>
             <div v-if="user.status" class="flex items-center gap-1.5">
               <span
-                class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] border border-gray-200"
+                class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] border border-gray-200 dark:border-gray-600"
                 >{{ user.status }}</span
               >
             </div>
@@ -479,18 +480,18 @@
 
       <div
         v-else
-        class="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200"
+        class="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700"
       >
-        <UserOutlined class="text-4xl text-gray-300 mb-3" />
-        <p class="text-gray-500">暂无在线玩家</p>
+        <UserOutlined class="text-4xl text-gray-300 dark:text-gray-600 mb-3" />
+        <p class="text-gray-500 dark:text-gray-400">暂无在线玩家</p>
       </div>
     </div>
 
     <!-- Operation Zone -->
-    <div class="pt-6 border-t border-gray-100">
-      <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900">
+    <div class="pt-6 border-t border-gray-100 dark:border-gray-700">
+      <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-gray-100">
         <span
-          class="text-orange-600 bg-orange-50 p-1.5 rounded-lg text-lg flex items-center justify-center"
+          class="text-orange-600 bg-orange-50 dark:bg-orange-900/30 p-1.5 rounded-lg text-lg flex items-center justify-center"
           >⚡</span
         >
         操作区
@@ -498,76 +499,84 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <a-card
           hoverable
-          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-red-50 to-white hover:from-red-100 transition-all duration-300"
+          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-red-50 to-white dark:from-red-900/20 dark:to-gray-800 hover:from-red-100 dark:hover:from-red-900/30 transition-all duration-300"
           @click="restartServer"
           :bodyStyle="{ padding: '12px' }"
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white rounded-full shadow-sm text-red-500 group-hover:scale-110 transition-transform duration-300"
+              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-red-500 group-hover:scale-110 transition-transform duration-300"
             >
               <ReloadOutlined class="text-lg" />
             </div>
             <div>
-              <div class="font-bold text-gray-800 text-sm">重启服务器</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">断开所有连接并重启</div>
+              <div class="font-bold text-gray-800 dark:text-gray-100 text-sm">重启服务器</div>
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                断开所有连接并重启
+              </div>
             </div>
           </div>
         </a-card>
 
         <a-card
           hoverable
-          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-purple-50 to-white hover:from-purple-100 transition-all duration-300"
+          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/20 dark:to-gray-800 hover:from-purple-100 dark:hover:from-purple-900/30 transition-all duration-300"
           @click="showMapModal = true"
           :bodyStyle="{ padding: '12px' }"
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white rounded-full shadow-sm text-purple-500 group-hover:scale-110 transition-transform duration-300"
+              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-purple-500 group-hover:scale-110 transition-transform duration-300"
             >
               <EnvironmentOutlined class="text-lg" />
             </div>
             <div>
-              <div class="font-bold text-gray-800 text-sm">切换地图</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">选择官方或第三方地图</div>
+              <div class="font-bold text-gray-800 dark:text-gray-100 text-sm">切换地图</div>
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                选择官方或第三方地图
+              </div>
             </div>
           </div>
         </a-card>
 
         <a-card
           hoverable
-          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-blue-50 to-white hover:from-blue-100 transition-all duration-300"
+          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 hover:from-blue-100 dark:hover:from-blue-900/30 transition-all duration-300"
           @click="showDifficultyModal = true"
           :bodyStyle="{ padding: '12px' }"
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white rounded-full shadow-sm text-blue-500 group-hover:scale-110 transition-transform duration-300"
+              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-blue-500 group-hover:scale-110 transition-transform duration-300"
             >
               <DashboardOutlined class="text-lg" />
             </div>
             <div>
-              <div class="font-bold text-gray-800 text-sm">设置难度</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">更改当前游戏难度</div>
+              <div class="font-bold text-gray-800 dark:text-gray-100 text-sm">设置难度</div>
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                简单/普通/高级/专家
+              </div>
             </div>
           </div>
         </a-card>
 
         <a-card
           hoverable
-          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-green-50 to-white hover:from-green-100 transition-all duration-300"
+          class="shadow-sm rounded-xl border-none cursor-pointer group bg-gradient-to-br from-green-50 to-white dark:from-green-900/20 dark:to-gray-800 hover:from-green-100 dark:hover:from-green-900/30 transition-all duration-300"
           @click="showGameModeModal = true"
           :bodyStyle="{ padding: '12px' }"
         >
           <div class="flex flex-col items-center justify-center gap-2 text-center">
             <div
-              class="p-2 bg-white rounded-full shadow-sm text-green-500 group-hover:scale-110 transition-transform duration-300"
+              class="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm text-green-500 group-hover:scale-110 transition-transform duration-300"
             >
-              <SettingOutlined class="text-lg" />
+              <ThunderboltOutlined class="text-lg" />
             </div>
             <div>
-              <div class="font-bold text-gray-800 text-sm">设置模式</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">更改当前游戏模式</div>
+              <div class="font-bold text-gray-800 dark:text-gray-100 text-sm">更改模式</div>
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                战役/对抗/写实/生存
+              </div>
             </div>
           </div>
         </a-card>
@@ -575,15 +584,28 @@
     </div>
 
     <!-- Modals -->
-    <MapSelectorModal v-model:open="showMapModal" @success="loadStatus" />
-    <DifficultyModal v-model:open="showDifficultyModal" @success="loadStatus" />
-    <GameModeModal v-model:open="showGameModeModal" @success="loadStatus" />
+    <MapSelectorModal v-model:open="showMapModal" />
+    <DifficultyModal v-model:open="showDifficultyModal" />
+    <GameModeModal v-model:open="showGameModeModal" />
   </div>
 </template>
 
 <style scoped>
+  @reference "../style.css";
+
+  /* Ensure statistic title and content are visible in dark mode */
+  :deep(.ant-statistic-title) {
+    @apply dark:text-gray-400;
+  }
   :deep(.ant-statistic-content) {
-    display: flex;
-    align-items: center;
+    @apply dark:text-gray-100;
+  }
+
+  /* Force dark mode colors for statistics */
+  :global(.dark) :deep(.ant-statistic-title) {
+    color: #9ca3af !important;
+  }
+  :global(.dark) :deep(.ant-statistic-content) {
+    color: #f3f4f6 !important;
   }
 </style>

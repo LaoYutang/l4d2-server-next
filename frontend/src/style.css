@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -14,4 +16,51 @@
 body {
   margin: 0;
   min-height: 100vh;
+  @apply bg-gray-50 text-gray-900 transition-colors duration-300;
+}
+
+:root.dark body {
+  @apply bg-gray-950 text-gray-100;
+}
+
+/* Ant Design Dark Mode Overrides - Force Backgrounds */
+:root.dark .ant-layout {
+  @apply bg-gray-950;
+}
+:root.dark .ant-layout-sider,
+:root.dark .ant-layout-sider-children {
+  @apply bg-gray-900;
+}
+:root.dark .ant-layout-header {
+  @apply bg-gray-900;
+}
+:root.dark .ant-menu {
+  @apply bg-gray-900 text-gray-300;
+}
+:root.dark .ant-menu-item-selected {
+  @apply bg-blue-900/30 text-blue-400;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-600;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

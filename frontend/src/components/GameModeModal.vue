@@ -52,8 +52,11 @@
           <div
             v-for="mode in baseModes"
             :key="mode.value"
-            class="cursor-pointer border rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
-            :class="[`hover:border-${mode.color}-400`, `hover:bg-${mode.color}-50`]"
+            class="cursor-pointer border dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden dark:bg-gray-800"
+            :class="[
+              `hover:border-${mode.color}-400 dark:hover:border-${mode.color}-600`,
+              `hover:bg-${mode.color}-50 dark:hover:bg-${mode.color}-900/20`,
+            ]"
             @click="handleSetGameMode(mode.value)"
           >
             <div
@@ -61,10 +64,14 @@
             >
               {{ mode.icon }}
             </div>
-            <div class="font-bold text-lg text-gray-800 group-hover:text-gray-900">
+            <div
+              class="font-bold text-lg text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100"
+            >
               {{ mode.label }}
             </div>
-            <div class="text-xs text-gray-500 font-mono uppercase tracking-wider">
+            <div
+              class="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wider"
+            >
               {{ mode.desc }}
             </div>
           </div>
@@ -76,14 +83,21 @@
           <div
             v-for="mode in mutationModes"
             :key="mode.value"
-            class="cursor-pointer border rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
-            :class="[`hover:border-${mode.color}-400`, `hover:bg-${mode.color}-50`]"
+            class="cursor-pointer border dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
+            :class="[
+              `hover:border-${mode.color}-400 dark:hover:border-${mode.color}-600`,
+              `hover:bg-${mode.color}-50 dark:hover:bg-${mode.color}-900/20`,
+            ]"
             @click="handleSetGameMode(mode.value)"
           >
-            <div class="font-bold text-lg text-gray-800 group-hover:text-gray-900">
+            <div
+              class="font-bold text-lg text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100"
+            >
               {{ mode.label }}
             </div>
-            <div class="text-xs text-gray-500 font-mono uppercase tracking-wider text-center">
+            <div
+              class="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wider text-center"
+            >
               {{ mode.desc }}
             </div>
           </div>
@@ -95,14 +109,21 @@
           <div
             v-for="mode in communityModes"
             :key="mode.value"
-            class="cursor-pointer border rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
-            :class="[`hover:border-${mode.color}-400`, `hover:bg-${mode.color}-50`]"
+            class="cursor-pointer border dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
+            :class="[
+              `hover:border-${mode.color}-400 dark:hover:border-${mode.color}-600`,
+              `hover:bg-${mode.color}-50 dark:hover:bg-${mode.color}-900/20`,
+            ]"
             @click="handleSetGameMode(mode.value)"
           >
-            <div class="font-bold text-lg text-gray-800 group-hover:text-gray-900">
+            <div
+              class="font-bold text-lg text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100"
+            >
               {{ mode.label }}
             </div>
-            <div class="text-xs text-gray-500 font-mono uppercase tracking-wider text-center">
+            <div
+              class="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wider text-center"
+            >
               {{ mode.desc }}
             </div>
           </div>

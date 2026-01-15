@@ -309,8 +309,10 @@
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
                 <div class="flex items-center gap-2 min-w-[160px]">
-                  <file-text-outlined class="text-lg text-gray-400 shrink-0" />
-                  <span class="font-medium break-all text-sm">{{ record.name }}</span>
+                  <file-text-outlined class="text-lg text-gray-400 dark:text-gray-500 shrink-0" />
+                  <span class="font-medium break-all text-sm dark:text-gray-200">{{
+                    record.name
+                  }}</span>
                 </div>
               </template>
               <template v-else-if="column.key === 'size'">
@@ -445,11 +447,8 @@
                       record.status === 3 ? 'exception' : record.status === 2 ? 'success' : 'active'
                     "
                   />
-                  <span class="text-xs text-gray-500">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
                     {{ (record.progress || 0).toFixed(1) }}%
-                    <span v-if="record.status === 1" class="ml-1">
-                      - {{ record.formattedSpeed }}
-                    </span>
                   </span>
                 </div>
               </template>
@@ -499,3 +498,28 @@
     </a-tabs>
   </div>
 </template>
+
+<style scoped>
+  /* Dark mode overrides for Upload Dragger */
+  :global(.dark) :deep(.ant-upload.ant-upload-drag) {
+    background-color: #1f2937 !important;
+    border-color: #374151 !important;
+  }
+
+  :global(.dark) :deep(.ant-upload.ant-upload-drag .ant-upload-text) {
+    color: #e5e7eb !important;
+  }
+
+  :global(.dark) :deep(.ant-upload.ant-upload-drag .ant-upload-hint) {
+    color: #9ca3af !important;
+  }
+
+  :global(.dark) :deep(.ant-upload.ant-upload-drag:hover) {
+    border-color: #3b82f6 !important;
+  }
+
+  /* Target the icon specifically */
+  :global(.dark) :deep(.ant-upload.ant-upload-drag .anticon) {
+    color: #3b82f6 !important;
+  }
+</style>

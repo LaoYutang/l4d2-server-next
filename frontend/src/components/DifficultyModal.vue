@@ -43,8 +43,11 @@
       <div
         v-for="diff in DIFFICULTY_OPTIONS"
         :key="diff.value"
-        class="cursor-pointer border rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden"
-        :class="[`hover:border-${diff.color}-400`, `hover:bg-${diff.color}-50`]"
+        class="cursor-pointer border dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-all duration-300 flex flex-col items-center gap-2 group relative overflow-hidden dark:bg-gray-800"
+        :class="[
+          `hover:border-${diff.color}-400 dark:hover:border-${diff.color}-600`,
+          `hover:bg-${diff.color}-50 dark:hover:bg-${diff.color}-900/20`,
+        ]"
         @click="handleSetDifficulty(diff.value)"
       >
         <div
@@ -52,10 +55,12 @@
         >
           {{ diff.icon }}
         </div>
-        <div class="font-bold text-lg text-gray-800 group-hover:text-gray-900">
+        <div
+          class="font-bold text-lg text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100"
+        >
           {{ diff.label }}
         </div>
-        <div class="text-xs text-gray-500 font-mono uppercase tracking-wider">
+        <div class="text-xs text-gray-500 dark:text-gray-400 font-mono uppercase tracking-wider">
           {{ diff.desc }}
         </div>
 
