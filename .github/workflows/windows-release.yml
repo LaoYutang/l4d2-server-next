@@ -36,7 +36,7 @@ jobs:
       - name: Build Backend (Windows)
         run: |
           cd backend
-          GOOS=windows GOARCH=amd64 go build -o l4d2-manager.exe main.go
+          GOOS=windows GOARCH=amd64 go build -ldflags "-X l4d2-manager-next/consts.Version=${{ github.ref_name }}" -o l4d2-manager.exe main.go
 
       - name: Prepare Release Package
         run: |

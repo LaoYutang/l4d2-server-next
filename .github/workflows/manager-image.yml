@@ -39,3 +39,5 @@ jobs:
           push: true
           tags: ${{ steps.meta-manager.outputs.tags }}
           labels: ${{ steps.meta-manager.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}

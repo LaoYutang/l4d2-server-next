@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onErrorCaptured } from 'vue';
+  import { ref, onErrorCaptured, onMounted } from 'vue';
   import { api } from '../services/api';
   import {
     message,
@@ -24,12 +24,22 @@
   const expirationTime = ref('');
   const copied = ref(false);
   const codeInput = ref<any>(null);
+  const version = ref('');
 
   onErrorCaptured((err) => {
     console.error('System.vue Error:', err);
     message.error('系统管理页面发生错误');
     return false;
   });
+
+  const fetchVersion = async () => {
+    try {
+      const data = await api.getVersion();
+      version.value = data.version;
+    } catch (e) {
+      console.error('Failed to fetch version:', e);
+    }
+  };
 
   const generateCode = async () => {
     generating.value = true;
@@ -72,6 +82,10 @@
       }
     }
   };
+
+  onMounted(() => {
+    fetchVersion();
+  });
 </script>
 
 <template>
@@ -164,6 +178,7 @@
           </h3>
           <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
             L4D2 服务器管理工具<br />
+            版本: {{ version }}<br />
             作者: LaoYutang<br />
             GitHub:
             <a

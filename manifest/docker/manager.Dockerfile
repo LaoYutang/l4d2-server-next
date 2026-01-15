@@ -7,9 +7,10 @@ RUN npm run build
 
 # Stage 2: Build Backend
 FROM golang:1.25-alpine AS builder
+ARG VERSION=Dev
 WORKDIR /app/backend
 COPY ./backend .
-RUN go build -o /app/l4d2-manager
+RUN go build -ldflags "-X l4d2-manager-next/consts.Version=${VERSION}" -o /app/l4d2-manager
 
 # Stage 3: Final Image
 FROM docker:29.1.1-cli-alpine3.22

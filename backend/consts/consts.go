@@ -8,6 +8,7 @@ import (
 var AddonsBasePath string
 var GamePath string
 var MapListFilePath string
+var Version = "Dev"
 
 func init() {
 	GamePath = os.Getenv("L4D2_GAME_PATH")
