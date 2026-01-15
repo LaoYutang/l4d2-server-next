@@ -1,0 +1,401 @@
+"Phrases"
+{
+	"Announce_Vocalize_ITEM (C)"
+	{
+		"#format"	"{1:N},{2:T}"
+		"en"		"({green}Vocalize{default}) {olive}{1}{default}: {2}"
+	}
+
+	"Announce_Vocalize_ITEM"
+	{
+		"#format"	"{1:N},{2:T}"
+		"en"		"(Vocalize) {1}: {2}"
+	}
+
+	"Announce_Vocalize_INFECTED (C)"
+	{
+		"#format"	"{1:N},{2:T}"
+		"en"		"({green}Vocalize{default}) {olive}{1}{default}: {red}{2}"
+	}
+
+	"Announce_Vocalize_INFECTED"
+	{
+		"#format"	"{1:N},{2:T}"
+		"en"		"(Vocalize) {1}: {2}"
+	}
+
+	"Announce_Vocalize_SURVIVOR (C)"
+	{
+		"#format"	"{1:N},{2:s}"
+		"en"		"({green}Vocalize{default}) {olive}{1}{default}: {Blue}{2}"
+	}
+
+	"Announce_Vocalize_SURVIVOR"
+	{
+		"#format"	"{1:N},{2:s}"
+		"en"		"(Vocalize) {1}: {2}"
+	}	
+	
+	"MARKED_SURVIVOR_BY (C)"
+	{
+		"#format"	"{1:N}"
+		"en"		"({green}Vocalize{default}) 你被 {olive}{1} {Blue}标记了"
+	}
+
+	"MARKED_SURVIVOR_BY"
+	{
+		"#format"	"{1:N}"
+		"en"		"(Vocalize) 你被 {1} 标记了"
+	}
+
+	"Announce_Spot_Marker (C)"
+	{
+		"#format"	"{1:N}"
+		"en"		"({green}Vocalize{default}) {olive}{1}{default}: 标记了一个位置"
+	}
+
+	"Announce_Spot_Marker"
+	{
+		"#format"	"{1:N}"
+		"en"		"(Vocalize) {1} 标记了一个位置"
+	}
+
+	"Spot_Maker"
+	{
+		//不能翻譯的句子
+		//因爲Spot_Maker是一個Entity，只能設定一個caption内容
+		//因此只能根據伺服器語言全局顯示(LANG_SERVER)，或者根據創建標記的玩家游戲語言全局顯示(client)
+		"#format"	"{1:N}"
+		"en"		"{1} 在这里做了个标记"
+	}
+
+	"Melee"
+	{
+		"en"		"近战"
+	}
+
+	"Weapons"
+	{
+		"en"		"武器"
+	}
+
+	"First_Aid_Kit"
+	{
+		"en"			"医疗包"
+	}
+
+	"Defibrillator"
+	{
+		"en"			"电击器"
+	}
+
+	"Pain_Pills"
+	{
+		"en"			"止痛药"
+	}
+
+	"Adrenaline"
+	{
+		"en"			"肾上腺素"
+	}
+
+	"Bile_Bomb"
+	{
+		"en"			"胆汁瓶"
+	}
+
+	"Molotov"
+	{
+		"en"			"燃烧瓶"
+	}
+
+	"Pipe_Bomb"
+	{
+		"en"			"土质炸弹"
+	}
+
+	"Laser_Sight"
+	{
+		"en"			"激光瞄准器"
+	}
+
+	"Incendiary_UpgradePack"
+	{
+		"en"			"燃烧弹药包"
+	}
+
+	"Explosive_UpgradePack"
+	{
+		"en"			"高爆弹药包"
+	}
+
+	"Ammo"
+	{
+		"en"			"子弹堆"
+	}
+
+	"Chainsaw"
+	{
+		"en"			"电锯"
+	}
+
+	"Pistol"
+	{
+		"en"			"手枪"
+	}
+
+	"Magnum"
+	{
+		"en"			"马格南"
+	}
+
+	"Pump_Shotgun"
+	{
+		"en"			"木制霰弹枪"
+	}
+
+	"Shotgun_Chrome"
+	{
+		"en"			"铁制霰弹枪"
+	}
+
+	"Uzi"
+	{
+		"en"			"UZI冲锋枪"
+	}
+
+	"Silenced_Smg"
+	{
+		"en"			"SMG冲锋枪"
+	}
+
+	"MP5"
+	{
+		"en"			"MP5冲锋枪"
+	}
+
+	"Rifle"
+	{
+		"en"			"M16步枪"
+	}
+
+	"SG552"
+	{
+		"en"			"SG552步枪"
+	}
+
+	"AK47"
+	{
+		"en"			"AK47步枪"
+	}
+
+	"Desert_Rifle"
+	{
+		"en"			"SCAR步枪"
+	}
+
+	"Shotgun_Spas"
+	{
+		"en"			"SPAS霰弹枪"
+	}
+
+	"Auto_Shotgun"
+	{
+		"en"			"M1014霰弹枪"
+	}
+
+	"Hunting_Rifle"
+	{
+		"en"			"狩猎狙击枪"
+	}
+
+	"Military_Sniper"
+	{
+		"en"			"军用狙击枪"
+	}
+
+	"Scout"
+	{
+		"en"			"侦察狙击枪"
+	}
+
+	"AWP"
+	{
+		"en"			"AWP狙击枪"
+	}
+
+	"Grenade_Launcher"
+	{
+		"en"			"榴弹发射器"
+	}
+
+	"M60"
+	{
+		"en"			"M60机枪"
+	}
+
+	"Gas_Can"
+	{
+		"en"			"汽油桶"
+	}
+
+	"Firework"
+	{
+		"en"			"烟花盒"
+	}
+
+	"Propane_Tank"
+	{
+		"en"			"煤气罐"
+	}
+
+	"Oxygen_Tank"
+	{
+		"en"			"氧气罐"
+	}
+
+	"Gnome"
+	{
+		"en"			"侏儒"
+	}
+
+	"Cola"
+	{
+		"en"			"可乐"
+	}
+
+	"50_Cal_Machine_Gun"
+	{
+		"en"			".50口径固定机枪"
+	}
+
+	"Minigun"
+	{
+		"en"			"加特林固定机枪"
+	}
+
+	"Explosive_Ammo"
+	{
+		"en"			"高爆弹药包"
+	}
+
+	"Incendiary_Ammo"
+	{
+		"en"			"燃烧弹药包"
+	}
+
+	"Knife"
+	{
+		"en"			"小刀"
+	}
+
+	"Baseball_Bat"
+	{
+		"en"			"棒球棍"
+	}
+
+	"Cricket_Bat"
+	{
+		"en"			"板球棍"
+	}
+
+	"Crowbar"
+	{
+		"en"			"撬棍"
+	}
+
+	"Electric_Guitar"
+	{
+		"en"			"电吉他"
+	}
+
+	"Fireaxe"
+	{
+		"en"			"消防斧"
+	}
+
+	"Frying_Pan"
+	{
+		"en"			"平底锅"
+	}
+
+	"Katana"
+	{
+		"en"			"武士刀"
+	}
+
+	"Machete"
+	{
+		"en"			"砍刀"
+	}
+
+	"Nightstick"
+	{
+		"en"			"警棍"
+	}
+
+	"Golf_Club"
+	{
+		"en"			"高尔夫球棍"
+	}
+
+	"Pitchfork"
+	{
+		"en"			"草叉"
+	}
+
+	"Shovel"
+	{
+		"en"			"铲子"
+	}
+
+	"Boomer"
+	{
+		"en"			"Boomer"
+	}
+
+	"Spitter"
+	{
+		"en"			"Spitter"
+	}
+
+	"Smoker"
+	{
+		"en"			"Smoker"
+	}
+
+	"Hunter"
+	{
+		"en"			"Hunter"
+	}
+
+	"Jockey"
+	{
+		"en"			"Jockey"
+	}
+
+	"Charger"
+	{
+		"en"			"Charger"
+	}
+
+	"Tank"
+	{
+		"en"			"Tank"
+	}
+
+	"Witch"
+	{
+		"en"			"Witch"
+	}
+
+	"Witch_Bride"
+	{
+		"en"			"Witch Bride"
+	}	
+	
+	"Unknown Infected"
+	{
+		"en"			"未知特感"
+	}
+}
