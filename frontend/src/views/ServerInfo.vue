@@ -3,7 +3,9 @@
     <div class="flex flex-col">
       <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">服务器信息编辑</h1>
-        <a-button type="primary" size="large" @click="save" :loading="saving">保存修改</a-button>
+        <a-button type="primary" size="large" @click="save" :loading="saving" v-if="isAdmin"
+          >保存修改</a-button
+        >
       </div>
 
       <div v-if="loading" class="flex justify-center items-center h-64">
@@ -29,7 +31,8 @@
             v-else
             v-model="form.hostname"
             rows="1"
-            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm"
+            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm disabled:cursor-not-allowed disabled:opacity-70"
+            :disabled="!isAdmin"
           ></textarea>
         </div>
 
@@ -42,7 +45,8 @@
           <textarea
             v-model="form.host"
             rows="3"
-            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm"
+            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm disabled:cursor-not-allowed disabled:opacity-70"
+            :disabled="!isAdmin"
           ></textarea>
         </div>
 
@@ -55,7 +59,8 @@
           <textarea
             v-model="form.motd"
             rows="15"
-            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm"
+            class="w-full p-3 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm disabled:cursor-not-allowed disabled:opacity-70"
+            :disabled="!isAdmin"
           ></textarea>
         </div>
       </div>
@@ -64,9 +69,13 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted, reactive } from 'vue';
+  import { ref, onMounted, reactive, computed } from 'vue';
   import { api } from '../services/api';
   import { message } from 'ant-design-vue';
+  import { useAuthStore } from '../stores/auth';
+
+  const authStore = useAuthStore();
+  const isAdmin = computed(() => authStore.isAdmin);
 
   const loading = ref(true);
   const saving = ref(false);
