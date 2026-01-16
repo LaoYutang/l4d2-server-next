@@ -446,17 +446,17 @@
           >
             <div
               v-if="user.steamid"
-              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 min-w-[140px] group cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded px-1 -ml-1 transition-colors"
+              class="flex items-center gap-1.5 col-span-2 sm:col-span-1 w-full md:w-[210px] group cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded px-1 -ml-1 transition-colors"
               @click="copyToClipboard(user.steamid)"
               title="点击复制 SteamID"
             >
-              <span class="text-gray-400 dark:text-gray-500">SteamID</span>
+              <span class="text-gray-400 dark:text-gray-500 shrink-0">SteamID</span>
               <span
-                class="font-mono truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
+                class="font-mono truncate min-w-0 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
                 >{{ user.steamid }}</span
               >
               <CopyOutlined
-                class="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                class="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
               />
             </div>
             <div v-if="user.ip" class="flex items-center gap-1.5 min-w-[120px]">
@@ -481,14 +481,6 @@
             >
               <ClockCircleOutlined class="text-gray-400 dark:text-gray-500" />
               <span>{{ user.duration }}</span>
-            </div>
-            <div
-              v-if="user.linkrate"
-              class="flex items-center gap-1.5 min-w-[80px]"
-              title="Link Rate"
-            >
-              <ThunderboltOutlined class="text-gray-400 dark:text-gray-500" />
-              <span>{{ user.linkrate }}</span>
             </div>
           </div>
 
