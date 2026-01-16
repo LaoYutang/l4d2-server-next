@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref, onErrorCaptured, onMounted } from 'vue';
+  import { ref, onErrorCaptured, onMounted, computed } from 'vue';
   import { api } from '../services/api';
+  import { useAuthStore } from '../stores/auth';
   import {
     message,
     Card as ACard,
@@ -9,6 +10,7 @@
     Button as AButton,
     Input as AInput,
     Divider as ADivider,
+    Switch as ASwitch,
   } from 'ant-design-vue';
   import {
     KeyOutlined,
@@ -16,7 +18,11 @@
     CheckCircleOutlined,
     CopyOutlined,
     CheckOutlined,
+    SafetyCertificateOutlined,
   } from '@ant-design/icons-vue';
+
+  const authStore = useAuthStore();
+  const isAdmin = computed(() => authStore.isAdmin);
 
   const expiredHours = ref(1);
   const generating = ref(false);
@@ -25,6 +31,8 @@
   const copied = ref(false);
   const codeInput = ref<any>(null);
   const version = ref('');
+  const enableSelfService = ref(false);
+  const settingSelfService = ref(false);
 
   onErrorCaptured((err) => {
     console.error('System.vue Error:', err);
@@ -38,6 +46,31 @@
       version.value = data.version;
     } catch (e) {
       console.error('Failed to fetch version:', e);
+    }
+  };
+
+  const fetchSelfServiceStatus = async () => {
+    try {
+      const status = await api.getSelfServiceStatus();
+      enableSelfService.value = status.enabled;
+    } catch (e) {
+      console.error('Failed to fetch self service status:', e);
+    }
+  };
+
+  const toggleSelfService = async (checked: boolean | string | number) => {
+    const isChecked = Boolean(checked);
+    settingSelfService.value = true;
+    try {
+      await api.setSelfServiceConfig(isChecked);
+      enableSelfService.value = isChecked;
+      message.success(isChecked ? '已开启自助授权功能' : '已关闭自助授权功能');
+    } catch (e: any) {
+      message.error(`设置失败: ${e.message}`);
+      // Revert switch state on error
+      enableSelfService.value = !isChecked;
+    } finally {
+      settingSelfService.value = false;
     }
   };
 
@@ -85,13 +118,14 @@
 
   onMounted(() => {
     fetchVersion();
+    fetchSelfServiceStatus();
   });
 </script>
 
 <template>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <!-- Temp Auth Code Section -->
-    <a-card class="shadow-xl" :bordered="false">
+    <a-card class="shadow-xl" :bordered="false" v-if="isAdmin">
       <template #title>
         <span class="flex items-center gap-2 text-lg">
           <key-outlined class="text-blue-500" />
@@ -103,9 +137,30 @@
       </p>
 
       <div class="mb-6">
-        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
-          >选择有效期</label
+        <div
+          class="flex items-center justify-between mb-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
         >
+          <div>
+            <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+              <SafetyCertificateOutlined /> 开启自助获取通道
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              开启后，访客可在登录页自助获取1小时有效期的授权码，获取后有1小时全局冷却时间。
+            </div>
+          </div>
+          <a-switch
+            :checked="enableSelfService"
+            :loading="settingSelfService"
+            @update:checked="toggleSelfService"
+            checked-children="开"
+            un-checked-children="关"
+          />
+        </div>
+
+        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
+          >手动生成 (管理员专用)</label
+        >
+        <div class="text-xs text-gray-500 mb-2">选择有效期并直接生成授权码，不受冷却时间限制。</div>
         <div class="flex gap-2">
           <a-select v-model:value="expiredHours" class="flex-1">
             <a-select-option :value="1">1 小时</a-select-option>

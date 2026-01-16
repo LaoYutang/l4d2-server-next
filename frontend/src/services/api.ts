@@ -390,6 +390,34 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
+
+  async getSelfServiceStatus() {
+    const response = await fetch('/self-service/status', { method: 'POST' });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async generateSelfServiceCode() {
+    const response = await fetch('/self-service/generate', { method: 'POST' });
+    if (!response.ok) {
+      // Return error object if possible, or throw
+      const text = await response.text();
+      try {
+        const json = JSON.parse(text);
+        throw new Error(json.error || text);
+      } catch (e: any) {
+        if (e.message && e.message !== 'Unexpected token') throw e; // Already parsed error
+        throw new Error(text);
+      }
+    }
+    return response.json();
+  }
+
+  async setSelfServiceConfig(enable: boolean) {
+    const response = await this.postJson('/config/self-service', { enable });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

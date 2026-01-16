@@ -45,6 +45,16 @@ func main() {
 	router.MaxMultipartMemory = 1 << 25 // 限制表单内存缓存为32M
 	router.POST("/auth", middlewares.Auth(privateKey), controller.Auth)
 	router.POST("/auth/getTempAuthCode", middlewares.Auth(privateKey), controller.GetTempAuthCode)
+
+	// Self-service Auth (Inject privateKey without full Auth check)
+	injectKey := func(c *gin.Context) {
+		c.Set("privateKey", privateKey)
+		c.Next()
+	}
+	router.POST("/self-service/status", controller.GetSelfServiceStatus)
+	router.POST("/self-service/generate", injectKey, controller.GenerateSelfServiceCode)
+	router.POST("/config/self-service", middlewares.Auth(privateKey), controller.SetSelfServiceConfig)
+
 	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)
 	router.POST("/restart", middlewares.Auth(privateKey), controller.Restart)
 	router.POST("/clear", middlewares.Auth(privateKey), controller.Clear)
