@@ -272,43 +272,41 @@
 
     <!-- Status Stats - Compact Grid -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <a-card
-        hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-indigo-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
-        :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
-      >
-        <a-statistic
-          title="服务器名称"
-          :value="status?.Hostname?.value || 'Unknown'"
-          class="break-words w-full"
-          :value-style="{
-            fontWeight: '700',
-            fontSize: '1.125rem',
-            lineHeight: '1.5rem',
-          }"
+      <a-tooltip :title="status?.Hostname?.value || 'Unknown'">
+        <a-card
+          hoverable
+          class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-indigo-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
+          :bodyStyle="{ padding: '16px' }"
         >
-          <template #prefix><GlobalOutlined class="text-indigo-400 mr-2" /></template>
-        </a-statistic>
-      </a-card>
+          <div class="flex flex-col w-full">
+            <div class="text-gray-500 dark:text-gray-400 text-sm mb-1">服务器名称</div>
+            <div class="flex items-center text-lg font-bold text-gray-900 dark:text-gray-100">
+              <GlobalOutlined class="text-indigo-400 mr-2 shrink-0" />
+              <div class="truncate min-w-0 flex-1">
+                {{ status?.Hostname?.value || 'Unknown' }}
+              </div>
+            </div>
+          </div>
+        </a-card>
+      </a-tooltip>
 
-      <a-card
-        hoverable
-        class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-pink-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
-        :bodyStyle="{ padding: '16px', display: 'flex', alignItems: 'center' }"
-      >
-        <a-statistic
-          title="当前地图"
-          :value="status?.Map?.value || 'Unknown'"
-          class="w-full"
-          :value-style="{
-            fontWeight: '700',
-            fontSize: '1.125rem',
-            lineHeight: '1.5rem',
-          }"
+      <a-tooltip :title="status?.Map?.value || 'Unknown'">
+        <a-card
+          hoverable
+          class="!cursor-default shadow-sm rounded-xl border-t-4 border-t-pink-500 transition-all duration-300 hover:-translate-y-1 dark:bg-gray-800 dark:border-gray-700"
+          :bodyStyle="{ padding: '16px' }"
         >
-          <template #prefix><EnvironmentOutlined class="text-pink-400 mr-2" /></template>
-        </a-statistic>
-      </a-card>
+          <div class="flex flex-col w-full">
+            <div class="text-gray-500 dark:text-gray-400 text-sm mb-1">当前地图</div>
+            <div class="flex items-center text-lg font-bold text-gray-900 dark:text-gray-100">
+              <EnvironmentOutlined class="text-pink-400 mr-2 shrink-0" />
+              <div class="truncate min-w-0 flex-1">
+                {{ status?.Map?.value || 'Unknown' }}
+              </div>
+            </div>
+          </div>
+        </a-card>
+      </a-tooltip>
 
       <!-- Difficulty Card -->
       <a-card
