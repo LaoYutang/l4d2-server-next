@@ -20,6 +20,7 @@
     CheckOutlined,
     SafetyCertificateOutlined,
   } from '@ant-design/icons-vue';
+  import { copyToClipboard } from '../utils/clipboard';
 
   const authStore = useAuthStore();
   const isAdmin = computed(() => authStore.isAdmin);
@@ -98,19 +99,16 @@
   const copyCode = async () => {
     if (!generatedCode.value) return;
 
-    try {
-      await navigator.clipboard.writeText(generatedCode.value);
+    const success = await copyToClipboard(generatedCode.value);
+    if (success) {
       copied.value = true;
       message.success('已复制到剪贴板');
       setTimeout(() => {
         copied.value = false;
       }, 2000);
-    } catch (e) {
-      // Fallback
+    } else {
       if (codeInput.value) {
         codeInput.value.focus();
-        // Ant Design Input select() might not be directly available, use document execCommand if needed after focus
-        // But usually navigator.clipboard is available.
         message.warning('无法自动复制，请手动复制');
       }
     }

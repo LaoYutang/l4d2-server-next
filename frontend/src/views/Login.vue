@@ -14,6 +14,7 @@
     CheckOutlined,
   } from '@ant-design/icons-vue';
   import { message } from 'ant-design-vue';
+  import { copyToClipboard } from '../utils/clipboard';
 
   const password = ref('');
   const loading = ref(false);
@@ -94,14 +95,15 @@
 
   const copySelfServiceCode = async () => {
     if (!selfServiceCode.value) return;
-    try {
-      await navigator.clipboard.writeText(selfServiceCode.value);
+    
+    const success = await copyToClipboard(selfServiceCode.value);
+    if (success) {
       copied.value = true;
       message.success('已复制到剪贴板');
       setTimeout(() => {
         copied.value = false;
       }, 2000);
-    } catch (e) {
+    } else {
       message.error('复制失败，请手动复制');
     }
   };
