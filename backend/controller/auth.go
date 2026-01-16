@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"l4d2-manager-next/logic"
@@ -102,8 +103,10 @@ func GenerateSelfServiceCode(c *gin.Context) {
 	}
 
 	// 生成 1 小时有效期的 token
+	now := time.Now()
+	expireTime := now.Add(time.Hour)
 	claims := jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		ExpiresAt: jwt.NewNumericDate(expireTime),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -117,6 +120,9 @@ func GenerateSelfServiceCode(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "保存状态失败"})
 		return
 	}
+
+	timeFormat := "2006-01-02 15:04:05"
+	log.Printf("[自助授权] IP: %s 获取了授权码, 有效期: %s - %s", c.ClientIP(), now.Format(timeFormat), expireTime.Format(timeFormat))
 
 	c.JSON(200, gin.H{
 		"code": tokenString,
