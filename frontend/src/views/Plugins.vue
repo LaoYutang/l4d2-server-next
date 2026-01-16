@@ -238,6 +238,13 @@
       width: 200,
     },
   ];
+
+  const paginationConfig = {
+    pageSize: 10,
+    showSizeChanger: true,
+    pageSizeOptions: ['10', '20', '50', '100'],
+    showTotal: (total: number) => `共 ${total} 条`,
+  };
 </script>
 
 <template>
@@ -297,7 +304,7 @@
             :columns="enabledColumns"
             :data-source="filteredEnabledPlugins"
             :loading="loading"
-            :pagination="false"
+            :pagination="paginationConfig"
             row-key="name"
             :scroll="{ x: 'max-content' }"
           >
@@ -420,7 +427,7 @@
             :columns="disabledColumns"
             :data-source="filteredDisabledPlugins"
             :loading="loading"
-            :pagination="false"
+            :pagination="paginationConfig"
             row-key="name"
             :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
             :scroll="{ x: 'max-content' }"
