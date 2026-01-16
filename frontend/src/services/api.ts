@@ -29,6 +29,18 @@ class ApiService {
     return fd;
   }
 
+  private handleResponseError(status: number) {
+    if (status === 401 || status === 429) {
+      const authStore = useAuthStore();
+      authStore.logout();
+      throw new Error('认证失效，请重新登录');
+    }
+
+    if (status === 403) {
+      throw new Error('没有权限执行此操作');
+    }
+  }
+
   async post(url: string, data?: Record<string, any>) {
     const fd = this.createFormData(data);
     const response = await fetch(url, {
@@ -36,11 +48,7 @@ class ApiService {
       body: fd,
     });
 
-    if (response.status === 401 || response.status === 403 || response.status === 429) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
 
     return response;
   }
@@ -58,11 +66,7 @@ class ApiService {
       method: 'GET',
     });
 
-    if (response.status === 401 || response.status === 403 || response.status === 429) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
 
     return response;
   }
@@ -79,11 +83,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
 
-    if (response.status === 401 || response.status === 403 || response.status === 429) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
 
     return response;
   }
@@ -102,11 +102,7 @@ class ApiService {
     fd.append('expired', expiredHours.toString());
 
     const response = await fetch('/auth/getTempAuthCode', { method: 'POST', body: fd });
-    if (response.status === 401 || response.status === 403) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
@@ -230,12 +226,13 @@ class ApiService {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(xhr.responseText);
-        } else if (xhr.status === 401 || xhr.status === 403) {
-          const authStore = useAuthStore();
-          authStore.logout();
-          reject(new Error('Authentication failed'));
         } else {
-          reject(new Error(xhr.responseText));
+          try {
+            this.handleResponseError(xhr.status);
+            reject(new Error(xhr.responseText));
+          } catch (e) {
+            reject(e);
+          }
         }
       });
 
@@ -251,11 +248,7 @@ class ApiService {
     fd.append('map', mapName);
 
     const response = await fetch('/remove', { method: 'POST', body: fd });
-    if (response.status === 401 || response.status === 403) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
@@ -266,11 +259,7 @@ class ApiService {
     fd.append('mapName', mapName);
 
     const response = await fetch('/rcon/changemap', { method: 'POST', body: fd });
-    if (response.status === 401 || response.status === 403) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      throw new Error('Authentication failed');
-    }
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
