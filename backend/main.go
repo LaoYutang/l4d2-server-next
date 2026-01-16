@@ -80,6 +80,13 @@ func main() {
 		plugins.POST("/config/update", controller.UpdatePluginConfig)
 	}
 
+	admins := router.Group("/admins", middlewares.Auth(privateKey))
+	{
+		admins.POST("/list", controller.GetAdmins)
+		admins.POST("/add", controller.AddAdmin)
+		admins.POST("/delete", controller.DeleteAdmin)
+	}
+
 	port := os.Getenv("L4D2_MANAGER_PORT")
 	if port == "" {
 		port = "27020"

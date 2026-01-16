@@ -9,6 +9,7 @@ const Rcon = () => import('../views/Rcon.vue');
 const System = () => import('../views/System.vue');
 const Plugins = () => import('../views/Plugins.vue');
 const Monitor = () => import('../views/Monitor.vue');
+const Admins = () => import('../views/Admins.vue');
 const ServerInfo = () => import('../views/ServerInfo.vue');
 
 const router = createRouter({
@@ -44,6 +45,11 @@ const router = createRouter({
           path: 'monitor',
           name: 'Monitor',
           component: Monitor,
+        },
+        {
+          path: 'admins',
+          name: 'Admins',
+          component: Admins,
         },
         {
           path: 'rcon',

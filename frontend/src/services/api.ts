@@ -372,6 +372,24 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
+
+  async getAdmins() {
+    const response = await this.post('/admins/list');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async addAdmin(steamid: string, remark: string) {
+    const response = await this.postJson('/admins/add', { steamid, remark });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async deleteAdmin(steamid: string) {
+    const response = await this.postJson('/admins/delete', { steamid });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

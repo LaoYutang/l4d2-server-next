@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted, h } from 'vue';
+  import { ref, onMounted, onUnmounted, h, computed } from 'vue';
   import { api } from '../services/api';
+  import { useAuthStore } from '../stores/auth';
   import { parseStatus, type ParsedServerStatus } from '../utils/statusParser';
   import {
     ReloadOutlined,
@@ -15,6 +16,7 @@
     ClockCircleOutlined,
     CopyOutlined,
     StopOutlined,
+    PlusOutlined,
   } from '@ant-design/icons-vue';
   import { Modal, message } from 'ant-design-vue';
   import MapSelectorModal from '../components/MapSelectorModal.vue';
@@ -40,6 +42,9 @@
         ]
       ),
   };
+
+  const authStore = useAuthStore();
+  const isAdmin = computed(() => authStore.isAdmin);
 
   const status = ref<ParsedServerStatus | null>(null);
   const loading = ref(false);
@@ -142,6 +147,21 @@
           loadStatus();
         } catch (e: any) {
           message.error('封禁失败: ' + e.message);
+        }
+      },
+    });
+  };
+
+  const addAdmin = async (userName: string, steamId: string) => {
+    Modal.confirm({
+      title: `确定要将 ${userName} 设为管理员吗？`,
+      content: `SteamID: ${steamId}`,
+      onOk: async () => {
+        try {
+          await api.addAdmin(steamId, userName);
+          message.success(`已添加 ${userName} 为管理员`);
+        } catch (e: any) {
+          message.error('添加失败: ' + e.message);
         }
       },
     });
@@ -374,6 +394,18 @@
             <!-- Mobile Actions -->
             <div class="flex md:hidden gap-2 shrink-0">
               <a-button
+                v-if="isAdmin"
+                type="primary"
+                ghost
+                shape="circle"
+                size="small"
+                class="!flex !items-center !justify-center"
+                :disabled="!user.steamid"
+                @click="addAdmin(user.name, user.steamid)"
+              >
+                <PlusOutlined />
+              </a-button>
+              <a-button
                 type="primary"
                 ghost
                 shape="circle"
@@ -460,16 +492,22 @@
               <ThunderboltOutlined class="text-gray-400 dark:text-gray-500" />
               <span>{{ user.linkrate }}</span>
             </div>
-            <div v-if="user.status" class="flex items-center gap-1.5">
-              <span
-                class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] border border-gray-200 dark:border-gray-600"
-                >{{ user.status }}</span
-              >
-            </div>
           </div>
 
           <!-- Actions (Desktop Right) -->
           <div class="hidden md:flex gap-2 shrink-0 w-full md:w-auto justify-end">
+            <a-tooltip title="设为管理员" v-if="isAdmin">
+              <a-button
+                type="primary"
+                ghost
+                shape="circle"
+                class="!flex !items-center !justify-center"
+                :disabled="!user.steamid"
+                @click="addAdmin(user.name, user.steamid)"
+              >
+                <PlusOutlined />
+              </a-button>
+            </a-tooltip>
             <a-tooltip title="获取游戏时长">
               <a-button
                 type="primary"

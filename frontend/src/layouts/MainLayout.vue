@@ -14,6 +14,7 @@
     BulbOutlined,
     LineChartOutlined,
     EditOutlined,
+    SafetyCertificateOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -117,6 +118,11 @@
           <span>性能监控</span>
         </a-menu-item>
 
+        <a-menu-item key="/admins">
+          <template #icon><SafetyCertificateOutlined /></template>
+          <span>管理员设置</span>
+        </a-menu-item>
+
         <a-menu-item key="/rcon">
           <template #icon><CodeOutlined /></template>
           <span>RCON 控制台</span>
@@ -187,6 +193,14 @@
         <a-menu-item key="/maps">
           <template #icon><ReadOutlined /></template>
           地图管理
+        </a-menu-item>
+        <a-menu-item key="/monitor">
+          <template #icon><LineChartOutlined /></template>
+          性能监控
+        </a-menu-item>
+        <a-menu-item key="/admins">
+          <template #icon><SafetyCertificateOutlined /></template>
+          管理员设置
         </a-menu-item>
         <a-menu-item key="/rcon">
           <template #icon><CodeOutlined /></template>
