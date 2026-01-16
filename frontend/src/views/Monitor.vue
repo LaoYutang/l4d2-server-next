@@ -302,10 +302,6 @@
       memChart = echarts.init(memChartRef.value);
       memChart.setOption({
         ...commonOption,
-        yAxis: {
-          ...commonOption.yAxis,
-          max: memTotal.value > 0 ? (memTotal.value / 1024 / 1024 / 1024).toFixed(1) : undefined,
-        },
         series: [
           {
             name: '已用内存',
@@ -351,9 +347,6 @@
 
     memChart?.setOption({
       ...commonUpdate,
-      yAxis: {
-        max: memTotal.value > 0 ? (memTotal.value / 1024 / 1024 / 1024).toFixed(1) : undefined,
-      },
       series: [{ data: memUsedData.value }, { data: swapUsedData.value }],
     });
 
