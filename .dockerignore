@@ -1,0 +1,10 @@
+.git
+.vscode
+.idea
+node_modules
+backend/tmp
+dist
+coverage
+*.log
+Thumbs.db
+.DS_Store

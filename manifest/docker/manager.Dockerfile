@@ -1,14 +1,17 @@
 # Stage 1: Build Frontend
 FROM node:24-alpine AS web-builder
 WORKDIR /app/frontend
-COPY ./frontend .
+COPY ./frontend/package.json ./frontend/package-lock.json ./
 RUN npm install
+COPY ./frontend .
 RUN npm run build
 
 # Stage 2: Build Backend
 FROM golang:1.25-alpine AS builder
 ARG VERSION=Dev
 WORKDIR /app/backend
+COPY ./backend/go.mod ./backend/go.sum ./
+RUN go mod download
 COPY ./backend .
 RUN go build -ldflags "-X l4d2-manager-next/consts.Version=${VERSION}" -o /app/l4d2-manager
 

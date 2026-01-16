@@ -31,6 +31,10 @@ jobs:
             type=raw,value=latest
             type=ref,event=tag
 
+      - name: Normalize plugins timestamp
+        run: |
+          find ./plugins -exec touch -t 202001010000 {} +
+
       - name: Build Manager and Push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -41,3 +45,5 @@ jobs:
           labels: ${{ steps.meta-manager.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
