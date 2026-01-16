@@ -369,9 +369,7 @@
           class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 hover:shadow-md transition-shadow duration-300 flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-4 leading-normal"
         >
           <!-- User Info (Left) -->
-          <div
-            class="flex justify-between items-center w-full md:w-auto md:justify-start md:min-w-[180px] gap-3"
-          >
+          <div class="flex justify-between items-center w-full md:w-[200px] md:min-w-[200px] gap-3">
             <div class="flex items-center gap-3 min-w-0">
               <div
                 class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800 text-blue-600 dark:text-blue-200 flex items-center justify-center font-bold text-lg shrink-0"
@@ -379,12 +377,11 @@
                 {{ user.name ? user.name.charAt(0).toUpperCase() : '?' }}
               </div>
               <div class="min-w-0 flex-1">
-                <div
-                  class="font-bold text-gray-900 dark:text-gray-100 truncate max-w-[150px] md:max-w-[150px]"
-                  :title="user.name"
-                >
-                  {{ user.name }}
-                </div>
+                <a-tooltip :title="user.name">
+                  <div class="font-bold text-gray-900 dark:text-gray-100 truncate w-[110px]">
+                    {{ user.name }}
+                  </div>
+                </a-tooltip>
                 <div class="text-xs text-gray-500 dark:text-gray-400">ID: #{{ user.id }}</div>
               </div>
             </div>
