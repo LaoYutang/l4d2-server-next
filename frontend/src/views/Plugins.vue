@@ -321,18 +321,17 @@
                     配置
                   </a-button>
                   <a-popconfirm
+                    v-if="authStore.isAdmin"
                     title="确定要禁用这个插件吗？"
                     ok-text="确定"
                     cancel-text="取消"
                     @confirm="togglePlugin(record as Plugin)"
-                    :disabled="!authStore.isAdmin"
                   >
                     <a-button
                       type="default"
                       danger
                       size="small"
                       class="!flex !items-center !justify-center"
-                      :disabled="!authStore.isAdmin"
                     >
                       <template #icon><PoweroffOutlined /></template>
                       禁用
@@ -345,7 +344,7 @@
         </a-tab-pane>
 
         <!-- Disabled Plugins Tab -->
-        <a-tab-pane key="disabled" tab="未启用插件">
+        <a-tab-pane key="disabled" tab="未启用插件" v-if="authStore.isAdmin">
           <div
             class="mb-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4"
           >
