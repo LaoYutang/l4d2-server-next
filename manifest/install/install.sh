@@ -76,12 +76,14 @@ services:
       - l4d2-data:/left4dead2
       - l4d2-plugins:/plugins
       - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
     environment:
       - L4D2_RESTART_BY_RCON=true
       - L4D2_MANAGER_PASSWORD=$admin_password
       - L4D2_RCON_PASSWORD=$L4D2_RCON_PASSWORD
       - L4D2_RCON_URL=l4d2:27015
       - L4D2_GAME_PATH=/left4dead2
+      - HOST_PROC=/host/proc/1
     networks:
       - l4d2-network
     logging:
