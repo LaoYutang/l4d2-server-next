@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
+  import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
   import {
     LineChartOutlined,
     PlayCircleOutlined,
@@ -181,7 +181,6 @@
     GlobalOutlined,
     DatabaseOutlined,
   } from '@ant-design/icons-vue';
-  import { message } from 'ant-design-vue';
 
   // ECharts Core
   import * as echarts from 'echarts/core';
@@ -191,33 +190,32 @@
 
   echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
-  import { api } from '../services/api';
   import { useThemeStore } from '../stores/theme';
+  import { useMonitorStore } from '../stores/monitor';
+  import { storeToRefs } from 'pinia';
 
   const themeStore = useThemeStore();
-  const isMonitoring = ref(false);
+  const monitorStore = useMonitorStore();
+
+  const {
+    isMonitoring,
+    timestamps,
+    cpuData,
+    cpuMaxCoreData,
+    memUsedData,
+    memTotal,
+    swapUsedData,
+    swapTotal,
+    netUpData,
+    netDownData,
+    diskTotal,
+    diskUsed,
+    diskPercent,
+  } = storeToRefs(monitorStore);
+
+  const { toggleMonitor } = monitorStore;
+
   const loading = ref(false);
-  const timer = ref<any>(null);
-
-  // Data Storage (Max 600)
-  const maxPoints = 600;
-  const timestamps = ref<string[]>([]);
-  const cpuData = ref<number[]>([]);
-  const cpuMaxCoreData = ref<number[]>([]);
-  const memUsedData = ref<number[]>([]); // GB
-  const memTotal = ref(0);
-  const swapUsedData = ref<number[]>([]); // GB
-  const swapTotal = ref(0);
-  const netUpData = ref<number[]>([]); // KB/s
-  const netDownData = ref<number[]>([]); // KB/s
-
-  // Disk Data (Current Only)
-  const diskTotal = ref(0);
-  const diskUsed = ref(0);
-  const diskPercent = computed(() => {
-    if (diskTotal.value === 0) return 0;
-    return (diskUsed.value / diskTotal.value) * 100;
-  });
 
   // Chart Refs
   const cpuChartRef = ref<HTMLElement | null>(null);
@@ -356,65 +354,13 @@
     });
   };
 
-  const fetchData = async () => {
-    try {
-      const response = await api.post('/monitor/status');
-      const data = await response.json();
-
-      const now = new Date(data.timestamp * 1000).toLocaleTimeString();
-
-      memTotal.value = data.mem_total;
-      swapTotal.value = data.swap_total;
-      diskTotal.value = data.disk_total;
-      diskUsed.value = data.disk_used;
-
-      timestamps.value.push(now);
-      cpuData.value.push(parseFloat(data.cpu_percent.toFixed(1)));
-      cpuMaxCoreData.value.push(parseFloat(data.cpu_max_core_percent.toFixed(1)));
-      memUsedData.value.push(parseFloat((data.mem_used / 1024 / 1024 / 1024).toFixed(2)));
-      swapUsedData.value.push(parseFloat((data.swap_used / 1024 / 1024 / 1024).toFixed(2)));
-      netUpData.value.push(parseFloat((data.net_up_speed / 1024).toFixed(1)));
-      netDownData.value.push(parseFloat((data.net_down_speed / 1024).toFixed(1)));
-
-      if (timestamps.value.length > maxPoints) {
-        timestamps.value.shift();
-        cpuData.value.shift();
-        cpuMaxCoreData.value.shift();
-        memUsedData.value.shift();
-        swapUsedData.value.shift();
-        netUpData.value.shift();
-        netDownData.value.shift();
-      }
-
+  watch(
+    timestamps,
+    () => {
       updateCharts();
-    } catch (error) {
-      console.error(error);
-      message.error('获取监控数据失败');
-      stopMonitor();
-    }
-  };
-
-  const startMonitor = () => {
-    isMonitoring.value = true;
-    fetchData();
-    timer.value = setInterval(fetchData, 1000);
-  };
-
-  const stopMonitor = () => {
-    isMonitoring.value = false;
-    if (timer.value) {
-      clearInterval(timer.value);
-      timer.value = null;
-    }
-  };
-
-  const toggleMonitor = () => {
-    if (isMonitoring.value) {
-      stopMonitor();
-    } else {
-      startMonitor();
-    }
-  };
+    },
+    { deep: true }
+  );
 
   watch(
     () => themeStore.isDark,
@@ -440,7 +386,8 @@
   };
 
   onUnmounted(() => {
-    stopMonitor();
+    // Do NOT stop monitor here to keep it running in background
+    // stopMonitor();
     window.removeEventListener('resize', handleResize);
     cpuChart?.dispose();
     memChart?.dispose();
