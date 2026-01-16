@@ -113,7 +113,6 @@ services:
       - L4D2_RCON_URL=l4d2:27015
       - L4D2_RCON_PASSWORD=[rcon密码] # 与上方保持一致
       - L4D2_GAME_PATH=/left4dead2
-      - HOST_PROC=/host/proc/1 # 指定宿主机进程路径
     networks:
       - l4d2-network
 ```
@@ -139,7 +138,6 @@ docker run -d \
   -e L4D2_RCON_URL=127.0.0.1:27015 \
   -e L4D2_RCON_PASSWORD=[游戏服RCON密码] \
   -e L4D2_RESTART_BY_RCON=true \
-  -e HOST_PROC=/host/proc/1 \
   laoyutang/l4d2-manager-next:latest
 ```
 注意修改 `/path/to/your/l4d2/left4dead2` 为实际的游戏目录。

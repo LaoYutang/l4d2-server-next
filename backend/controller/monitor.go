@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"bufio"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +43,7 @@ func startMonitor() {
 	var lastNetSent, lastNetRecv uint64
 
 	// Initialize last net stats to avoid huge spike on first tick
-	netIO, _ := net.IOCounters(true)
+	netIO, _ := getNetIOCounters()
 	for _, io := range netIO {
 		name := strings.ToLower(io.Name)
 		if shouldIgnoreInterface(name) {
@@ -90,7 +92,7 @@ func startMonitor() {
 		}
 
 		// Network
-		netIO, _ := net.IOCounters(true)
+		netIO, _ := getNetIOCounters()
 		var currNetSent, currNetRecv uint64
 		for _, io := range netIO {
 			name := strings.ToLower(io.Name)
@@ -139,6 +141,53 @@ func shouldIgnoreInterface(name string) bool {
 		strings.Contains(name, "br-") ||
 		strings.Contains(name, "loopback") ||
 		name == "lo"
+}
+
+func getNetIOCounters() ([]net.IOCountersStat, error) {
+	// Check if /host/proc/1/net/dev exists
+	hostNetDev := "/host/proc/1/net/dev"
+	if _, err := os.Stat(hostNetDev); err == nil {
+		return parseNetDev(hostNetDev)
+	}
+	return net.IOCounters(true)
+}
+
+func parseNetDev(path string) ([]net.IOCountersStat, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var ret []net.IOCountersStat
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			name := strings.TrimSpace(parts[0])
+			fields := strings.Fields(parts[1])
+			if len(fields) < 16 {
+				continue
+			}
+
+			// recv: bytes packets errs drop fifo frame compressed multicast
+			// sent: bytes packets errs drop fifo colls carrier compressed
+
+			recvBytes, _ := strconv.ParseUint(fields[0], 10, 64)
+			sentBytes, _ := strconv.ParseUint(fields[8], 10, 64)
+
+			ret = append(ret, net.IOCountersStat{
+				Name:      name,
+				BytesRecv: recvBytes,
+				BytesSent: sentBytes,
+			})
+		}
+	}
+	return ret, nil
 }
 
 func GetMonitorStatus(c *gin.Context) {

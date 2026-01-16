@@ -83,7 +83,6 @@ services:
       - L4D2_RCON_PASSWORD=$L4D2_RCON_PASSWORD
       - L4D2_RCON_URL=l4d2:27015
       - L4D2_GAME_PATH=/left4dead2
-      - HOST_PROC=/host/proc/1
     networks:
       - l4d2-network
     logging:
