@@ -235,12 +235,12 @@
             作者: LaoYutang<br />
             GitHub:
             <a
-              href="https://github.com/LaoYutang/l4d2-server"
+              href="https://github.com/LaoYutang/l4d2-server-next"
               target="_blank"
               class="text-blue-500 dark:text-blue-400 hover:underline break-all"
-              >https://github.com/LaoYutang/l4d2-server</a
+              >https://github.com/LaoYutang/l4d2-server-next</a
             ><br />
-            © 2025 开源社区贡献
+            © 2026 开源社区贡献
           </p>
         </div>
 
@@ -249,7 +249,7 @@
         <div class="text-center text-gray-500 dark:text-gray-400 text-sm">
           <span>Made with ❤️ by the community | </span>
           <a
-            href="https://github.com/LaoYutang/l4d2-server/blob/master/LICENSE"
+            href="https://github.com/LaoYutang/l4d2-server-next/blob/master/LICENSE"
             target="_blank"
             class="text-blue-500 dark:text-blue-400 hover:underline"
           >
