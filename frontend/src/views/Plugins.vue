@@ -77,6 +77,13 @@
   const selectedRowKeys = ref<string[]>([]);
   const searchText = ref('');
   const filterText = ref('');
+  const sourceFilter = ref<string[]>([]);
+
+  const sourceOptions = [
+    { label: '预设', value: 'panel' },
+    { label: '商店', value: 'store' },
+    { label: '上传', value: 'upload' },
+  ];
 
   // Store variables
   const storeVisible = ref(false);
@@ -217,9 +224,13 @@
   );
 
   const filteredDisabledPlugins = computed(() => {
-    if (!filterText.value) return disabledPlugins.value;
+    let list = disabledPlugins.value;
+    if (sourceFilter.value.length > 0) {
+      list = list.filter((p) => sourceFilter.value.includes(p.source));
+    }
+    if (!filterText.value) return list;
     const lower = filterText.value.toLowerCase();
-    return disabledPlugins.value.filter(
+    return list.filter(
       (p) =>
         p.name.toLowerCase().includes(lower) ||
         (p.description && p.description.toLowerCase().includes(lower))
@@ -227,9 +238,13 @@
   });
 
   const filteredEnabledPlugins = computed(() => {
-    if (!filterText.value) return enabledPlugins.value;
+    let list = enabledPlugins.value;
+    if (sourceFilter.value.length > 0) {
+      list = list.filter((p) => sourceFilter.value.includes(p.source));
+    }
+    if (!filterText.value) return list;
     const lower = filterText.value.toLowerCase();
-    return enabledPlugins.value.filter(
+    return list.filter(
       (p) =>
         p.name.toLowerCase().includes(lower) ||
         (p.description && p.description.toLowerCase().includes(lower))
@@ -328,6 +343,7 @@
   const handleReset = () => {
     searchText.value = '';
     filterText.value = '';
+    sourceFilter.value = [];
   };
 
   const openStore = async () => {
@@ -646,6 +662,15 @@
                 allow-clear
                 @pressEnter="handleSearch"
               />
+              <a-select
+                v-model:value="sourceFilter"
+                mode="multiple"
+                :options="sourceOptions"
+                placeholder="来源筛选"
+                allow-clear
+                class="w-full sm:w-[200px]"
+                :max-tag-count="'responsive'"
+              />
               <div class="flex gap-2 w-full sm:w-auto">
                 <a-button
                   type="primary"
@@ -754,6 +779,15 @@
                 class="w-full sm:w-[200px]"
                 allow-clear
                 @pressEnter="handleSearch"
+              />
+              <a-select
+                v-model:value="sourceFilter"
+                mode="multiple"
+                :options="sourceOptions"
+                placeholder="来源筛选"
+                allow-clear
+                class="w-full sm:w-[200px]"
+                :max-tag-count="'responsive'"
               />
               <div class="flex gap-2 w-full sm:w-auto">
                 <a-button
