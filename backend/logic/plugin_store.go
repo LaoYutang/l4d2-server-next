@@ -224,6 +224,7 @@ func DownloadStorePlugin(pluginName, proxyUrl string) error {
 	}
 
 	success = true
+	writePluginSource(pluginName, "store")
 	return nil
 }
 

@@ -34,6 +34,7 @@ type Plugin struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"` // "enabled" or "disabled"
 	Description string `json:"description"`
+	Source      string `json:"source"` // "panel", "store", or "upload"
 }
 
 type PluginConfig struct {
@@ -111,14 +112,22 @@ func GetPlugins() ([]Plugin, error) {
 		enabledMap[p.Name] = true
 	}
 
+	// Read plugin sources map
+	sources := configViper.GetStringMapString("plugin_sources")
+
 	pluginMap := make(map[string]Plugin)
 
 	// Add enabled plugins from config
 	for _, p := range enabledPlugins {
+		source := sources[p.Name]
+		if source == "" {
+			source = "panel"
+		}
 		pluginMap[p.Name] = Plugin{
 			Name:        p.Name,
 			Status:      "enabled",
 			Description: "Source missing", // Default description if not found on disk
+			Source:      source,
 		}
 	}
 
@@ -134,10 +143,16 @@ func GetPlugins() ([]Plugin, error) {
 			status = "enabled"
 		}
 
+		source := sources[name]
+		if source == "" {
+			source = "panel"
+		}
+
 		pluginMap[name] = Plugin{
 			Name:        name,
 			Status:      status,
 			Description: "",
+			Source:      source,
 		}
 	}
 
@@ -213,7 +228,11 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 			return fmt.Errorf("plugin %s already exists", pluginName)
 		}
 
-		return extractFiles(validFiles, destDir, "", decodedNames)
+		if err := extractFiles(validFiles, destDir, "", decodedNames); err != nil {
+			return err
+		}
+		writePluginSource(pluginName, "upload")
+		return nil
 	}
 
 	// Case B: Multiple plugins
@@ -281,6 +300,7 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 		if err := extractFiles(files, destDir, rootDir+"/", decodedNames); err != nil {
 			return err
 		}
+		writePluginSource(rootDir, "upload")
 	}
 
 	return nil
@@ -347,6 +367,17 @@ func extractFiles(files []*zip.File, destDir string, stripPrefix string, decoded
 		}
 	}
 	return nil
+}
+
+func writePluginSource(name, source string) {
+	loadConfig()
+	sources := configViper.GetStringMapString("plugin_sources")
+	if sources == nil {
+		sources = make(map[string]string)
+	}
+	sources[name] = source
+	configViper.Set("plugin_sources", sources)
+	configViper.WriteConfig()
 }
 
 func EnablePlugin(name string) error {
@@ -537,7 +568,17 @@ func DeletePlugin(name string) error {
 	storePath := getStorePath()
 	pluginDir := filepath.Join(storePath, name)
 
-	return os.RemoveAll(pluginDir)
+	if err := os.RemoveAll(pluginDir); err != nil {
+		return err
+	}
+
+	// Clean up source record
+	sources := configViper.GetStringMapString("plugin_sources")
+	delete(sources, name)
+	configViper.Set("plugin_sources", sources)
+	configViper.WriteConfig()
+
+	return nil
 }
 
 func EnablePlugins(names []string) error {

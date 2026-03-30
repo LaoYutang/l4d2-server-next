@@ -59,6 +59,7 @@
     name: string;
     status: 'enabled' | 'disabled';
     description?: string;
+    source: 'panel' | 'store' | 'upload';
   }
 
   interface StorePlugin {
@@ -183,6 +184,28 @@
     message.error('插件管理页面发生错误');
     return false;
   });
+
+  const sourceLabel = (source: string) => {
+    switch (source) {
+      case 'store':
+        return '商店';
+      case 'upload':
+        return '上传';
+      default:
+        return '预设';
+    }
+  };
+
+  const sourceColor = (source: string) => {
+    switch (source) {
+      case 'store':
+        return 'green';
+      case 'upload':
+        return 'orange';
+      default:
+        return 'blue';
+    }
+  };
 
   const enabledPlugins = computed(() =>
     plugins.value.filter((p) => p.status === 'enabled').sort((a, b) => a.name.localeCompare(b.name))
@@ -463,33 +486,49 @@
     configModalVisible.value = true;
   };
 
-  const enabledColumns = [
-    {
-      title: '插件名称',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 200,
-    },
-  ];
+  const enabledColumns = computed(() => {
+    const cols = [
+      {
+        title: '插件名称',
+        dataIndex: 'name',
+        key: 'name',
+        sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
+      },
+      {
+        title: '来源',
+        key: 'source',
+        width: 80,
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 200,
+      },
+    ];
+    return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
+  });
 
-  const disabledColumns = [
-    {
-      title: '插件名称',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 200,
-    },
-  ];
+  const disabledColumns = computed(() => {
+    const cols = [
+      {
+        title: '插件名称',
+        dataIndex: 'name',
+        key: 'name',
+        sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
+      },
+      {
+        title: '来源',
+        key: 'source',
+        width: 80,
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 200,
+      },
+    ];
+    return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
+  });
 
   const storeColumns = computed(() => {
     const cols = [
@@ -652,10 +691,21 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="font-medium text-gray-700 dark:text-gray-200">{{ record.name }}</div>
+                <div class="font-medium text-gray-700 dark:text-gray-200">
+                  <a-tag v-if="isMobile" :color="sourceColor(record.source)" class="!mr-1">{{
+                    sourceLabel(record.source)
+                  }}</a-tag
+                  >{{ record.name }}
+                </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
+              </template>
+
+              <template v-else-if="column.key === 'source'">
+                <a-tag :color="sourceColor(record.source)" class="!cursor-default">
+                  {{ sourceLabel(record.source) }}
+                </a-tag>
               </template>
 
               <template v-else-if="column.key === 'actions'">
@@ -793,10 +843,21 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="font-medium text-gray-700 dark:text-gray-200">{{ record.name }}</div>
+                <div class="font-medium text-gray-700 dark:text-gray-200">
+                  <a-tag v-if="isMobile" :color="sourceColor(record.source)" class="!mr-1">{{
+                    sourceLabel(record.source)
+                  }}</a-tag
+                  >{{ record.name }}
+                </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
+              </template>
+
+              <template v-else-if="column.key === 'source'">
+                <a-tag :color="sourceColor(record.source)" class="!cursor-default">
+                  {{ sourceLabel(record.source) }}
+                </a-tag>
               </template>
 
               <template v-else-if="column.key === 'actions'">
