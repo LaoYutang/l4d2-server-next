@@ -164,6 +164,11 @@ func main() {
 		plugins.POST("/apply-preset", controller.ApplyPreset)
 		plugins.POST("/store/list", controller.GetStorePlugins)
 		plugins.POST("/store/download", controller.DownloadStorePlugin)
+		plugins.POST("/backups/list", controller.ListBackups)
+		plugins.POST("/backups/create", controller.CreateBackup)
+		plugins.POST("/backups/restore", controller.RestoreBackup)
+		plugins.POST("/backups/rename", controller.RenameBackup)
+		plugins.POST("/backups/delete", controller.DeleteBackup)
 	}
 
 	// Admins Group

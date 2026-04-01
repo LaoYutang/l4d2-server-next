@@ -47,6 +47,7 @@ declare module 'vue' {
     ATextarea: typeof import('ant-design-vue/es')['Textarea']
     ATooltip: typeof import('ant-design-vue/es')['Tooltip']
     AUploadDragger: typeof import('ant-design-vue/es')['UploadDragger']
+    BackupModal: typeof import('./components/BackupModal.vue')['default']
     DifficultyModal: typeof import('./components/DifficultyModal.vue')['default']
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']

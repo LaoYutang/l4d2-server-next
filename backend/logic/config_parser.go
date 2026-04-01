@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -71,7 +72,7 @@ func ParseSourceModConfig(path string) ([]CvarConfig, error) {
 			for _, comment := range commentBuffer {
 				// Remove // prefix
 				cleanComment := strings.TrimSpace(strings.TrimPrefix(comment, "//"))
-				
+
 				if match := defaultRegex.FindStringSubmatch(comment); len(match) > 1 {
 					config.Default = match[1]
 				} else if match := minRegex.FindStringSubmatch(comment); len(match) > 1 {
@@ -83,17 +84,17 @@ func ParseSourceModConfig(path string) ([]CvarConfig, error) {
 				} else {
 					// Assume description
 					// Skip lines that look like file headers
-					if strings.Contains(cleanComment, "This file was auto-generated") || 
-					   strings.Contains(cleanComment, "ConVars for plugin") {
+					if strings.Contains(cleanComment, "This file was auto-generated") ||
+						strings.Contains(cleanComment, "ConVars for plugin") {
 						continue
 					}
 					descLines = append(descLines, cleanComment)
 				}
 			}
-			
+
 			config.Description = strings.Join(descLines, "\n")
 			cvars = append(cvars, config)
-			
+
 			// Reset buffer
 			commentBuffer = []string{}
 		} else {
@@ -119,7 +120,7 @@ func UpdateSourceModConfig(path string, updates map[string]string) error {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		
+
 		// If line is a cvar definition
 		matches := cvarRegex.FindStringSubmatch(trimmed)
 		if len(matches) == 3 && !strings.HasPrefix(trimmed, "//") {
@@ -130,7 +131,7 @@ func UpdateSourceModConfig(path string, updates map[string]string) error {
 				// Simple approach: name "value"
 				// To preserve formatting, we can try to replace just the value part
 				// But regex replacement is safer to ensure correct syntax
-				
+
 				// Using standard format: name "value"
 				newLines = append(newLines, fmt.Sprintf(`%s "%s"`, name, newValue))
 			} else {
@@ -161,7 +162,7 @@ func UpdateOrCreateSourceModConfig(path string, updates map[string]string) error
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		
+
 		// If line is a cvar definition
 		matches := cvarRegex.FindStringSubmatch(trimmed)
 		if len(matches) == 3 && !strings.HasPrefix(trimmed, "//") {
@@ -186,5 +187,53 @@ func UpdateOrCreateSourceModConfig(path string, updates map[string]string) error
 	}
 
 	output := strings.Join(newLines, "\n")
+	return os.WriteFile(path, []byte(output), 0644)
+}
+
+// RestoreSourceModConfig restores a cfg file with full metadata.
+// If the file exists, only updates values (preserving existing comments).
+// If the file doesn't exist, creates it with full comments/metadata.
+func RestoreSourceModConfig(path string, cvars []CvarConfig) error {
+	if _, err := os.Stat(path); err == nil {
+		// File exists: just update values, preserve existing structure
+		updates := make(map[string]string, len(cvars))
+		for _, c := range cvars {
+			updates[c.Name] = c.Value
+		}
+		return UpdateOrCreateSourceModConfig(path, updates)
+	}
+
+	// File doesn't exist: create with full metadata
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	var lines []string
+	for i, cvar := range cvars {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		// Write description
+		if cvar.Description != "" {
+			for _, descLine := range strings.Split(cvar.Description, "\n") {
+				lines = append(lines, "// "+descLine)
+			}
+		}
+		// Write metadata
+		lines = append(lines, "// -")
+		if cvar.Default != "" {
+			lines = append(lines, fmt.Sprintf(`// Default: "%s"`, cvar.Default))
+		}
+		if cvar.Min != "" {
+			lines = append(lines, fmt.Sprintf(`// Minimum: "%s"`, cvar.Min))
+		}
+		if cvar.Max != "" {
+			lines = append(lines, fmt.Sprintf(`// Maximum: "%s"`, cvar.Max))
+		}
+		// Write value
+		lines = append(lines, fmt.Sprintf(`%s "%s"`, cvar.Name, cvar.Value))
+	}
+
+	output := strings.Join(lines, "\n") + "\n"
 	return os.WriteFile(path, []byte(output), 0644)
 }

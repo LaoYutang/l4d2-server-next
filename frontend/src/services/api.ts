@@ -226,6 +226,37 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
   }
 
+  async listBackups() {
+    const response = await this.post('/plugins/backups/list');
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    return data || [];
+  }
+
+  async createBackup(name: string) {
+    const response = await this.post('/plugins/backups/create', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async restoreBackup(name: string): Promise<{ message: string; skipped?: string[] }> {
+    const response = await this.post('/plugins/backups/restore', { name });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async renameBackup(oldName: string, newName: string) {
+    const response = await this.postJson('/plugins/backups/rename', {
+      old_name: oldName,
+      new_name: newName,
+    });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async deleteBackup(name: string) {
+    const response = await this.post('/plugins/backups/delete', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
   async clearMaps() {
     const response = await this.post('/clear');
     if (!response.ok) throw new Error(await response.text());
