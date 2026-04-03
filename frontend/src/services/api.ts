@@ -257,6 +257,24 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
   }
 
+  async getBackupPluginsDetail(name: string) {
+    const response = await this.post('/plugins/backups/detail/plugins', { name });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getBackupAdminsDetail(name: string) {
+    const response = await this.post('/plugins/backups/detail/admins', { name });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getBackupServerInfoDetail(name: string) {
+    const response = await this.post('/plugins/backups/detail/server_info', { name });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
   async clearMaps() {
     const response = await this.post('/clear');
     if (!response.ok) throw new Error(await response.text());

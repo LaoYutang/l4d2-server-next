@@ -110,3 +110,49 @@ func DeleteBackup(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "备份删除成功"})
 }
+
+func GetBackupPluginsDetail(c *gin.Context) {
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
+		return
+	}
+	plugins, err := logic.GetBackupPluginsDetail(name)
+	if err != nil {
+		FailWithError(c, http.StatusNotFound, "获取备份插件详情失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, plugins)
+}
+
+func GetBackupAdminsDetail(c *gin.Context) {
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
+		return
+	}
+	admins, err := logic.GetBackupAdminsDetail(name)
+	if err != nil {
+		FailWithError(c, http.StatusNotFound, "获取备份管理员详情失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, admins)
+}
+
+func GetBackupServerInfoDetail(c *gin.Context) {
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
+		return
+	}
+	info, err := logic.GetBackupServerInfoDetail(name)
+	if err != nil {
+		FailWithError(c, http.StatusNotFound, "获取备份服务器信息失败: %v", err)
+		return
+	}
+	if info == nil {
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}

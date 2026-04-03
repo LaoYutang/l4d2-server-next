@@ -18,32 +18,32 @@ const BackupFileName = "backups.yaml"
 var backupMutex sync.Mutex
 
 type BackupCvar struct {
-	Value       string `yaml:"value"`
-	Default     string `yaml:"default,omitempty"`
-	Min         string `yaml:"min,omitempty"`
-	Max         string `yaml:"max,omitempty"`
-	Description string `yaml:"description,omitempty"`
+	Value       string `yaml:"value" json:"value"`
+	Default     string `yaml:"default,omitempty" json:"default,omitempty"`
+	Min         string `yaml:"min,omitempty" json:"min,omitempty"`
+	Max         string `yaml:"max,omitempty" json:"max,omitempty"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
 type BackupPluginConfig struct {
-	Name  string                `yaml:"name"`
-	Cvars map[string]BackupCvar `yaml:"cvars"`
+	Name  string                `yaml:"name" json:"name"`
+	Cvars map[string]BackupCvar `yaml:"cvars" json:"cvars"`
 }
 
 type BackupPlugin struct {
-	Name    string               `yaml:"name"`
-	Configs []BackupPluginConfig `yaml:"configs"`
+	Name    string               `yaml:"name" json:"name"`
+	Configs []BackupPluginConfig `yaml:"configs" json:"configs"`
 }
 
 type BackupAdmin struct {
-	SteamID string `yaml:"steamid"`
-	Remark  string `yaml:"remark,omitempty"`
+	SteamID string `yaml:"steamid" json:"steamid"`
+	Remark  string `yaml:"remark,omitempty" json:"remark,omitempty"`
 }
 
 type BackupServerInfo struct {
-	Hostname string `yaml:"hostname,omitempty"`
-	Motd     string `yaml:"motd,omitempty"`
-	Host     string `yaml:"host,omitempty"`
+	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty"`
+	Motd     string `yaml:"motd,omitempty" json:"motd,omitempty"`
+	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
 }
 
 type BackupConfig struct {
@@ -114,6 +114,54 @@ func ListBackups() ([]BackupInfo, error) {
 		})
 	}
 	return infos, nil
+}
+
+func GetBackupDetail(name string) (*BackupEntry, error) {
+	backupMutex.Lock()
+	defer backupMutex.Unlock()
+
+	config, err := loadBackupConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, b := range config.Backups {
+		if b.Name == name {
+			entry := b
+			return &entry, nil
+		}
+	}
+	return nil, fmt.Errorf("未找到备份: %s", name)
+}
+
+func GetBackupPluginsDetail(name string) ([]BackupPlugin, error) {
+	entry, err := GetBackupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Plugins == nil {
+		return []BackupPlugin{}, nil
+	}
+	return entry.Plugins, nil
+}
+
+func GetBackupAdminsDetail(name string) ([]BackupAdmin, error) {
+	entry, err := GetBackupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Admins == nil {
+		return []BackupAdmin{}, nil
+	}
+	return entry.Admins, nil
+}
+
+func GetBackupServerInfoDetail(name string) (*BackupServerInfo, error) {
+	entry, err := GetBackupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+	return entry.ServerInfo, nil
 }
 
 func CreateBackup(name string) error {

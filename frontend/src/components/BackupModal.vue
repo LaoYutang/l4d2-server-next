@@ -8,6 +8,9 @@
     Input as AInput,
     Popconfirm as APopconfirm,
     Alert as AAlert,
+    Descriptions as ADescriptions,
+    DescriptionsItem as ADescriptionsItem,
+    Tag as ATag,
   } from 'ant-design-vue';
   import {
     PlusOutlined,
@@ -27,6 +30,29 @@
     has_server_info: boolean;
   }
 
+  interface BackupPluginConfig {
+    name: string;
+    cvars: Record<string, { value: string; default?: string; description?: string }>;
+  }
+
+  interface BackupPlugin {
+    name: string;
+    configs: BackupPluginConfig[];
+  }
+
+  interface BackupAdmin {
+    steamid: string;
+    remark?: string;
+  }
+
+  interface BackupServerInfo {
+    hostname?: string;
+    motd?: string;
+    host?: string;
+  }
+
+  type DetailType = 'plugins' | 'admins' | 'server_info';
+
   const props = defineProps<{
     open: boolean;
   }>();
@@ -45,6 +71,81 @@
   const editingName = ref('');
   const editNewName = ref('');
   const renamingName = ref('');
+
+  const detailOpen = ref(false);
+  const detailLoading = ref(false);
+  const detailType = ref<DetailType>('plugins');
+  const detailName = ref('');
+  const detailPlugins = ref<BackupPlugin[]>([]);
+  const detailAdmins = ref<BackupAdmin[]>([]);
+  const detailServerInfo = ref<BackupServerInfo | null>(null);
+
+  // Plugin config detail (3rd level)
+  const pluginCfgOpen = ref(false);
+  const pluginCfgName = ref('');
+  const pluginCfgRows = ref<{ file: string; cvar: string; current: string; default: string }[]>([]);
+
+  const pluginCfgColumns = [
+    { title: '配置文件', dataIndex: 'file', key: 'file', width: 180 },
+    { title: 'Cvar 名称', dataIndex: 'cvar', key: 'cvar' },
+    { title: '默认值', dataIndex: 'default', key: 'default', width: 100 },
+    { title: '当前值', dataIndex: 'current', key: 'current', width: 100 },
+  ];
+
+  const openPluginCfg = (plugin: BackupPlugin) => {
+    pluginCfgName.value = plugin.name;
+    const rows: { file: string; cvar: string; current: string; default: string }[] = [];
+    for (const cfg of plugin.configs || []) {
+      for (const [cvarName, cvar] of Object.entries(cfg.cvars || {})) {
+        rows.push({
+          file: cfg.name,
+          cvar: cvarName,
+          current: cvar.value ?? '',
+          default: cvar.default ?? '-',
+        });
+      }
+    }
+    pluginCfgRows.value = rows;
+    pluginCfgOpen.value = true;
+  };
+
+  const detailTitle = {
+    plugins: '插件列表',
+    admins: '管理员列表',
+    server_info: '服务器信息',
+  };
+
+  const adminColumns = [
+    { title: 'SteamID', dataIndex: 'steamid', key: 'steamid' },
+    { title: '备注', dataIndex: 'remark', key: 'remark' },
+  ];
+
+  const openDetail = async (record: BackupInfo, type: DetailType) => {
+    if (type === 'plugins' && record.plugin_count === 0) return;
+    if (type === 'admins' && (record.admin_count ?? 0) === 0) return;
+    if (type === 'server_info' && !record.has_server_info) return;
+    detailType.value = type;
+    detailName.value = record.name;
+    detailPlugins.value = [];
+    detailAdmins.value = [];
+    detailServerInfo.value = null;
+    detailOpen.value = true;
+    detailLoading.value = true;
+    try {
+      if (type === 'plugins') {
+        detailPlugins.value = await api.getBackupPluginsDetail(record.name);
+      } else if (type === 'admins') {
+        detailAdmins.value = await api.getBackupAdminsDetail(record.name);
+      } else {
+        detailServerInfo.value = await api.getBackupServerInfoDetail(record.name);
+      }
+    } catch (error: any) {
+      message.error('获取备份详情失败: ' + error.message);
+      detailOpen.value = false;
+    } finally {
+      detailLoading.value = false;
+    }
+  };
 
   const fetchBackups = async () => {
     loading.value = true;
@@ -292,12 +393,38 @@
           {{ formatTime(record.created_at) }}
         </template>
 
+        <template v-else-if="column.key === 'plugin_count'">
+          <a-button
+            type="link"
+            size="small"
+            :disabled="record.plugin_count === 0"
+            class="!p-0 !h-auto"
+            @click="openDetail(record as BackupInfo, 'plugins')"
+            >{{ record.plugin_count }}</a-button
+          >
+        </template>
+
         <template v-else-if="column.key === 'admin_count'">
-          {{ record.admin_count ?? 0 }}
+          <a-button
+            type="link"
+            size="small"
+            :disabled="(record.admin_count ?? 0) === 0"
+            class="!p-0 !h-auto"
+            @click="openDetail(record as BackupInfo, 'admins')"
+            >{{ record.admin_count ?? 0 }}</a-button
+          >
         </template>
 
         <template v-else-if="column.key === 'has_server_info'">
-          {{ record.has_server_info ? '✓' : '-' }}
+          <a-button
+            v-if="record.has_server_info"
+            type="link"
+            size="small"
+            class="!p-0 !h-auto"
+            @click="openDetail(record as BackupInfo, 'server_info')"
+            >✓</a-button
+          >
+          <span v-else class="text-gray-400">-</span>
         </template>
 
         <template v-else-if="column.key === 'actions'">
@@ -341,6 +468,84 @@
         </template>
       </template>
     </a-table>
+  </a-modal>
+
+  <!-- Detail Modal -->
+  <a-modal
+    :open="detailOpen"
+    :title="`${detailName} — ${detailTitle[detailType]}`"
+    :footer="null"
+    :width="560"
+    @cancel="detailOpen = false"
+  >
+    <div v-if="detailLoading" class="py-8 text-center text-gray-400">加载中...</div>
+    <template v-else>
+      <!-- Plugins -->
+      <template v-if="detailType === 'plugins'">
+        <div v-if="detailPlugins.length > 0" class="flex flex-wrap gap-2">
+          <a-tag
+            v-for="p in detailPlugins"
+            :key="p.name"
+            color="blue"
+            :style="p.configs && p.configs.length > 0 ? 'cursor:pointer' : ''"
+            @click="p.configs && p.configs.length > 0 && openPluginCfg(p)"
+          >
+            {{ p.name }}
+            <span v-if="p.configs && p.configs.length > 0" class="ml-1 text-xs opacity-70">
+              [存在配置修改]
+            </span>
+          </a-tag>
+        </div>
+        <div v-else class="text-gray-400">暂无插件</div>
+      </template>
+
+      <!-- Admins -->
+      <template v-else-if="detailType === 'admins'">
+        <a-table
+          v-if="detailAdmins.length > 0"
+          :columns="adminColumns"
+          :data-source="detailAdmins"
+          row-key="steamid"
+          :pagination="false"
+          size="small"
+        />
+        <div v-else class="text-gray-400">暂无管理员</div>
+      </template>
+
+      <!-- Server Info -->
+      <template v-else-if="detailType === 'server_info'">
+        <a-descriptions :column="1" bordered size="small">
+          <a-descriptions-item label="服务器名称">
+            <span class="whitespace-pre-wrap break-all">{{
+              detailServerInfo?.hostname || '-'
+            }}</span>
+          </a-descriptions-item>
+          <a-descriptions-item label="标题 (host.txt)">
+            <span class="whitespace-pre-wrap break-all">{{ detailServerInfo?.host || '-' }}</span>
+          </a-descriptions-item>
+          <a-descriptions-item label="公告 (motd)">
+            <span class="whitespace-pre-wrap break-all">{{ detailServerInfo?.motd || '-' }}</span>
+          </a-descriptions-item>
+        </a-descriptions>
+      </template>
+    </template>
+  </a-modal>
+
+  <!-- Plugin Config Detail Modal -->
+  <a-modal
+    :open="pluginCfgOpen"
+    :title="`${pluginCfgName} — 配置修改详情`"
+    :footer="null"
+    :width="640"
+    @cancel="pluginCfgOpen = false"
+  >
+    <a-table
+      :columns="pluginCfgColumns"
+      :data-source="pluginCfgRows"
+      :row-key="(r, i) => `${r.file}-${r.cvar}-${i}`"
+      :pagination="false"
+      size="small"
+    />
   </a-modal>
 </template>
 
