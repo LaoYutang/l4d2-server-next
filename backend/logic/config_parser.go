@@ -23,8 +23,23 @@ type PluginConfigFile struct {
 	Cvars    []CvarConfig `json:"cvars"`
 }
 
-// Regex to match "key" "value"
+// Regex to match "key" "value" or key "value" or key value (SourceMod cfg format)
 var cvarRegex = regexp.MustCompile(`^"?([a-zA-Z0-9_]+)"?\s+"?([^"]*)"?`)
+
+// Console command names that should never be treated as cvar names.
+// These are SourceMod/Source engine commands that appear in script cfg files
+// (e.g. sm_warmode_*.cfg) but are not cvar definitions.
+var consoleCmdNames = map[string]bool{
+	"sm":   true,
+	"exec": true,
+	"meta": true,
+	"rcon": true,
+}
+
+// isConsoleCmdName returns true if the extracted cvar name is actually a console command.
+func isConsoleCmdName(name string) bool {
+	return consoleCmdNames[strings.ToLower(name)]
+}
 
 // Regex to extract meta from comments
 var defaultRegex = regexp.MustCompile(`(?i)^\s*//\s*Default:\s*"(.*)"`)
@@ -61,6 +76,11 @@ func ParseSourceModConfig(path string) ([]CvarConfig, error) {
 			name := matches[1]
 			value := matches[2]
 
+			// Skip console commands that look like cvars due to the permissive regex
+			if isConsoleCmdName(name) {
+				commentBuffer = []string{}
+				continue
+			}
 			// Parse metadata from comments
 			config := CvarConfig{
 				Name:  name,
