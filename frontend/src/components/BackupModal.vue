@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, watch } from 'vue';
+  import { ref, watch, computed } from 'vue';
   import {
     message,
     Modal as AModal,
@@ -10,7 +10,6 @@
     Alert as AAlert,
     Descriptions as ADescriptions,
     DescriptionsItem as ADescriptionsItem,
-    Tag as ATag,
   } from 'ant-design-vue';
   import {
     PlusOutlined,
@@ -71,6 +70,23 @@
   const editingName = ref('');
   const editNewName = ref('');
   const renamingName = ref('');
+  const getPopupContainer = () => document.body;
+
+  // Responsive modal widths
+  const windowWidth = ref(window.innerWidth);
+  const onResize = () => {
+    windowWidth.value = window.innerWidth;
+  };
+  watch(
+    () => props.open,
+    (val) => {
+      if (val) window.addEventListener('resize', onResize);
+      else window.removeEventListener('resize', onResize);
+    }
+  );
+  const modalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 720));
+  const detailModalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 600));
+  const cfgModalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 680));
 
   const detailOpen = ref(false);
   const detailLoading = ref(false);
@@ -90,6 +106,11 @@
     { title: 'Cvar 名称', dataIndex: 'cvar', key: 'cvar' },
     { title: '默认值', dataIndex: 'default', key: 'default', width: 100 },
     { title: '当前值', dataIndex: 'current', key: 'current', width: 100 },
+  ];
+
+  const pluginListColumns = [
+    { title: '插件名称', dataIndex: 'name', key: 'name' },
+    { title: '配置修改', key: 'configs', width: 100 },
   ];
 
   const openPluginCfg = (plugin: BackupPlugin) => {
@@ -293,7 +314,7 @@
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 170,
     },
   ];
 </script>
@@ -303,7 +324,7 @@
     :open="props.open"
     title="插件备份管理"
     :footer="null"
-    :width="720"
+    :width="modalWidth"
     @cancel="emit('update:open', false)"
   >
     <a-alert
@@ -355,6 +376,7 @@
       row-key="name"
       :pagination="false"
       size="small"
+      :scroll="{ x: 560 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'name'">
@@ -428,11 +450,14 @@
         </template>
 
         <template v-else-if="column.key === 'actions'">
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 whitespace-nowrap">
             <a-popconfirm
               title="还原将重置插件、管理员列表及服务器信息，确定要继续吗？"
               ok-text="确定"
               cancel-text="取消"
+              placement="topRight"
+              :destroy-tooltip-on-hide="true"
+              :get-popup-container="getPopupContainer"
               @confirm="handleRestore(record.name)"
             >
               <a-button
@@ -457,6 +482,9 @@
               title="确定要删除这个备份吗？"
               ok-text="确定"
               cancel-text="取消"
+              placement="topRight"
+              :destroy-tooltip-on-hide="true"
+              :get-popup-container="getPopupContainer"
               @confirm="handleDelete(record.name)"
             >
               <a-button danger size="small" class="!inline-flex !items-center !justify-center">
@@ -475,27 +503,36 @@
     :open="detailOpen"
     :title="`${detailName} — ${detailTitle[detailType]}`"
     :footer="null"
-    :width="560"
+    :width="detailModalWidth"
     @cancel="detailOpen = false"
   >
     <div v-if="detailLoading" class="py-8 text-center text-gray-400">加载中...</div>
     <template v-else>
       <!-- Plugins -->
       <template v-if="detailType === 'plugins'">
-        <div v-if="detailPlugins.length > 0" class="flex flex-wrap gap-2">
-          <a-tag
-            v-for="p in detailPlugins"
-            :key="p.name"
-            color="blue"
-            :style="p.configs && p.configs.length > 0 ? 'cursor:pointer' : ''"
-            @click="p.configs && p.configs.length > 0 && openPluginCfg(p)"
-          >
-            {{ p.name }}
-            <span v-if="p.configs && p.configs.length > 0" class="ml-1 text-xs opacity-70">
-              [存在配置修改]
-            </span>
-          </a-tag>
-        </div>
+        <a-table
+          v-if="detailPlugins.length > 0"
+          :columns="pluginListColumns"
+          :data-source="detailPlugins"
+          row-key="name"
+          :pagination="false"
+          size="small"
+          :scroll="{ x: 360 }"
+        >
+          <template #bodyCell="{ column, record: plugin }">
+            <template v-if="column.key === 'configs'">
+              <a-button
+                v-if="plugin.configs && plugin.configs.length > 0"
+                type="link"
+                size="small"
+                class="!p-0 !h-auto"
+                @click="openPluginCfg(plugin as BackupPlugin)"
+                >存在修改</a-button
+              >
+              <span v-else class="text-gray-400">-</span>
+            </template>
+          </template>
+        </a-table>
         <div v-else class="text-gray-400">暂无插件</div>
       </template>
 
@@ -508,6 +545,7 @@
           row-key="steamid"
           :pagination="false"
           size="small"
+          :scroll="{ x: 360 }"
         />
         <div v-else class="text-gray-400">暂无管理员</div>
       </template>
@@ -536,7 +574,7 @@
     :open="pluginCfgOpen"
     :title="`${pluginCfgName} — 配置修改详情`"
     :footer="null"
-    :width="640"
+    :width="cfgModalWidth"
     @cancel="pluginCfgOpen = false"
   >
     <a-table
@@ -545,6 +583,7 @@
       :row-key="(r, i) => `${r.file}-${r.cvar}-${i}`"
       :pagination="false"
       size="small"
+      :scroll="{ x: 480 }"
     />
   </a-modal>
 </template>
