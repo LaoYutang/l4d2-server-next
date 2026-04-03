@@ -23,6 +23,8 @@
     name: string;
     created_at: number;
     plugin_count: number;
+    admin_count: number;
+    has_server_info: boolean;
   }
 
   const props = defineProps<{
@@ -174,7 +176,18 @@
       title: '插件数',
       dataIndex: 'plugin_count',
       key: 'plugin_count',
-      width: 80,
+      width: 70,
+    },
+    {
+      title: '管理员',
+      dataIndex: 'admin_count',
+      key: 'admin_count',
+      width: 70,
+    },
+    {
+      title: '服务器信息',
+      key: 'has_server_info',
+      width: 90,
     },
     {
       title: '操作',
@@ -193,7 +206,7 @@
     @cancel="emit('update:open', false)"
   >
     <a-alert
-      message="此功能仅备份已启用的插件名称及修改过的配置项，不会备份插件文件本身。若插件被删除，还原时该插件将被跳过。建议在服务器运行一段时间后再备份，确保所有插件配置已自动生成。"
+      message="此功能会备份：已启用的插件（仅修改过的配置项）、管理员列表、服务器信息（名称/公告/描述）。不会备份插件文件本身。若插件被删除，还原时该插件将被跳过。"
       type="info"
       show-icon
     />
@@ -279,10 +292,18 @@
           {{ formatTime(record.created_at) }}
         </template>
 
+        <template v-else-if="column.key === 'admin_count'">
+          {{ record.admin_count ?? 0 }}
+        </template>
+
+        <template v-else-if="column.key === 'has_server_info'">
+          {{ record.has_server_info ? '✓' : '-' }}
+        </template>
+
         <template v-else-if="column.key === 'actions'">
           <div class="flex items-center gap-1">
             <a-popconfirm
-              title="还原将重置所有插件状态，确定要继续吗？"
+              title="还原将重置插件、管理员列表及服务器信息，确定要继续吗？"
               ok-text="确定"
               cancel-text="取消"
               @confirm="handleRestore(record.name)"

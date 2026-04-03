@@ -35,20 +35,35 @@ type BackupPlugin struct {
 	Configs []BackupPluginConfig `yaml:"configs"`
 }
 
+type BackupAdmin struct {
+	SteamID string `yaml:"steamid"`
+	Remark  string `yaml:"remark,omitempty"`
+}
+
+type BackupServerInfo struct {
+	Hostname string `yaml:"hostname,omitempty"`
+	Motd     string `yaml:"motd,omitempty"`
+	Host     string `yaml:"host,omitempty"`
+}
+
 type BackupConfig struct {
 	Backups []BackupEntry `yaml:"backups"`
 }
 
 type BackupEntry struct {
-	Name      string         `yaml:"name" json:"name"`
-	CreatedAt int64          `yaml:"created_at" json:"created_at"`
-	Plugins   []BackupPlugin `yaml:"plugins" json:"plugins"`
+	Name       string            `yaml:"name" json:"name"`
+	CreatedAt  int64             `yaml:"created_at" json:"created_at"`
+	Plugins    []BackupPlugin    `yaml:"plugins" json:"plugins"`
+	Admins     []BackupAdmin     `yaml:"admins,omitempty" json:"admins,omitempty"`
+	ServerInfo *BackupServerInfo `yaml:"server_info,omitempty" json:"server_info,omitempty"`
 }
 
 type BackupInfo struct {
-	Name        string `json:"name"`
-	CreatedAt   int64  `json:"created_at"`
-	PluginCount int    `json:"plugin_count"`
+	Name          string `json:"name"`
+	CreatedAt     int64  `json:"created_at"`
+	PluginCount   int    `json:"plugin_count"`
+	AdminCount    int    `json:"admin_count"`
+	HasServerInfo bool   `json:"has_server_info"`
 }
 
 func getBackupPath() string {
@@ -91,9 +106,11 @@ func ListBackups() ([]BackupInfo, error) {
 	infos := make([]BackupInfo, 0, len(config.Backups))
 	for _, b := range config.Backups {
 		infos = append(infos, BackupInfo{
-			Name:        b.Name,
-			CreatedAt:   b.CreatedAt,
-			PluginCount: len(b.Plugins),
+			Name:          b.Name,
+			CreatedAt:     b.CreatedAt,
+			PluginCount:   len(b.Plugins),
+			AdminCount:    len(b.Admins),
+			HasServerInfo: b.ServerInfo != nil,
 		})
 	}
 	return infos, nil
@@ -174,9 +191,11 @@ func CreateBackup(name string) error {
 	}
 
 	entry := BackupEntry{
-		Name:      name,
-		CreatedAt: time.Now().Unix(),
-		Plugins:   backupPlugins,
+		Name:       name,
+		CreatedAt:  time.Now().Unix(),
+		Plugins:    backupPlugins,
+		Admins:     captureAdmins(),
+		ServerInfo: captureServerInfo(),
 	}
 
 	config.Backups = append(config.Backups, entry)
@@ -297,6 +316,16 @@ func RestoreBackup(name string) (*RestoreResult, error) {
 		}
 	}
 
+	// Restore admin list
+	if len(target.Admins) > 0 {
+		restoreAdminsToFile(target.Admins)
+	}
+
+	// Restore server info
+	if target.ServerInfo != nil {
+		restoreServerInfoToFiles(target.ServerInfo)
+	}
+
 	return &RestoreResult{Skipped: skipped}, nil
 }
 
@@ -392,4 +421,119 @@ func getStoreOriginalConfigs(pluginName string) map[string]map[string]string {
 	}
 
 	return result
+}
+
+// captureAdmins reads the current admin list for backup. Returns nil on error or
+// when the admin file doesn't exist (SourceMod not enabled).
+func captureAdmins() []BackupAdmin {
+	admins, err := ParseAdminsSimple()
+	if err != nil {
+		return nil
+	}
+	if len(admins) == 0 {
+		return nil
+	}
+	result := make([]BackupAdmin, 0, len(admins))
+	for _, a := range admins {
+		result = append(result, BackupAdmin{
+			SteamID: a.SteamID,
+			Remark:  a.Remark,
+		})
+	}
+	return result
+}
+
+// captureServerInfo reads hostname, motd and host for backup.
+func captureServerInfo() *BackupServerInfo {
+	info := &BackupServerInfo{}
+	hasData := false
+
+	hostnamePath := filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt")
+	motdPath := filepath.Join(consts.GamePath, "motd.txt")
+	hostPath := filepath.Join(consts.GamePath, "host.txt")
+
+	if data, err := os.ReadFile(hostnamePath); err == nil {
+		info.Hostname = string(data)
+		hasData = true
+	}
+	if data, err := os.ReadFile(motdPath); err == nil {
+		info.Motd = string(data)
+		hasData = true
+	}
+	if data, err := os.ReadFile(hostPath); err == nil {
+		info.Host = string(data)
+		hasData = true
+	}
+
+	if !hasData {
+		return nil
+	}
+	return info
+}
+
+// restoreAdminsToFile overwrites the admins_simple.ini file with backed-up admins,
+// preserving any header comment lines at the top of the file.
+func restoreAdminsToFile(admins []BackupAdmin) {
+	path := getAdminsFilePath()
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		fmt.Println("Warning: admins_simple.ini not found, skipping admin restore")
+		return
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("Warning: failed to read admins file: %v\n", err)
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	// Collect only leading comment/blank lines as the header to preserve
+	var headerLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			headerLines = append(headerLines, line)
+		} else {
+			break
+		}
+	}
+
+	var sb strings.Builder
+	for _, line := range headerLines {
+		sb.WriteString(line + "\n")
+	}
+	for _, admin := range admins {
+		if admin.Remark != "" {
+			sb.WriteString(fmt.Sprintf("\"%s\" \"99:z\" // %s\n", admin.SteamID, admin.Remark))
+		} else {
+			sb.WriteString(fmt.Sprintf("\"%s\" \"99:z\"\n", admin.SteamID))
+		}
+	}
+
+	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
+		fmt.Printf("Warning: failed to write admins file: %v\n", err)
+	}
+}
+
+// restoreServerInfoToFiles writes backed-up server info back to the respective files.
+func restoreServerInfoToFiles(info *BackupServerInfo) {
+	hostnamePath := filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt")
+	motdPath := filepath.Join(consts.GamePath, "motd.txt")
+	hostPath := filepath.Join(consts.GamePath, "host.txt")
+
+	if info.Hostname != "" {
+		if err := os.WriteFile(hostnamePath, []byte(info.Hostname), 0644); err != nil {
+			fmt.Printf("Warning: failed to restore hostname: %v\n", err)
+		}
+	}
+	if info.Motd != "" {
+		if err := os.WriteFile(motdPath, []byte(info.Motd), 0644); err != nil {
+			fmt.Printf("Warning: failed to restore motd: %v\n", err)
+		}
+	}
+	if info.Host != "" {
+		if err := os.WriteFile(hostPath, []byte(info.Host), 0644); err != nil {
+			fmt.Printf("Warning: failed to restore host: %v\n", err)
+		}
+	}
 }
