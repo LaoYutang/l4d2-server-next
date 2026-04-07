@@ -382,7 +382,19 @@ install_docker() {
         export DOWNLOAD_URL="https://mirrors.tuna.tsinghua.edu.cn/docker-ce"
     fi
 
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        print_info "下载安装脚本 (第 ${attempt}/5 次)..."
+        if curl -fsSL --connect-timeout 15 --retry 0 https://get.docker.com -o /tmp/get-docker.sh; then
+            break
+        fi
+        if [[ $attempt -eq 5 ]]; then
+            print_error "下载失败，已重试 5 次，请检查网络"
+            return 1
+        fi
+        print_warn "下载失败，3 秒后重试..."
+        sleep 3
+    done
     if bash /tmp/get-docker.sh; then
         rm -f /tmp/get-docker.sh
         systemctl enable docker 2>/dev/null || true
