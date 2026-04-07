@@ -471,7 +471,28 @@ show_image_info() {
 #  实例管理函数
 # ═══════════════════════════════════════════
 
-# 尝试导入已有的 docker-compose.yaml 配置
+# 从 compose 文件中提取某个服务的块内容（从服务 key 行到下一个同级服务前）
+_get_compose_service_block() {
+    local file="$1" service="$2"
+    awk -v key="  ${service}:" '
+        $0 == key { in_block=1; next }
+        in_block && /^  [a-zA-Z]/ { in_block=0 }
+        in_block { print }
+    ' "$file"
+}
+
+# 从服务块内容中提取某个环境变量的值（自动去除行内注释和引号）
+_get_compose_env() {
+    local block="$1" varname="$2"
+    echo "$block" | grep "${varname}=" \
+        | sed "s/.*${varname}=//" \
+        | sed 's/[[:space:]][[:space:]]*#.*//' \
+        | tr -d '"' | tr -d "'" \
+        | xargs 2>/dev/null \
+        | head -1
+}
+
+# 尝试导入已有的 docker-compose.yaml 配置（支持多实例）
 try_import_existing() {
     # 已有配置目录，无需导入
     if [[ -d "$INSTANCE_DIR" ]] && [[ "$(count_instances)" -gt 0 ]]; then
@@ -484,32 +505,7 @@ try_import_existing() {
     print_info "检测到已有的 docker-compose.yaml，正在导入配置..."
     ensure_dirs
 
-    # 从 compose 环境变量中提取配置
-    local game_port manager_port admin_password rcon_password tick vac history_metrics steam_api_key
-
-    game_port=$(grep -m1 'L4D2_PORT=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_PORT=//' | tr -d '"'"'" || echo "")
-    game_port="${game_port:-27015}"
-
-    rcon_password=$(grep -m1 'L4D2_RCON_PASSWORD=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_RCON_PASSWORD=//' | tr -d '"'"'" || echo "")
-
-    admin_password=$(grep -m1 'L4D2_MANAGER_PASSWORD=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_MANAGER_PASSWORD=//' | tr -d '"'"'" || echo "")
-
-    tick=$(grep -m1 'L4D2_TICK=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_TICK=//' | tr -d '"'"'" || echo "")
-    tick="${tick:-100}"
-
-    vac=$(grep -m1 'L4D2_VAC=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_VAC=//' | tr -d '"'"'" || echo "")
-    vac="${vac:-false}"
-
-    history_metrics=$(grep -m1 'L4D2_HISTORY_METRICS=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*L4D2_HISTORY_METRICS=//' | tr -d '"'"'" || echo "")
-    history_metrics="${history_metrics:-false}"
-
-    steam_api_key=$(grep -m1 'STEAM_API_KEY=' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*STEAM_API_KEY=//' | tr -d '"'"'" || echo "")
-
-    # 提取面板端口
-    manager_port=$(grep -B1 ':27020' "$COMPOSE_FILE" 2>/dev/null | grep -oP '\d+(?=:27020)' | head -1 || echo "")
-    manager_port="${manager_port:-27020}"
-
-    # 检测是否使用了镜像加速源
+    # 检测镜像加速源（一次性全局检测）
     local image_line
     image_line=$(grep -m1 'l4d2-pure' "$COMPOSE_FILE" 2>/dev/null | sed 's/.*image: *//' | tr -d '"'"'" || echo "")
     if [[ "$image_line" == *"/"*"/"*"/"* ]]; then
@@ -522,18 +518,49 @@ try_import_existing() {
         fi
     fi
 
-    # 保存为第一个实例
-    GAME_PORT="$game_port"
-    MANAGER_PORT="$manager_port"
-    ADMIN_PASSWORD="$admin_password"
-    RCON_PASSWORD="$rcon_password"
-    TICK="$tick"
-    VAC="$vac"
-    HISTORY_METRICS="$history_metrics"
-    STEAM_API_KEY="$steam_api_key"
+    # 发现所有游戏实例服务名（匹配 "  l4d2:" 或 "  l4d2-N:" 格式，排除 -manager）
+    local instance_names
+    instance_names=$(grep -E '^  l4d2(-[0-9]+)?:' "$COMPOSE_FILE" 2>/dev/null | sed -E 's/^  (.*):$/\1/')
 
-    save_instance_config "l4d2"
-    print_success "已导入现有配置为实例 [l4d2]"
+    if [[ -z "$instance_names" ]]; then
+        print_warn "未能从 docker-compose.yaml 中识别到实例，跳过导入"
+        return
+    fi
+
+    local imported=0
+    for name in $instance_names; do
+        local game_block manager_block
+        game_block=$(_get_compose_service_block "$COMPOSE_FILE" "$name")
+        manager_block=$(_get_compose_service_block "$COMPOSE_FILE" "${name}-manager")
+
+        GAME_PORT=$(_get_compose_env "$game_block" "L4D2_PORT")
+        GAME_PORT="${GAME_PORT:-27015}"
+
+        TICK=$(_get_compose_env "$game_block" "L4D2_TICK")
+        TICK="${TICK:-100}"
+
+        VAC=$(_get_compose_env "$game_block" "L4D2_VAC")
+        VAC="${VAC:-false}"
+
+        RCON_PASSWORD=$(_get_compose_env "$game_block" "L4D2_RCON_PASSWORD")
+
+        ADMIN_PASSWORD=$(_get_compose_env "$manager_block" "L4D2_MANAGER_PASSWORD")
+
+        HISTORY_METRICS=$(_get_compose_env "$manager_block" "L4D2_HISTORY_METRICS")
+        HISTORY_METRICS="${HISTORY_METRICS:-false}"
+
+        STEAM_API_KEY=$(_get_compose_env "$manager_block" "STEAM_API_KEY")
+
+        # 面板端口：在 manager 服务块的 ports 中找 HOST_PORT:27020
+        MANAGER_PORT=$(echo "$manager_block" | grep -oE '[0-9]+:27020' | cut -d: -f1 | head -1)
+        MANAGER_PORT="${MANAGER_PORT:-27020}"
+
+        save_instance_config "$name"
+        print_success "已导入实例 [${name}]: 游戏端口 ${GAME_PORT}，面板端口 ${MANAGER_PORT}"
+        ((imported++))
+    done
+
+    [[ $imported -gt 0 ]] && print_success "共导入 ${imported} 个实例配置"
 }
 
 # 一键安装启动（首次快捷入口）
