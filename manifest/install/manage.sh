@@ -524,6 +524,125 @@ try_import_existing() {
     print_success "已导入现有配置为实例 [l4d2]"
 }
 
+# 一键安装启动（首次快捷入口）
+quick_setup() {
+    clear
+    print_banner
+    print_section "一键安装启动"
+    echo ""
+
+    # ── Step 1: 安装 Docker ──
+    if ! check_docker; then
+        print_info "Step 1/3  安装 Docker"
+        echo ""
+        install_docker
+        echo ""
+        if ! check_docker; then
+            print_error "Docker 安装失败，无法继续"
+            press_enter
+            return
+        fi
+    else
+        print_success "Step 1/3  Docker 已安装，跳过"
+        echo ""
+    fi
+
+    # ── Step 2: 配置镜像加速源 ──
+    load_mirror
+    print_info "Step 2/3  配置镜像加速源"
+    echo ""
+    if [[ -n "$MIRROR_URL" ]]; then
+        echo -e "  当前加速源: ${GREEN}${MIRROR_URL}${NC}"
+        if ! confirm "是否修改加速源" "n"; then
+            true  # 保持不变
+        else
+            local new_mirror
+            new_mirror=$(read_input "输入加速源地址 (留空使用官方源)" "$MIRROR_URL")
+            MIRROR_URL="$new_mirror"
+            save_mirror
+        fi
+    else
+        echo -e "  默认加速源: ${GREEN}${DEFAULT_MIRROR}${NC}"
+        local new_mirror
+        new_mirror=$(read_input "镜像加速源 (回车使用默认)" "$DEFAULT_MIRROR")
+        MIRROR_URL="${new_mirror:-$DEFAULT_MIRROR}"
+        save_mirror
+    fi
+    echo ""
+
+    # ── Step 3: 配置并启动首个实例 ──
+    print_info "Step 3/3  配置服务实例"
+    echo ""
+
+    # 管理密码
+    ADMIN_PASSWORD=$(read_password "请设置管理密码")
+    echo ""
+
+    # 游戏端口
+    GAME_PORT=$(read_input "游戏端口" "$DEFAULT_GAME_PORT")
+
+    # 管理面板端口
+    MANAGER_PORT=$(read_input "管理面板端口" "$DEFAULT_MANAGER_PORT")
+
+    # Tick 率
+    echo ""
+    echo -e "  ${BOLD}Tick 率:${NC}"
+    print_menu_item "1" "30  tick"
+    print_menu_item "2" "60  tick"
+    print_menu_item "3" "100 tick" "推荐"
+    local tick_choice
+    tick_choice=$(read_input "选择 Tick 率" "3")
+    case "$tick_choice" in
+        1) TICK=30 ;;
+        2) TICK=60 ;;
+        *) TICK=100 ;;
+    esac
+
+    VAC="false"
+    HISTORY_METRICS="false"
+    STEAM_API_KEY=""
+    RCON_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
+
+    # 确认
+    local name="l4d2"
+    echo ""
+    print_section "配置确认"
+    echo ""
+    echo -e "  实例名称:      ${BOLD}${name}${NC}"
+    echo -e "  游戏端口:      ${BOLD}${GAME_PORT}${NC}"
+    echo -e "  管理面板端口:  ${BOLD}${MANAGER_PORT}${NC}"
+    echo -e "  Tick 率:       ${BOLD}${TICK}${NC}"
+    echo -e "  RCON 密码:     ${BOLD}${RCON_PASSWORD}${NC} ${DIM}(自动生成)${NC}"
+    echo ""
+
+    if ! confirm "确认并开始安装" "y"; then
+        print_warn "已取消"
+        press_enter
+        return
+    fi
+
+    save_instance_config "$name"
+    generate_compose
+
+    echo ""
+    cd "$BASE_DIR" || return
+    print_info "正在拉取镜像并启动服务 (首次启动需拉取镜像，请耐心等待)..."
+    echo ""
+    if docker compose up -d; then
+        create_symlinks "$name"
+        echo ""
+        print_success "安装完成！"
+        echo ""
+        echo -e "  ${GREEN}游戏地址:${NC}  服务器IP:${BOLD}${GAME_PORT}${NC}"
+        echo -e "  ${GREEN}管理面板:${NC}  http://服务器IP:${BOLD}${MANAGER_PORT}${NC}"
+    else
+        echo ""
+        print_error "启动失败，请检查上方错误信息"
+        print_warn "配置已保存，修复问题后可在 [服务实例管理] 中重试"
+    fi
+    press_enter
+}
+
 # 添加新实例
 add_instance() {
     require_docker || return
@@ -1251,6 +1370,10 @@ main() {
         print_menu_item "2" "镜像管理"             "拉取/更新/加速源"
         print_menu_item "3" "服务实例管理"         "添加/删除/启停"
         print_menu_item "4" "查看运行状态"         "总览"
+        if [[ "$(count_instances)" -eq 0 ]]; then
+            echo ""
+            print_menu_item "9" "一键安装启动"     "快速部署首个服务器"
+        fi
         echo ""
         print_menu_item "0" "退出"
         echo ""
@@ -1269,6 +1392,12 @@ main() {
                     print_error "Docker 未安装"
                 fi
                 press_enter ;;
+            9)
+                if [[ "$(count_instances)" -eq 0 ]]; then
+                    quick_setup
+                else
+                    print_error "无效选择"; press_enter
+                fi ;;
             0)
                 exit 0 ;;
             *) print_error "无效选择"; press_enter ;;
