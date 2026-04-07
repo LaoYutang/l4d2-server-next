@@ -202,6 +202,9 @@ save_instance_config() {
         printf 'VAC=%s\n' "$VAC"
         printf 'HISTORY_METRICS=%s\n' "$HISTORY_METRICS"
         printf 'STEAM_API_KEY=%q\n' "$STEAM_API_KEY"
+        printf 'BIND_MOUNT=%s\n' "${BIND_MOUNT:-false}"
+        printf 'BIND_DATA_DIR=%q\n' "${BIND_DATA_DIR:-}"
+        printf 'BIND_PLUGINS_DIR=%q\n' "${BIND_PLUGINS_DIR:-}"
     } > "$conf"
 }
 
@@ -279,8 +282,26 @@ generate_compose() {
     {
         printf '%s\n' "volumes:"
         for name in $instances; do
-            printf '%s\n' "  ${name}-data:"
-            printf '%s\n' "  ${name}-plugins:"
+            local BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
+            # shellcheck source=/dev/null
+            source "${INSTANCE_DIR}/${name}.conf"
+            if [[ "${BIND_MOUNT:-false}" == "true" ]]; then
+                printf '%s\n' "  ${name}-data:"
+                printf '%s\n' "    driver: local"
+                printf '%s\n' "    driver_opts:"
+                printf '%s\n' "      type: none"
+                printf '%s\n' "      o: bind"
+                printf '%s\n' "      device: ${BIND_DATA_DIR}"
+                printf '%s\n' "  ${name}-plugins:"
+                printf '%s\n' "    driver: local"
+                printf '%s\n' "    driver_opts:"
+                printf '%s\n' "      type: none"
+                printf '%s\n' "      o: bind"
+                printf '%s\n' "      device: ${BIND_PLUGINS_DIR}"
+            else
+                printf '%s\n' "  ${name}-data:"
+                printf '%s\n' "  ${name}-plugins:"
+            fi
         done
         printf '\n'
         printf '%s\n' "networks:"
@@ -289,7 +310,7 @@ generate_compose() {
         printf '%s\n' "services:"
 
         for name in $instances; do
-            local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC HISTORY_METRICS STEAM_API_KEY
+            local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC HISTORY_METRICS STEAM_API_KEY BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
             # shellcheck source=/dev/null
             source "${INSTANCE_DIR}/${name}.conf"
 
@@ -766,10 +787,28 @@ add_instance() {
     echo -e "  ${DIM}获取地址: https://steamcommunity.com/dev/apikey${NC}"
     STEAM_API_KEY=$(read_input "Steam API Key (可选，回车跳过)" "")
 
-    # ── 7. 自动生成 RCON 密码 ──
+    # ── 7. 具名卷 bind 模式 ──
+    echo ""
+    echo -e "  ${YELLOW}⚠  高级选项：Bind 挂载模式${NC}"
+    echo -e "  ${DIM}用途：将游戏/插件数据目录挂载到其他数据盘（如 /mnt/data）或多个实例绑定相同目录${NC}"
+    echo -e "  ${DIM}注意：目录必须提前存在且权限正确，配置后不可更改。实例删除后，绑定路径不会自动删除${NC}"
+    echo -e "  ${DIM}如无特殊需求（如独立数据盘），请直接回车跳过${NC}"
+    BIND_MOUNT="false"
+    BIND_DATA_DIR=""
+    BIND_PLUGINS_DIR=""
+    if confirm "是否启用 bind 挂载（不了解请选 N）" "n"; then
+        BIND_MOUNT="true"
+        local default_data="/data/l4d2/${name}-data"
+        local default_plugins="/data/l4d2/${name}-plugins"
+        BIND_DATA_DIR=$(read_input "游戏数据目录 (将自动创建)" "$default_data")
+        BIND_PLUGINS_DIR=$(read_input "插件数据目录 (将自动创建)" "$default_plugins")
+        mkdir -p "$BIND_DATA_DIR" "$BIND_PLUGINS_DIR" 2>/dev/null || true
+    fi
+
+    # ── 8. 自动生成 RCON 密码 ──
     RCON_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
 
-    # ── 8. 确认 ──
+    # ── 9. 确认 ──
     print_section "配置确认 [${name}]"
     echo ""
     echo -e "  实例名称:      ${BOLD}${name}${NC}"
@@ -779,6 +818,10 @@ add_instance() {
     echo -e "  VAC 验证:      ${BOLD}${VAC}${NC}"
     echo -e "  历史性能监控:  ${BOLD}${HISTORY_METRICS}${NC}"
     echo -e "  RCON 密码:     ${BOLD}${RCON_PASSWORD}${NC} ${DIM}(自动生成)${NC}"
+    if [[ "$BIND_MOUNT" == "true" ]]; then
+        echo -e "  Bind 数据目录: ${BOLD}${BIND_DATA_DIR}${NC}"
+        echo -e "  Bind 插件目录: ${BOLD}${BIND_PLUGINS_DIR}${NC}"
+    fi
     echo ""
 
     if ! confirm "确认创建此实例" "y"; then
