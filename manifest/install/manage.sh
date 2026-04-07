@@ -578,6 +578,19 @@ try_import_existing() {
 
         save_instance_config "$name"
         print_success "已导入实例 [${name}]: 游戏端口 ${GAME_PORT}，面板端口 ${MANAGER_PORT}"
+
+        # 迁移旧版软链接：删除旧的 addons/cfg 链接，建立 left4dead2 链接
+        if [[ "$name" == "l4d2" ]]; then
+            local old_addons="${BASE_DIR}/addons"
+            local old_cfg="${BASE_DIR}/cfg"
+            if [[ -L "$old_addons" ]] || [[ -L "$old_cfg" ]]; then
+                rm -f "$old_addons" "$old_cfg"
+                print_info "已移除旧版 addons/cfg 软链接"
+            fi
+            create_symlinks "$name"
+            print_info "已创建 left4dead2 软链接"
+        fi
+
         ((imported++))
     done
 
