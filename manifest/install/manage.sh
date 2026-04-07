@@ -876,8 +876,10 @@ create_symlinks() {
         # 第一个实例：链接到 /data/l4d2/ 根目录 (兼容旧版)
         ln -sf "/var/lib/docker/volumes/${volume_prefix}-data/_data" "${BASE_DIR}/left4dead2" 2>/dev/null || true
     else
-        # 后续实例：链接到以实例名命名的子目录
-        ln -sf "/var/lib/docker/volumes/${volume_prefix}-data/_data" "${BASE_DIR}/${name}" 2>/dev/null || true
+        # 后续实例：链接名为 left4dead2-N（与实例名 l4d2-N 对应）
+        local link_name
+        link_name="left4dead2-${name#l4d2-}"
+        ln -sf "/var/lib/docker/volumes/${volume_prefix}-data/_data" "${BASE_DIR}/${link_name}" 2>/dev/null || true
     fi
 }
 
@@ -1198,7 +1200,7 @@ remove_instance() {
     if [[ "$target" == "l4d2" ]]; then
         rm -f "${BASE_DIR}/left4dead2"
     else
-        rm -f "${BASE_DIR}/${target}"
+        rm -f "${BASE_DIR}/left4dead2-${target#l4d2-}"
     fi
 
     print_success "实例 [${target}] 已删除"
