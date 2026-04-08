@@ -46,24 +46,33 @@ type BackupServerInfo struct {
 	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
 }
 
+type BackupServerConfig struct {
+	Hidden           bool     `yaml:"hidden" json:"hidden"`
+	LobbyConnectOnly bool     `yaml:"lobby_connect_only" json:"lobby_connect_only"`
+	SteamGroup       string   `yaml:"steam_group,omitempty" json:"steam_group,omitempty"`
+	CustomConfig     []string `yaml:"custom_config,omitempty" json:"custom_config,omitempty"`
+}
+
 type BackupConfig struct {
 	Backups []BackupEntry `yaml:"backups"`
 }
 
 type BackupEntry struct {
-	Name       string            `yaml:"name" json:"name"`
-	CreatedAt  int64             `yaml:"created_at" json:"created_at"`
-	Plugins    []BackupPlugin    `yaml:"plugins" json:"plugins"`
-	Admins     []BackupAdmin     `yaml:"admins,omitempty" json:"admins,omitempty"`
-	ServerInfo *BackupServerInfo `yaml:"server_info,omitempty" json:"server_info,omitempty"`
+	Name         string              `yaml:"name" json:"name"`
+	CreatedAt    int64               `yaml:"created_at" json:"created_at"`
+	Plugins      []BackupPlugin      `yaml:"plugins" json:"plugins"`
+	Admins       []BackupAdmin       `yaml:"admins,omitempty" json:"admins,omitempty"`
+	ServerInfo   *BackupServerInfo   `yaml:"server_info,omitempty" json:"server_info,omitempty"`
+	ServerConfig *BackupServerConfig `yaml:"server_config,omitempty" json:"server_config,omitempty"`
 }
 
 type BackupInfo struct {
-	Name          string `json:"name"`
-	CreatedAt     int64  `json:"created_at"`
-	PluginCount   int    `json:"plugin_count"`
-	AdminCount    int    `json:"admin_count"`
-	HasServerInfo bool   `json:"has_server_info"`
+	Name            string `json:"name"`
+	CreatedAt       int64  `json:"created_at"`
+	PluginCount     int    `json:"plugin_count"`
+	AdminCount      int    `json:"admin_count"`
+	HasServerInfo   bool   `json:"has_server_info"`
+	HasServerConfig bool   `json:"has_server_config"`
 }
 
 func getBackupPath() string {
@@ -106,11 +115,12 @@ func ListBackups() ([]BackupInfo, error) {
 	infos := make([]BackupInfo, 0, len(config.Backups))
 	for _, b := range config.Backups {
 		infos = append(infos, BackupInfo{
-			Name:          b.Name,
-			CreatedAt:     b.CreatedAt,
-			PluginCount:   len(b.Plugins),
-			AdminCount:    len(b.Admins),
-			HasServerInfo: b.ServerInfo != nil,
+			Name:            b.Name,
+			CreatedAt:       b.CreatedAt,
+			PluginCount:     len(b.Plugins),
+			AdminCount:      len(b.Admins),
+			HasServerInfo:   b.ServerInfo != nil,
+			HasServerConfig: b.ServerConfig != nil,
 		})
 	}
 	return infos, nil
@@ -239,11 +249,12 @@ func CreateBackup(name string) error {
 	}
 
 	entry := BackupEntry{
-		Name:       name,
-		CreatedAt:  time.Now().Unix(),
-		Plugins:    backupPlugins,
-		Admins:     captureAdmins(),
-		ServerInfo: captureServerInfo(),
+		Name:         name,
+		CreatedAt:    time.Now().Unix(),
+		Plugins:      backupPlugins,
+		Admins:       captureAdmins(),
+		ServerInfo:   captureServerInfo(),
+		ServerConfig: captureServerConfig(),
 	}
 
 	config.Backups = append(config.Backups, entry)
@@ -372,6 +383,11 @@ func RestoreBackup(name string) (*RestoreResult, error) {
 	// Restore server info
 	if target.ServerInfo != nil {
 		restoreServerInfoToFiles(target.ServerInfo)
+	}
+
+	// Restore server config
+	if target.ServerConfig != nil {
+		restoreServerConfig(target.ServerConfig)
 	}
 
 	return &RestoreResult{Skipped: skipped}, nil
@@ -584,4 +600,257 @@ func restoreServerInfoToFiles(info *BackupServerInfo) {
 			fmt.Printf("Warning: failed to restore host: %v\n", err)
 		}
 	}
+}
+
+// captureServerConfig reads the current server.cfg managed fields for backup.
+func captureServerConfig() *BackupServerConfig {
+	configPath := filepath.Join(consts.GamePath, "cfg", "server.cfg")
+	contentBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+
+	cfg := &BackupServerConfig{
+		CustomConfig: []string{},
+	}
+	content := string(contentBytes)
+	lines := strings.Split(content, "\n")
+	inCustomBlock := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.Contains(line, "// [L4D2-MANAGER-CUSTOM]") {
+			inCustomBlock = true
+			continue
+		}
+
+		isManaged := false
+		if strings.HasPrefix(trimmed, "sv_tags") {
+			isManaged = true
+			args := strings.TrimSpace(strings.TrimPrefix(trimmed, "sv_tags"))
+			args = strings.Trim(args, "\"")
+			if strings.Contains(args, "hidden") {
+				cfg.Hidden = true
+			}
+		} else if strings.HasPrefix(trimmed, "sm_cvar") && strings.Contains(trimmed, "sv_allow_lobby_connect_only") {
+			isManaged = true
+			if strings.Contains(trimmed, "\"1\"") {
+				cfg.LobbyConnectOnly = true
+			}
+		} else if strings.HasPrefix(trimmed, "sv_steamgroup") {
+			isManaged = true
+			// Extract value between quotes
+			start := strings.Index(trimmed, "\"")
+			end := strings.LastIndex(trimmed, "\"")
+			if start != -1 && end > start {
+				cfg.SteamGroup = trimmed[start+1 : end]
+			}
+		}
+
+		if inCustomBlock && trimmed != "" && !isManaged {
+			cfg.CustomConfig = append(cfg.CustomConfig, line)
+		}
+	}
+
+	return cfg
+}
+
+// restoreServerConfig writes backed-up server config to server.cfg and tick variants.
+func restoreServerConfig(cfg *BackupServerConfig) {
+	configPath := filepath.Join(consts.GamePath, "cfg", "server.cfg")
+	if err := applyServerConfigToFile(configPath, cfg); err != nil {
+		fmt.Printf("Warning: failed to restore server.cfg: %v\n", err)
+	}
+
+	syncFiles := []string{"server.cfg.100tick", "server.cfg.60tick", "server.cfg.30tick"}
+	for _, fname := range syncFiles {
+		fpath := filepath.Join(consts.GamePath, "cfg", fname)
+		if _, err := os.Stat(fpath); err == nil {
+			applyServerConfigToFile(fpath, cfg)
+		}
+	}
+}
+
+func applyServerConfigToFile(configPath string, cfg *BackupServerConfig) error {
+	contentBytes, err := os.ReadFile(configPath)
+	var lines []string
+	if err == nil {
+		lines = strings.Split(string(contentBytes), "\n")
+	}
+
+	// Extract original tags
+	originalTags := []string{}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "sv_tags") {
+			args := strings.TrimSpace(strings.TrimPrefix(trimmed, "sv_tags"))
+			args = strings.Trim(args, "\"")
+			if args != "" {
+				parts := strings.Split(args, ",")
+				for _, p := range parts {
+					t := strings.TrimSpace(p)
+					if t != "" && t != "hidden" {
+						originalTags = append(originalTags, t)
+					}
+				}
+			}
+		}
+	}
+
+	var newLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(line, "// [L4D2-MANAGER-CUSTOM]") {
+			break
+		}
+		if strings.HasPrefix(trimmed, "sv_tags") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "sm_cvar") && strings.Contains(trimmed, "sv_allow_lobby_connect_only") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "sv_steamgroup") {
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+
+	for len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+		newLines = newLines[:len(newLines)-1]
+	}
+
+	newLines = append(newLines, "")
+	newLines = append(newLines, "// [L4D2-MANAGER-CUSTOM]")
+
+	if cfg.Hidden {
+		originalTags = append(originalTags, "hidden")
+	}
+	if len(originalTags) > 0 {
+		seen := make(map[string]bool)
+		var uniqueTags []string
+		for _, t := range originalTags {
+			if !seen[t] {
+				uniqueTags = append(uniqueTags, t)
+				seen[t] = true
+			}
+		}
+		newLines = append(newLines, fmt.Sprintf("sv_tags \"%s\"", strings.Join(uniqueTags, ",")))
+	}
+
+	val := "0"
+	if cfg.LobbyConnectOnly {
+		val = "1"
+	}
+	newLines = append(newLines, fmt.Sprintf("sm_cvar sv_allow_lobby_connect_only \"%s\"", val))
+
+	if cfg.SteamGroup != "" {
+		newLines = append(newLines, fmt.Sprintf("sv_steamgroup \"%s\"", cfg.SteamGroup))
+	}
+
+	for _, customLine := range cfg.CustomConfig {
+		if strings.TrimSpace(customLine) != "" {
+			newLines = append(newLines, customLine)
+		}
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(newLines, "\n")), 0644)
+}
+
+func GetBackupServerConfigDetail(name string) (*BackupServerConfig, error) {
+	entry, err := GetBackupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+	return entry.ServerConfig, nil
+}
+
+// ExportBackup exports a single backup entry as YAML bytes.
+func ExportBackup(name string) ([]byte, error) {
+	entry, err := GetBackupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+	data, err := yaml.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf("序列化备份失败: %v", err)
+	}
+	return data, nil
+}
+
+// ExportAllBackups exports all backup entries as YAML bytes.
+func ExportAllBackups() ([]byte, error) {
+	backupMutex.Lock()
+	defer backupMutex.Unlock()
+
+	config, err := loadBackupConfig()
+	if err != nil {
+		return nil, err
+	}
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("序列化备份失败: %v", err)
+	}
+	return data, nil
+}
+
+// ImportBackup imports backup entries from YAML data. It can handle both
+// a single BackupEntry and a BackupConfig (multiple entries).
+func ImportBackup(data []byte) (int, error) {
+	backupMutex.Lock()
+	defer backupMutex.Unlock()
+
+	config, err := loadBackupConfig()
+	if err != nil {
+		return 0, fmt.Errorf("读取备份配置失败: %v", err)
+	}
+
+	existNames := make(map[string]bool)
+	for _, b := range config.Backups {
+		existNames[b.Name] = true
+	}
+
+	// Try parsing as BackupConfig first (multiple entries)
+	var multiConfig BackupConfig
+	if err := yaml.Unmarshal(data, &multiConfig); err == nil && len(multiConfig.Backups) > 0 {
+		added := 0
+		for _, entry := range multiConfig.Backups {
+			if entry.Name == "" {
+				continue
+			}
+			origName := entry.Name
+			for i := 1; existNames[entry.Name]; i++ {
+				entry.Name = fmt.Sprintf("%s(%d)", origName, i)
+			}
+			existNames[entry.Name] = true
+			config.Backups = append(config.Backups, entry)
+			added++
+		}
+		if added > 0 {
+			if err := saveBackupConfig(config); err != nil {
+				return 0, err
+			}
+		}
+		return added, nil
+	}
+
+	// Try parsing as single BackupEntry
+	var single BackupEntry
+	if err := yaml.Unmarshal(data, &single); err != nil {
+		return 0, fmt.Errorf("无法解析备份文件: %v", err)
+	}
+	if single.Name == "" {
+		return 0, fmt.Errorf("备份文件格式无效：缺少名称字段")
+	}
+
+	origName := single.Name
+	for i := 1; existNames[single.Name]; i++ {
+		single.Name = fmt.Sprintf("%s(%d)", origName, i)
+	}
+
+	config.Backups = append(config.Backups, single)
+	if err := saveBackupConfig(config); err != nil {
+		return 0, err
+	}
+	return 1, nil
 }

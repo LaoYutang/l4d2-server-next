@@ -275,6 +275,42 @@ class ApiService {
     return response.json();
   }
 
+  async getBackupServerConfigDetail(name: string) {
+    const response = await this.post('/plugins/backups/detail/server_config', { name });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async exportBackup(name: string) {
+    const response = await this.post('/plugins/backups/export', { name });
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.yaml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async exportAllBackups() {
+    const response = await this.post('/plugins/backups/export-all');
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'backups_all.yaml';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async importBackup(file: File): Promise<{ message: string; count: number }> {
+    const response = await this.post('/plugins/backups/import', { file });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
   async clearMaps() {
     const response = await this.post('/clear');
     if (!response.ok) throw new Error(await response.text());

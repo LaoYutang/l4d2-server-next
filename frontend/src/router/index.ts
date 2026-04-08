@@ -12,6 +12,7 @@ const Monitor = () => import('../views/Monitor.vue');
 const Admins = () => import('../views/Admins.vue');
 const ServerInfo = () => import('../views/ServerInfo.vue');
 const ServerConfig = () => import('../views/ServerConfig.vue');
+const Backup = () => import('../views/Backup.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -71,6 +72,11 @@ const router = createRouter({
           path: 'server-config',
           name: 'ServerConfig',
           component: ServerConfig,
+        },
+        {
+          path: 'backup',
+          name: 'Backup',
+          component: Backup,
         },
       ],
     },

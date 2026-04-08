@@ -172,6 +172,10 @@ func main() {
 		plugins.POST("/backups/detail/plugins", controller.GetBackupPluginsDetail)
 		plugins.POST("/backups/detail/admins", controller.GetBackupAdminsDetail)
 		plugins.POST("/backups/detail/server_info", controller.GetBackupServerInfoDetail)
+		plugins.POST("/backups/detail/server_config", controller.GetBackupServerConfigDetail)
+		plugins.POST("/backups/export", controller.ExportBackup)
+		plugins.POST("/backups/export-all", controller.ExportAllBackups)
+		plugins.POST("/backups/import", controller.ImportBackup)
 	}
 
 	// Admins Group

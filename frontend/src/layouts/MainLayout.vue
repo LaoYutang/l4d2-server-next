@@ -16,6 +16,7 @@
     EditOutlined,
     SafetyCertificateOutlined,
     ToolOutlined,
+    SaveOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -139,6 +140,11 @@
           <span>服务器配置</span>
         </a-menu-item>
 
+        <a-menu-item key="/backup">
+          <template #icon><SaveOutlined /></template>
+          <span>备份管理</span>
+        </a-menu-item>
+
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -223,6 +229,10 @@
         <a-menu-item key="/server-config">
           <template #icon><ToolOutlined /></template>
           服务器配置
+        </a-menu-item>
+        <a-menu-item key="/backup">
+          <template #icon><SaveOutlined /></template>
+          备份管理
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>

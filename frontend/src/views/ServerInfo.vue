@@ -2,7 +2,7 @@
   <div>
     <div class="flex flex-col">
       <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">服务器信息编辑</h1>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">服务器信息</h1>
         <a-button type="primary" size="large" @click="save" :loading="saving" v-if="isAdmin"
           >保存修改</a-button
         >

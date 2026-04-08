@@ -27,12 +27,10 @@
     AppstoreAddOutlined,
     DownloadOutlined,
     CheckCircleOutlined,
-    SaveOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
-  import BackupModal from '../components/BackupModal.vue';
   import { useAuthStore } from '../stores/auth';
 
   const authStore = useAuthStore();
@@ -153,7 +151,6 @@
   const selectedPreset = ref('');
   const applyingPreset = ref(false);
   const footerContainerRef = ref<HTMLElement | null>(null);
-  const backupModalVisible = ref(false);
 
   const getPopupContainer = (trigger: HTMLElement) => {
     return footerContainerRef.value || trigger || document.body;
@@ -628,14 +625,6 @@
         <p class="text-gray-500 dark:text-gray-400 mt-1">管理服务器插件和模组</p>
       </div>
       <div class="flex gap-2">
-        <a-button
-          v-if="authStore.isAdmin"
-          @click="backupModalVisible = true"
-          class="!flex !items-center !justify-center"
-        >
-          <template #icon><SaveOutlined /></template>
-          备份管理
-        </a-button>
         <a-button
           v-if="authStore.isAdmin"
           type="primary"
@@ -1145,8 +1134,6 @@
     </a-drawer>
 
     <PluginConfigModal v-model:open="configModalVisible" :plugin-name="currentConfigPlugin" />
-
-    <BackupModal v-model:open="backupModalVisible" @restored="fetchPlugins" />
   </div>
 </template>
 

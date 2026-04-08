@@ -18,6 +18,9 @@
     DeleteOutlined,
     SaveOutlined,
     CloseOutlined,
+    DownloadOutlined,
+    UploadOutlined,
+    ExportOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
 
@@ -27,6 +30,7 @@
     plugin_count: number;
     admin_count: number;
     has_server_info: boolean;
+    has_server_config: boolean;
   }
 
   interface BackupPluginConfig {
@@ -50,7 +54,14 @@
     host?: string;
   }
 
-  type DetailType = 'plugins' | 'admins' | 'server_info';
+  interface BackupServerConfig {
+    hidden: boolean;
+    lobby_connect_only: boolean;
+    steam_group?: string;
+    custom_config?: string[];
+  }
+
+  type DetailType = 'plugins' | 'admins' | 'server_info' | 'server_config';
 
   const props = defineProps<{
     open: boolean;
@@ -84,7 +95,7 @@
       else window.removeEventListener('resize', onResize);
     }
   );
-  const modalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 720));
+  const modalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 900));
   const detailModalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 600));
   const cfgModalWidth = computed(() => (windowWidth.value < 768 ? '95vw' : 680));
 
@@ -95,6 +106,7 @@
   const detailPlugins = ref<BackupPlugin[]>([]);
   const detailAdmins = ref<BackupAdmin[]>([]);
   const detailServerInfo = ref<BackupServerInfo | null>(null);
+  const detailServerConfig = ref<BackupServerConfig | null>(null);
 
   // Plugin config detail (3rd level)
   const pluginCfgOpen = ref(false);
@@ -134,6 +146,7 @@
     plugins: '插件列表',
     admins: '管理员列表',
     server_info: '服务器信息',
+    server_config: '服务器配置',
   };
 
   const adminColumns = [
@@ -145,11 +158,13 @@
     if (type === 'plugins' && record.plugin_count === 0) return;
     if (type === 'admins' && (record.admin_count ?? 0) === 0) return;
     if (type === 'server_info' && !record.has_server_info) return;
+    if (type === 'server_config' && !record.has_server_config) return;
     detailType.value = type;
     detailName.value = record.name;
     detailPlugins.value = [];
     detailAdmins.value = [];
     detailServerInfo.value = null;
+    detailServerConfig.value = null;
     detailOpen.value = true;
     detailLoading.value = true;
     try {
@@ -157,6 +172,8 @@
         detailPlugins.value = await api.getBackupPluginsDetail(record.name);
       } else if (type === 'admins') {
         detailAdmins.value = await api.getBackupAdminsDetail(record.name);
+      } else if (type === 'server_config') {
+        detailServerConfig.value = await api.getBackupServerConfigDetail(record.name);
       } else {
         detailServerInfo.value = await api.getBackupServerInfoDetail(record.name);
       }
@@ -275,6 +292,46 @@
     }
   };
 
+  const handleExport = async (name: string) => {
+    try {
+      await api.exportBackup(name);
+    } catch (error: any) {
+      message.error('导出备份失败: ' + error.message);
+    }
+  };
+
+  const handleExportAll = async () => {
+    try {
+      await api.exportAllBackups();
+    } catch (error: any) {
+      message.error('导出全部备份失败: ' + error.message);
+    }
+  };
+
+  const importFileInput = ref<HTMLInputElement | null>(null);
+  const importing = ref(false);
+
+  const triggerImport = () => {
+    importFileInput.value?.click();
+  };
+
+  const handleImportFile = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    importing.value = true;
+    try {
+      const result = await api.importBackup(file);
+      message.success(result.message);
+      fetchBackups();
+    } catch (error: any) {
+      message.error('导入备份失败: ' + error.message);
+    } finally {
+      importing.value = false;
+      input.value = '';
+    }
+  };
+
   const formatTime = (timestamp: number) => {
     if (!timestamp) return '-';
     const d = new Date(timestamp * 1000);
@@ -287,34 +344,40 @@
       title: '备份名称',
       dataIndex: 'name',
       key: 'name',
+      ellipsis: true,
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 160,
+      width: 145,
     },
     {
-      title: '插件数',
+      title: '插件',
       dataIndex: 'plugin_count',
       key: 'plugin_count',
-      width: 70,
+      width: 55,
     },
     {
       title: '管理员',
       dataIndex: 'admin_count',
       key: 'admin_count',
-      width: 70,
+      width: 60,
     },
     {
-      title: '服务器信息',
-      key: 'has_server_info',
-      width: 90,
+      title: '服务器',
+      key: 'server_info',
+      width: 55,
+    },
+    {
+      title: '配置',
+      key: 'server_config',
+      width: 55,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 170,
+      width: 200,
     },
   ];
 </script>
@@ -328,12 +391,12 @@
     @cancel="emit('update:open', false)"
   >
     <a-alert
-      message="此功能会备份：已启用的插件（仅修改过的配置项）、管理员列表、服务器信息（名称/公告/描述）。不会备份插件文件本身。若插件被删除，还原时该插件将被跳过。"
+      message="此功能会备份：已启用的插件（仅修改过的配置项）、管理员列表、服务器信息（名称/公告/描述）、服务器配置（隐藏/匹配/组ID/自定义配置）。不会备份插件文件本身。若插件被删除，还原时该插件将被跳过。"
       type="info"
       show-icon
     />
 
-    <div class="mt-4 mb-4 flex items-center gap-2">
+    <div class="mt-4 mb-4 flex items-center gap-2 flex-wrap">
       <template v-if="showCreateInput">
         <a-input
           v-model:value="newBackupName"
@@ -366,6 +429,21 @@
           <template #icon><PlusOutlined /></template>
           新建备份
         </a-button>
+        <a-button :loading="importing" @click="triggerImport">
+          <template #icon><UploadOutlined /></template>
+          导入
+        </a-button>
+        <a-button :disabled="backups.length === 0" @click="handleExportAll">
+          <template #icon><ExportOutlined /></template>
+          全部导出
+        </a-button>
+        <input
+          ref="importFileInput"
+          type="file"
+          accept=".yaml,.yml"
+          class="hidden"
+          @change="handleImportFile"
+        />
       </template>
     </div>
 
@@ -376,7 +454,7 @@
       row-key="name"
       :pagination="false"
       size="small"
-      :scroll="{ x: 560 }"
+      :scroll="{ x: 640 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'name'">
@@ -437,7 +515,7 @@
           >
         </template>
 
-        <template v-else-if="column.key === 'has_server_info'">
+        <template v-else-if="column.key === 'has_server_info' || column.key === 'server_info'">
           <a-button
             v-if="record.has_server_info"
             type="link"
@@ -449,10 +527,22 @@
           <span v-else class="text-gray-400">-</span>
         </template>
 
+        <template v-else-if="column.key === 'server_config'">
+          <a-button
+            v-if="record.has_server_config"
+            type="link"
+            size="small"
+            class="!p-0 !h-auto"
+            @click="openDetail(record as BackupInfo, 'server_config')"
+            >✓</a-button
+          >
+          <span v-else class="text-gray-400">-</span>
+        </template>
+
         <template v-else-if="column.key === 'actions'">
           <div class="flex items-center gap-1 whitespace-nowrap">
             <a-popconfirm
-              title="还原将重置插件、管理员列表及服务器信息，确定要继续吗？"
+              title="还原将重置插件、管理员列表、服务器信息及配置，确定要继续吗？"
               ok-text="确定"
               cancel-text="取消"
               placement="topRight"
@@ -492,6 +582,14 @@
                 删除
               </a-button>
             </a-popconfirm>
+            <a-button
+              size="small"
+              @click="handleExport(record.name)"
+              class="!inline-flex !items-center !justify-center"
+            >
+              <template #icon><DownloadOutlined /></template>
+              导出
+            </a-button>
           </div>
         </template>
       </template>
@@ -563,6 +661,29 @@
           </a-descriptions-item>
           <a-descriptions-item label="公告 (motd)">
             <span class="whitespace-pre-wrap break-all">{{ detailServerInfo?.motd || '-' }}</span>
+          </a-descriptions-item>
+        </a-descriptions>
+      </template>
+
+      <!-- Server Config -->
+      <template v-else-if="detailType === 'server_config'">
+        <a-descriptions :column="1" bordered size="small">
+          <a-descriptions-item label="隐藏服务器">
+            {{ detailServerConfig?.hidden ? '是' : '否' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="仅匹配连接">
+            {{ detailServerConfig?.lobby_connect_only ? '是' : '否' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="Steam 组 ID">
+            {{ detailServerConfig?.steam_group || '-' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="自定义配置">
+            <pre
+              v-if="detailServerConfig?.custom_config?.length"
+              class="whitespace-pre-wrap break-all text-xs m-0"
+              >{{ detailServerConfig.custom_config.join('\n') }}</pre
+            >
+            <span v-else class="text-gray-400">-</span>
           </a-descriptions-item>
         </a-descriptions>
       </template>
