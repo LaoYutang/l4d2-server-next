@@ -1383,7 +1383,7 @@ menu_images() {
                         cd "$BASE_DIR" || return
                         print_info "正在重建所有实例..."
                         echo ""
-                        if docker compose up -d --force-recreate; then
+                        if docker compose up -d; then
                             echo ""
                             print_success "所有实例已重建并启动"
                         else
