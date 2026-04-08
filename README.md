@@ -75,13 +75,13 @@
 适合从零开始搭建服务器的用户。
 
 #### 方式一：一键脚本 (推荐) 【支持安装与管理】【多开/安装/删除/更新】
-
+Cloudflare加速：
+```sh
+bash <(curl -sL l4d2-manage.laoyutang.cn)
+```
+官方源：
 ```sh
 bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/manage.sh)
-```
-国内加速：
-```sh
-bash <(curl -sL https://gh.dpik.top/https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/manage.sh)
 ```
 
 #### 方式二：Docker Compose
