@@ -1386,6 +1386,13 @@ menu_images() {
                         if docker compose up -d; then
                             echo ""
                             print_success "所有实例已重建并启动"
+                            echo ""
+                            print_info "正在清理 dangling 镜像..."
+                            if docker image prune -f > /dev/null 2>&1; then
+                                print_success "dangling 镜像清理完成"
+                            else
+                                print_warn "dangling 镜像清理失败，可手动执行: docker image prune -f"
+                            fi
                         else
                             echo ""
                             print_error "重建失败，请检查上方错误信息"
