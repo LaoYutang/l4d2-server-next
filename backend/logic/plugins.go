@@ -28,6 +28,8 @@ const (
 var (
 	pluginMutex sync.Mutex
 	configViper *viper.Viper
+	// fileRefs 仅驻留内存，不落文件。进程启动后首次使用时从 enabled_plugins 重建。
+	fileRefs map[string][]string
 )
 
 type Plugin struct {
@@ -380,6 +382,39 @@ func writePluginSource(name, source string) {
 	configViper.WriteConfig()
 }
 
+// normalizeRelPath 统一路径分隔符并转小写，用于 fileRefs 的 key
+func normalizeRelPath(relPath string) string {
+	return strings.ToLower(strings.ReplaceAll(relPath, "\\", "/"))
+}
+
+// rebuildFileRefs 从 enabled_plugins 重建 fileRefs
+func rebuildFileRefs(enabledPlugins []PluginConfig) map[string][]string {
+	refs := make(map[string][]string)
+	for _, p := range enabledPlugins {
+		for _, f := range p.Files {
+			normPath := normalizeRelPath(f)
+			found := false
+			for _, existing := range refs[normPath] {
+				if existing == p.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				refs[normPath] = append(refs[normPath], p.Name)
+			}
+		}
+	}
+	return refs
+}
+
+// ensureFileRefs 确保 fileRefs 已初始化；调用前须持有 pluginMutex
+func ensureFileRefs(enabledPlugins []PluginConfig) {
+	if fileRefs == nil {
+		fileRefs = rebuildFileRefs(enabledPlugins)
+	}
+}
+
 func EnablePlugin(name string) error {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -398,6 +433,8 @@ func EnablePlugin(name string) error {
 			return fmt.Errorf("plugin %s is already enabled", name)
 		}
 	}
+
+	ensureFileRefs(enabledPlugins)
 
 	storePath := getStorePath()
 	pluginDir := filepath.Join(storePath, name, "left4dead2")
@@ -465,12 +502,23 @@ func EnablePlugin(name string) error {
 
 			// Update config safely
 			configLock.Lock()
-			// Refresh reference to the plugin in the slice
 			for i := range enabledPlugins {
 				if enabledPlugins[i].Name == name {
 					enabledPlugins[i].Files = append(enabledPlugins[i].Files, relPath)
 					break
 				}
+			}
+			// 将本插件加入该文件的内存引用列表
+			normPath := normalizeRelPath(relPath)
+			alreadyRef := false
+			for _, p := range fileRefs[normPath] {
+				if p == name {
+					alreadyRef = true
+					break
+				}
+			}
+			if !alreadyRef {
+				fileRefs[normPath] = append(fileRefs[normPath], name)
 			}
 			configLock.Unlock()
 		})
@@ -526,11 +574,25 @@ func DisablePlugin(name string) error {
 
 	gamePath := consts.GamePath
 
+	ensureFileRefs(enabledPlugins)
+
 	for _, relPath := range targetPlugin.Files {
-		destPath := filepath.Join(gamePath, relPath)
-		os.Remove(destPath)
-		// Clean up empty parent directories?
-		// Not strictly necessary but clean
+		normPath := normalizeRelPath(relPath)
+		// 从引用列表中移除本插件
+		newRefs := make([]string, 0, len(fileRefs[normPath]))
+		for _, p := range fileRefs[normPath] {
+			if p != name {
+				newRefs = append(newRefs, p)
+			}
+		}
+		if len(newRefs) == 0 {
+			// 没有其他插件引用此文件，安全删除
+			destPath := filepath.Join(gamePath, relPath)
+			os.Remove(destPath)
+			delete(fileRefs, normPath)
+		} else {
+			fileRefs[normPath] = newRefs
+		}
 	}
 
 	// Remove from list
