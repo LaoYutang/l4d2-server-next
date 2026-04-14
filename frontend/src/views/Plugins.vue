@@ -110,6 +110,8 @@
   const getBody = () => document.body;
 
   const proxyOptions = [
+    { label: 'laoyutang.cn', value: 'https://gh-proxy.laoyutang.cn/' },
+    { label: 'gh.dpik.top', value: 'https://gh.dpik.top/' },
     { label: 'gh-proxy.com', value: 'https://gh-proxy.com/' },
     { label: 'hk.gh-proxy.com', value: 'https://hk.gh-proxy.com/' },
     { label: 'gh.llkk.cc', value: 'https://gh.llkk.cc/' },
