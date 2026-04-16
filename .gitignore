@@ -8,3 +8,6 @@ private.key
 *.db-shm
 *.db-wal
 __debug_*
+.trae
+.vscode
+.cursor
