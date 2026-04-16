@@ -36,7 +36,7 @@ var (
 	treeCacheMut  sync.Mutex
 )
 
-func getTreeData(forceRefresh bool, proxyUrl string) (*GitHubTreeResponse, error) {
+func getTreeData(forceRefresh bool, proxyUrl, githubToken string) (*GitHubTreeResponse, error) {
 	treeCacheMut.Lock()
 	defer treeCacheMut.Unlock()
 
@@ -58,6 +58,9 @@ func getTreeData(forceRefresh bool, proxyUrl string) (*GitHubTreeResponse, error
 		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	if githubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+githubToken)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -79,8 +82,8 @@ func getTreeData(forceRefresh bool, proxyUrl string) (*GitHubTreeResponse, error
 	return treeCache, nil
 }
 
-func FetchStorePlugins(forceRefresh bool, proxyUrl string) ([]StorePlugin, error) {
-	tree, err := getTreeData(forceRefresh, proxyUrl)
+func FetchStorePlugins(forceRefresh bool, proxyUrl, githubToken string) ([]StorePlugin, error) {
+	tree, err := getTreeData(forceRefresh, proxyUrl, githubToken)
 	if err != nil {
 		return nil, err
 	}
@@ -139,8 +142,8 @@ func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 	return result
 }
 
-func DownloadStorePlugin(pluginName, proxyUrl string) error {
-	tree, err := getTreeData(false, proxyUrl)
+func DownloadStorePlugin(pluginName, proxyUrl, githubToken string) error {
+	tree, err := getTreeData(false, proxyUrl, githubToken)
 	if err != nil {
 		return err
 	}
@@ -179,7 +182,7 @@ func DownloadStorePlugin(pluginName, proxyUrl string) error {
 
 	for _, file := range filesToDownload {
 		wg.Add(1)
-		go func(path string) {
+		go func(path string, token string) {
 			defer wg.Done()
 
 			relPath := strings.TrimPrefix(path, prefix)
@@ -203,11 +206,11 @@ func DownloadStorePlugin(pluginName, proxyUrl string) error {
 				downloadUrl = proxyUrl + "/" + rawUrl
 			}
 
-			if err := downloadFileWithRetry(downloadUrl, localPath, 3); err != nil {
+			if err := downloadFileWithRetry(downloadUrl, localPath, 3, token); err != nil {
 				errChan <- fmt.Errorf("下载文件 %s 失败: %v", relPath, err)
 				return
 			}
-		}(file)
+		}(file, githubToken)
 	}
 
 	wg.Wait()
@@ -224,10 +227,10 @@ func DownloadStorePlugin(pluginName, proxyUrl string) error {
 	return nil
 }
 
-func downloadFileWithRetry(url, filepath string, retries int) error {
+func downloadFileWithRetry(url, filepath string, retries int, githubToken string) error {
 	var err error
 	for i := 0; i < retries; i++ {
-		err = downloadFile(url, filepath)
+		err = downloadFile(url, filepath, githubToken)
 		if err == nil {
 			return nil
 		}
@@ -236,13 +239,16 @@ func downloadFileWithRetry(url, filepath string, retries int) error {
 	return err
 }
 
-func downloadFile(urlStr, filepath string) error {
+func downloadFile(urlStr, filepath string, githubToken string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("GET", urlStr, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	if githubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+githubToken)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

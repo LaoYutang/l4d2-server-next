@@ -15,6 +15,8 @@
     Drawer as ADrawer,
     Select as ASelect,
     Tag as ATag,
+    Modal as AModal,
+    InputPassword as AInputPassword,
   } from 'ant-design-vue';
   import {
     UploadOutlined,
@@ -27,6 +29,7 @@
     AppstoreAddOutlined,
     DownloadOutlined,
     CheckCircleOutlined,
+    LinkOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
@@ -43,6 +46,11 @@
   onMounted(() => {
     fetchPlugins();
     window.addEventListener('resize', handleResize);
+    // Load saved GitHub token
+    const savedToken = localStorage.getItem('l4d2_manager_github_token');
+    if (savedToken) {
+      githubToken.value = savedToken;
+    }
   });
 
   import { onUnmounted } from 'vue';
@@ -93,6 +101,10 @@
   const downloadingPlugin = ref<Record<string, boolean>>({});
   const storeInstallFilter = ref<'all' | 'installed' | 'not-installed'>('all');
 
+  // GitHub Token variables
+  const githubToken = ref('');
+  const tokenModalVisible = ref(false);
+
   // Store drawer layout
   const searchSectionRef = ref<HTMLElement | null>(null);
   const storeContainerRef = ref<HTMLElement | null>(null);
@@ -108,6 +120,8 @@
   };
 
   const getBody = () => document.body;
+
+  const getModalContainer = () => document.body;
 
   const proxyOptions = [
     { label: 'laoyutang.cn', value: 'https://gh-proxy.laoyutang.cn/' },
@@ -366,11 +380,28 @@
     }
   };
 
+  const openTokenModal = () => {
+    tokenModalVisible.value = true;
+  };
+
+  const saveToken = () => {
+    localStorage.setItem('l4d2_manager_github_token', githubToken.value);
+    tokenModalVisible.value = false;
+    message.success('Token 已保存');
+  };
+
+  const clearToken = () => {
+    githubToken.value = '';
+    localStorage.removeItem('l4d2_manager_github_token');
+    tokenModalVisible.value = false;
+    message.success('Token 已清除');
+  };
+
   const fetchStorePlugins = async (forceRefresh: boolean = true) => {
     storeLoading.value = true;
     try {
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
-      storePlugins.value = await api.getStorePlugins(forceRefresh, proxy);
+      storePlugins.value = await api.getStorePlugins(forceRefresh, proxy, githubToken.value);
     } catch (error: any) {
       message.error('获取商店列表失败: ' + error.message);
     } finally {
@@ -399,7 +430,7 @@
     const hide = message.loading(`正在下载 ${plugin.name}...`, 0);
     try {
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
-      await api.downloadStorePlugin(plugin.name, proxy);
+      await api.downloadStorePlugin(plugin.name, proxy, githubToken.value);
       message.success(`插件 ${plugin.name} 下载成功`);
       // 本地即时更新已安装状态，避免重新请求 GitHub
       const idx = storePlugins.value.findIndex((p) => p.name === plugin.name);
@@ -1012,11 +1043,24 @@
 
     <a-drawer
       v-model:open="storeVisible"
-      title="插件商店"
       placement="right"
       :width="drawerWidth"
       :bodyStyle="{ overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '24px' }"
     >
+      <template #title>
+        <div class="flex items-center justify-between">
+          <span>插件商店</span>
+          <a-button
+            type="default"
+            size="small"
+            @click="openTokenModal"
+            class="!flex !items-center !p-1"
+          >
+            <SettingOutlined />
+            Github Token
+          </a-button>
+        </div>
+      </template>
       <div ref="storeContainerRef" class="flex flex-col flex-1 min-h-0">
         <div ref="searchSectionRef" class="mb-4 space-y-4 flex-shrink-0">
           <div class="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1134,6 +1178,42 @@
         </a-table>
       </div>
     </a-drawer>
+
+    <a-modal
+      v-model:open="tokenModalVisible"
+      title="GitHub Token 设置"
+      :getContainer="getModalContainer"
+      :zIndex="2000"
+      :width="400"
+      @cancel="tokenModalVisible = false"
+    >
+      <div>
+        <a-alert message="设置 GitHub Token 可以提高 API 请求频率限制" type="info" show-icon />
+        <a-input-password
+          v-model:value="githubToken"
+          placeholder="输入 GitHub Token (可选)"
+          :visibilityToggle="true"
+          class="w-full mt-4"
+        />
+        <a
+          href="https://github.com/settings/tokens/new?description=L4D2%20Plugin%20Store&scopes=public_repo"
+          target="_blank"
+          class="inline-flex items-center mt-3 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          <LinkOutlined class="!mr-1" />
+          创建 GitHub Token
+        </a>
+      </div>
+      <template #footer>
+        <div class="flex justify-between">
+          <a-button @click="clearToken" danger>清除</a-button>
+          <div class="flex gap-2">
+            <a-button @click="tokenModalVisible = false">取消</a-button>
+            <a-button type="primary" @click="saveToken">保存</a-button>
+          </div>
+        </div>
+      </template>
+    </a-modal>
 
     <PluginConfigModal v-model:open="configModalVisible" :plugin-name="currentConfigPlugin" />
   </div>

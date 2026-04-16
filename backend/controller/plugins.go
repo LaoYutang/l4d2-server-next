@@ -70,6 +70,7 @@ func UploadPlugin(c *gin.Context) {
 type GetStorePluginsRequest struct {
 	ForceRefresh bool   `json:"force_refresh"`
 	ProxyUrl     string `json:"proxy_url"`
+	GithubToken  string `json:"github_token"`
 }
 
 func GetStorePlugins(c *gin.Context) {
@@ -78,7 +79,7 @@ func GetStorePlugins(c *gin.Context) {
 		// allow empty body
 	}
 
-	plugins, err := logic.FetchStorePlugins(req.ForceRefresh, req.ProxyUrl)
+	plugins, err := logic.FetchStorePlugins(req.ForceRefresh, req.ProxyUrl, req.GithubToken)
 	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "获取插件商店列表失败: %v", err)
 		return
@@ -87,8 +88,9 @@ func GetStorePlugins(c *gin.Context) {
 }
 
 type DownloadPluginRequest struct {
-	Name     string `json:"name"`
-	ProxyUrl string `json:"proxy_url"`
+	Name        string `json:"name"`
+	ProxyUrl    string `json:"proxy_url"`
+	GithubToken string `json:"github_token"`
 }
 
 func DownloadStorePlugin(c *gin.Context) {
@@ -111,7 +113,7 @@ func DownloadStorePlugin(c *gin.Context) {
 
 	LogOp(c, req, "从商店下载插件:", req.Name)
 
-	if err := logic.DownloadStorePlugin(req.Name, req.ProxyUrl); err != nil {
+	if err := logic.DownloadStorePlugin(req.Name, req.ProxyUrl, req.GithubToken); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "下载插件失败: %v", err)
 		return
 	}
