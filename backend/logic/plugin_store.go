@@ -31,20 +31,17 @@ type StorePlugin struct {
 }
 
 var (
-	storeCache     []StorePlugin
-	storeCacheTime time.Time
-	storeCacheMut  sync.Mutex
+	treeCache     *GitHubTreeResponse
+	treeCacheTime time.Time
+	treeCacheMut  sync.Mutex
 )
 
-// FetchStorePlugins fetches the plugin list from GitHub repository
-func FetchStorePlugins(forceRefresh bool, proxyUrl string) ([]StorePlugin, error) {
-	storeCacheMut.Lock()
-	defer storeCacheMut.Unlock()
+func getTreeData(forceRefresh bool, proxyUrl string) (*GitHubTreeResponse, error) {
+	treeCacheMut.Lock()
+	defer treeCacheMut.Unlock()
 
-	// Cache for 10 minutes, unless forceRefresh is true
-	// Installed 字段每次都实时计算，不依赖缓存
-	if !forceRefresh && time.Since(storeCacheTime) < 10*time.Minute && storeCache != nil {
-		return markInstalledPlugins(storeCache), nil
+	if !forceRefresh && time.Since(treeCacheTime) < 10*time.Minute && treeCache != nil {
+		return treeCache, nil
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -77,9 +74,20 @@ func FetchStorePlugins(forceRefresh bool, proxyUrl string) ([]StorePlugin, error
 		return nil, fmt.Errorf("解析 GitHub 数据失败: %v", err)
 	}
 
+	treeCache = &treeResp
+	treeCacheTime = time.Now()
+	return treeCache, nil
+}
+
+func FetchStorePlugins(forceRefresh bool, proxyUrl string) ([]StorePlugin, error) {
+	tree, err := getTreeData(forceRefresh, proxyUrl)
+	if err != nil {
+		return nil, err
+	}
+
 	pluginMap := make(map[string]*StorePlugin)
 
-	for _, item := range treeResp.Tree {
+	for _, item := range tree.Tree {
 		if !strings.HasPrefix(item.Path, "plugins/") {
 			continue
 		}
@@ -104,18 +112,14 @@ func FetchStorePlugins(forceRefresh bool, proxyUrl string) ([]StorePlugin, error
 
 	var plugins []StorePlugin
 	for _, p := range pluginMap {
-		if p.FileCount > 0 { // Only include plugins with files
+		if p.FileCount > 0 {
 			plugins = append(plugins, *p)
 		}
 	}
 
-	storeCache = plugins
-	storeCacheTime = time.Now()
-
 	return markInstalledPlugins(plugins), nil
 }
 
-// markInstalledPlugins 根据本地目录判断哪些商店插件已安装，每次调用都实时重新计算
 func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 	storePath := getStorePath()
 	installedSet := make(map[string]bool)
@@ -135,23 +139,15 @@ func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 	return result
 }
 
-// DownloadStorePlugin downloads a plugin from the store
 func DownloadStorePlugin(pluginName, proxyUrl string) error {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/LaoYutang/l4d2-plugins-store/git/trees/master?recursive=1")
+	tree, err := getTreeData(false, proxyUrl)
 	if err != nil {
-		return fmt.Errorf("请求 GitHub API 失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var treeResp GitHubTreeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&treeResp); err != nil {
-		return fmt.Errorf("解析 GitHub 数据失败: %v", err)
+		return err
 	}
 
 	var filesToDownload []string
 	prefix := "plugins/" + pluginName + "/"
-	for _, item := range treeResp.Tree {
+	for _, item := range tree.Tree {
 		if item.Type == "blob" && strings.HasPrefix(item.Path, prefix) {
 			filesToDownload = append(filesToDownload, item.Path)
 		}
@@ -246,7 +242,6 @@ func downloadFile(urlStr, filepath string) error {
 	if err != nil {
 		return err
 	}
-	// Add user agent to prevent some proxies from blocking
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 
 	resp, err := client.Do(req)
