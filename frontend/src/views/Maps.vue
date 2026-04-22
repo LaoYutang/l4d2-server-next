@@ -22,7 +22,8 @@
   const selectedRowKeys = ref<string[]>([]);
 
   // Upload
-  const fileList = ref([]);
+  const fileList = ref<any[]>([]);
+  const uploadSpeeds = ref<Record<string, string>>({});
   const newTaskUrl = ref('');
   const addingTask = ref(false);
   const addTaskVisible = ref(false);
@@ -111,16 +112,23 @@
   const customRequest = async (options: any) => {
     const { file, onSuccess, onError, onProgress } = options;
     try {
-      await api.uploadMap(file, (percent: number) => {
+      await api.uploadMap(file, ({ percent, speed }: { percent: number; speed: string }) => {
+        uploadSpeeds.value[file.name] = speed;
         onProgress({ percent });
       });
+      delete uploadSpeeds.value[file.name];
       message.success(`${file.name} 上传成功`);
       onSuccess('Ok');
       loadMaps();
     } catch (e: any) {
+      delete uploadSpeeds.value[file.name];
       message.error(`上传 ${file.name} 失败: ${e.message}`);
       onError(e);
     }
+  };
+
+  const removeUploadFile = (uid: string) => {
+    fileList.value = fileList.value.filter((f: any) => f.uid !== uid);
   };
 
   const deleteMap = async (name: string) => {
@@ -397,6 +405,7 @@
             name="file"
             :multiple="true"
             :customRequest="customRequest"
+            :showUploadList="false"
             accept=".vpk,.zip,.rar,.7z"
           >
             <p class="ant-upload-drag-icon">
@@ -405,6 +414,44 @@
             <p class="ant-upload-text">点击或拖拽上传地图文件</p>
             <p class="ant-upload-hint">支持 .vpk, .zip, .rar, .7z 格式</p>
           </a-upload-dragger>
+
+          <!-- 自定义上传列表 -->
+          <div v-if="fileList.length > 0" class="space-y-2 mt-4">
+            <div
+              v-for="file in fileList"
+              :key="file.uid"
+              class="flex flex-col gap-1 p-2 rounded border border-gray-200 dark:border-gray-700"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-sm truncate" :title="file.name">{{ file.name }}</span>
+                  <span
+                    v-if="file.status === 'uploading' && uploadSpeeds[file.name]"
+                    class="text-xs text-gray-500 whitespace-nowrap"
+                  >
+                    {{ uploadSpeeds[file.name] }}
+                  </span>
+                </div>
+                <a-button
+                  type="text"
+                  size="small"
+                  danger
+                  @click="removeUploadFile(file.uid)"
+                >
+                  <template #icon><close-circle-outlined /></template>
+                </a-button>
+              </div>
+              <a-progress
+                v-if="file.status === 'uploading' || file.status === 'done' || file.status === 'error'"
+                :percent="Number(((file.percent || 0)).toFixed(1))"
+                size="small"
+                :show-info="false"
+                :status="
+                  file.status === 'error' ? 'exception' : file.status === 'done' ? 'success' : 'active'
+                "
+              />
+            </div>
+          </div>
         </div>
       </a-tab-pane>
 

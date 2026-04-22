@@ -343,17 +343,45 @@ class ApiService {
     return response.json();
   }
 
-  async uploadMap(file: File, onProgress?: (percent: number) => void) {
+  async uploadMap(file: File, onProgress?: (data: { percent: number; speed: string }) => void) {
+    const formatSpeed = (bytesPerSecond: number): string => {
+      if (bytesPerSecond < 1024) {
+        return `${bytesPerSecond.toFixed(2)} B/s`;
+      } else if (bytesPerSecond < 1024 * 1024) {
+        return `${(bytesPerSecond / 1024).toFixed(2)} KB/s`;
+      } else if (bytesPerSecond < 1024 * 1024 * 1024) {
+        return `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
+      } else {
+        return `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(2)} GB/s`;
+      }
+    };
+
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const fd = new FormData();
       fd.append('password', this.getPassword());
       fd.append('map', file);
 
+      let lastTime = 0;
+      let lastLoaded = 0;
+
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {
+          const now = Date.now();
           const percent = (e.loaded / e.total) * 100;
-          onProgress(percent);
+
+          let speed = '0 B/s';
+          if (lastTime > 0) {
+            const timeDiff = (now - lastTime) / 1000;
+            const bytesDiff = e.loaded - lastLoaded;
+            if (timeDiff > 0) {
+              speed = formatSpeed(bytesDiff / timeDiff);
+            }
+          }
+
+          lastTime = now;
+          lastLoaded = e.loaded;
+          onProgress({ percent, speed });
         }
       });
 
