@@ -331,6 +331,7 @@ func UploadCancel(c *gin.Context) {
 // StartChunkUploadCleaner 启动定时清理长期未活动的上传临时目录
 func StartChunkUploadCleaner() {
 	go func() {
+		cleanStaleUploads()
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
