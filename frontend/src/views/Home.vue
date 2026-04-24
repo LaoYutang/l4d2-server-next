@@ -163,8 +163,12 @@
       content: `SteamID: ${steamId}`,
       onOk: async () => {
         try {
-          await api.addAdmin(steamId, userName);
-          message.success(`已添加 ${userName} 为管理员`);
+          const result = await api.addAdmin(steamId, userName);
+          if (result.reload) {
+            message.success(`已添加 ${userName} 为管理员`);
+          } else {
+            message.warning(`已添加 ${userName} 为管理员，但游戏内权限刷新失败，请检查服务器状态或手动执行 sm_reloadadmins`);
+          }
         } catch (e: any) {
           message.error('添加失败: ' + e.message);
         }

@@ -28,6 +28,17 @@ type AddAdminRequest struct {
 	Remark  string `json:"remark"`
 }
 
+func reloadAdmins() error {
+	conn, err := getRconConnection()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	_, err = conn.Execute("sm_reloadadmins")
+	return err
+}
+
 func AddAdmin(c *gin.Context) {
 	role, _ := c.Get("role")
 	if role != "admin" {
@@ -52,7 +63,12 @@ func AddAdmin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "添加成功"})
+	if reloadErr := reloadAdmins(); reloadErr != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "添加成功", "reload": false, "reload_error": reloadErr.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "添加成功", "reload": true})
 }
 
 type DeleteAdminRequest struct {
@@ -83,5 +99,10 @@ func DeleteAdmin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
+	if reloadErr := reloadAdmins(); reloadErr != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "删除成功", "reload": false, "reload_error": reloadErr.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "删除成功", "reload": true})
 }

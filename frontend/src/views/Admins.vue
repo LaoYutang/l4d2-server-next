@@ -60,8 +60,12 @@
 
     adding.value = true;
     try {
-      await api.addAdmin(form.steamid, form.remark);
-      message.success('添加管理员成功');
+      const result = await api.addAdmin(form.steamid, form.remark);
+      if (result.reload) {
+        message.success('添加管理员成功');
+      } else {
+        message.warning('添加管理员成功，但游戏内权限刷新失败，请检查服务器状态或手动执行 sm_reloadadmins');
+      }
       addModalVisible.value = false;
       form.steamid = '';
       form.remark = '';
@@ -81,8 +85,12 @@
       okType: 'danger',
       onOk: async () => {
         try {
-          await api.deleteAdmin(admin.steamid);
-          message.success('删除成功');
+          const result = await api.deleteAdmin(admin.steamid);
+          if (result.reload) {
+            message.success('删除成功');
+          } else {
+            message.warning('删除成功，但游戏内权限刷新失败，请检查服务器状态或手动执行 sm_reloadadmins');
+          }
           fetchAdmins();
         } catch (e: any) {
           message.error('删除失败: ' + e.message);
