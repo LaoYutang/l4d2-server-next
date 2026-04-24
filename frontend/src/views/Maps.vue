@@ -12,6 +12,7 @@
     PlusOutlined,
     ExclamationCircleOutlined,
     CloseCircleOutlined,
+    PlayCircleOutlined,
   } from '@ant-design/icons-vue';
 
   const activeTab = ref('local');
@@ -24,6 +25,9 @@
   // Upload
   const fileList = ref<any[]>([]);
   const uploadSpeeds = ref<Record<string, string>>({});
+  const uploadStates = ref<Record<string, { uploadId: string }>>({});
+  const uploadControllers = ref<Record<string, AbortController>>({});
+  const uploadPercents = ref<Record<string, number>>({});
   const newTaskUrl = ref('');
   const addingTask = ref(false);
   const addTaskVisible = ref(false);
@@ -111,23 +115,128 @@
 
   const customRequest = async (options: any) => {
     const { file, onSuccess, onError, onProgress } = options;
+    delete uploadStates.value[file.name];
+    // 取消同文件的上一次上传（如果有）
+    const existingController = uploadControllers.value[file.name];
+    if (existingController) {
+      existingController.abort();
+    }
+    const controller = new AbortController();
+    uploadControllers.value[file.name] = controller;
+
     try {
-      await api.uploadMap(file, ({ percent, speed }: { percent: number; speed: string }) => {
-        uploadSpeeds.value[file.name] = speed;
-        onProgress({ percent });
-      });
+      const result = await api.uploadMap(
+        file,
+        ({ percent, speed }: { percent: number; speed: string }) => {
+          uploadSpeeds.value[file.name] = speed;
+          uploadPercents.value[file.name] = percent;
+          onProgress({ percent });
+        },
+        controller.signal
+      );
       delete uploadSpeeds.value[file.name];
-      message.success(`${file.name} 上传成功`);
-      onSuccess('Ok');
-      loadMaps();
+      delete uploadControllers.value[file.name];
+      if ('success' in result && result.success) {
+        delete uploadPercents.value[file.name];
+        message.success(`${file.name} 上传成功`);
+        onSuccess('Ok');
+        loadMaps();
+      } else {
+        const failed = result as { success: false; uploadId: string; uploadedChunks: number[] };
+        uploadStates.value[file.name] = { uploadId: failed.uploadId };
+        const currentPercent = uploadPercents.value[file.name] || file.percent || 0;
+        message.warning(`${file.name} 上传中断，可点击继续上传恢复`);
+        onProgress({ percent: currentPercent });
+        onError(new Error('Upload interrupted'));
+      }
     } catch (e: any) {
       delete uploadSpeeds.value[file.name];
+      delete uploadControllers.value[file.name];
+      const currentPercent = uploadPercents.value[file.name] || file.percent || 0;
+      if (e.message === '上传已取消') {
+        onProgress({ percent: currentPercent });
+        onError(e);
+        return;
+      }
       message.error(`上传 ${file.name} 失败: ${e.message}`);
+      onProgress({ percent: currentPercent });
       onError(e);
     }
   };
 
-  const removeUploadFile = (uid: string) => {
+  const resumeUpload = async (fileItem: any) => {
+    const state = uploadStates.value[fileItem.name];
+    if (!state) return;
+
+    const targetFile = fileList.value.find((f: any) => f.uid === fileItem.uid);
+    // 保持当前进度，不要清零
+    const currentPercent = targetFile?.percent || 0;
+    if (targetFile) {
+      targetFile.status = 'uploading';
+    }
+
+    const controller = new AbortController();
+    uploadControllers.value[fileItem.name] = controller;
+
+    try {
+      const fileObj = fileItem.originFileObj || fileItem;
+      await api.resumeUpload(
+        state.uploadId,
+        fileObj,
+        ({ percent, speed }: { percent: number; speed: string }) => {
+          uploadSpeeds.value[fileItem.name] = speed;
+          uploadPercents.value[fileItem.name] = percent;
+          if (targetFile) {
+            targetFile.percent = percent;
+          }
+        },
+        controller.signal
+      );
+      delete uploadSpeeds.value[fileItem.name];
+      delete uploadStates.value[fileItem.name];
+      delete uploadControllers.value[fileItem.name];
+      delete uploadPercents.value[fileItem.name];
+      message.success(`${fileItem.name} 上传成功`);
+      if (targetFile) {
+        targetFile.status = 'done';
+        targetFile.percent = 100;
+      }
+      loadMaps();
+    } catch (e: any) {
+      delete uploadSpeeds.value[fileItem.name];
+      delete uploadControllers.value[fileItem.name];
+      const failedPercent = uploadPercents.value[fileItem.name] || currentPercent;
+      if (e.message === '上传已取消') {
+        if (targetFile) {
+          targetFile.status = 'error';
+          targetFile.percent = failedPercent;
+        }
+        return;
+      }
+      message.error(`续传 ${fileItem.name} 失败: ${e.message}`);
+      if (targetFile) {
+        targetFile.status = 'error';
+        targetFile.percent = failedPercent;
+      }
+    }
+  };
+
+  const removeUploadFile = async (uid: string) => {
+    const file = fileList.value.find((f: any) => f.uid === uid);
+    if (!file) return;
+
+    // 如果有正在进行的上传，先取消
+    const controller = uploadControllers.value[file.name];
+    if (controller) {
+      controller.abort();
+      delete uploadControllers.value[file.name];
+    }
+
+    // 清理本地状态
+    delete uploadStates.value[file.name];
+    delete uploadSpeeds.value[file.name];
+    delete uploadPercents.value[file.name];
+
     fileList.value = fileList.value.filter((f: any) => f.uid !== uid);
   };
 
@@ -431,19 +540,47 @@
                   >
                     {{ uploadSpeeds[file.name] }}
                   </span>
+                  <span
+                    v-if="file.status === 'error'"
+                    class="text-xs text-red-500 whitespace-nowrap"
+                  >
+                    上传中断
+                  </span>
                 </div>
-                <a-button
-                  type="text"
-                  size="small"
-                  danger
-                  @click="removeUploadFile(file.uid)"
-                >
-                  <template #icon><close-circle-outlined /></template>
-                </a-button>
+                <a-space>
+                  <a-button
+                    v-if="file.status === 'error' && uploadStates[file.name]"
+                    type="text"
+                    size="small"
+                    class="!flex !items-center"
+                    @click="resumeUpload(file)"
+                  >
+                    <template #icon><play-circle-outlined /></template>
+                    继续上传
+                  </a-button>
+                  <a-button
+                    v-if="file.status === 'uploading'"
+                    type="text"
+                    size="small"
+                    danger
+                    @click="removeUploadFile(file.uid)"
+                  >
+                    取消
+                  </a-button>
+                  <a-button
+                    v-else
+                    type="text"
+                    size="small"
+                    danger
+                    @click="removeUploadFile(file.uid)"
+                  >
+                    <template #icon><close-circle-outlined /></template>
+                  </a-button>
+                </a-space>
               </div>
               <a-progress
                 v-if="file.status === 'uploading' || file.status === 'done' || file.status === 'error'"
-                :percent="Number(((file.percent || 0)).toFixed(1))"
+                :percent="Number((uploadPercents[file.name] || file.percent || 0).toFixed(1))"
                 size="small"
                 :show-info="false"
                 :status="

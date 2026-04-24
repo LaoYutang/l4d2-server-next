@@ -309,6 +309,8 @@ func ProcessVpkFile(vpkPath string) ([]string, error) {
 	fileName := filepath.Base(vpkPath)
 	// 移除temp_前缀（如果存在）
 	fileName = strings.TrimPrefix(fileName, "temp_")
+	// 移除merged_前缀（如果存在）
+	fileName = strings.TrimPrefix(fileName, "merged_")
 	cleanName := sanitizeFilename(fileName)
 
 	// 检查文件是否已存在

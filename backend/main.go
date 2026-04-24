@@ -21,6 +21,9 @@ func main() {
 	// Initialize Monitor
 	go controller.StartMonitor()
 
+	// Initialize Chunk Upload Cleaner
+	go controller.StartChunkUploadCleaner()
+
 	router := gin.Default()
 
 	// Initialize GeoIP
@@ -95,6 +98,11 @@ func main() {
 
 	// Root Level Protected Routes (Misc)
 	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)
+	router.POST("/upload/init", middlewares.Auth(privateKey), controller.UploadInit)
+	router.POST("/upload/chunk", middlewares.Auth(privateKey), controller.UploadChunk)
+	router.POST("/upload/status", middlewares.Auth(privateKey), controller.UploadStatus)
+	router.POST("/upload/merge", middlewares.Auth(privateKey), controller.UploadMerge)
+	router.POST("/upload/cancel", middlewares.Auth(privateKey), controller.UploadCancel)
 	router.POST("/restart", middlewares.Auth(privateKey), controller.Restart)
 	router.POST("/clear", middlewares.Auth(privateKey), controller.Clear)
 	router.POST("/list", middlewares.Auth(privateKey), controller.List)

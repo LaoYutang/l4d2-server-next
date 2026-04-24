@@ -343,65 +343,255 @@ class ApiService {
     return response.json();
   }
 
-  async uploadMap(file: File, onProgress?: (data: { percent: number; speed: string }) => void) {
-    const formatSpeed = (bytesPerSecond: number): string => {
-      if (bytesPerSecond < 1024) {
-        return `${bytesPerSecond.toFixed(2)} B/s`;
-      } else if (bytesPerSecond < 1024 * 1024) {
-        return `${(bytesPerSecond / 1024).toFixed(2)} KB/s`;
-      } else if (bytesPerSecond < 1024 * 1024 * 1024) {
-        return `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
-      } else {
-        return `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(2)} GB/s`;
-      }
-    };
+  private formatSpeed = (bytesPerSecond: number): string => {
+    if (bytesPerSecond < 1024) {
+      return `${bytesPerSecond.toFixed(2)} B/s`;
+    } else if (bytesPerSecond < 1024 * 1024) {
+      return `${(bytesPerSecond / 1024).toFixed(2)} KB/s`;
+    } else if (bytesPerSecond < 1024 * 1024 * 1024) {
+      return `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
+    } else {
+      return `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(2)} GB/s`;
+    }
+  };
 
+  private uploadChunkWithSignal(
+    uploadId: string,
+    chunkIndex: number,
+    chunk: Blob,
+    signal?: AbortSignal
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
       const fd = new FormData();
       fd.append('password', this.getPassword());
-      fd.append('map', file);
+      fd.append('uploadId', uploadId);
+      fd.append('chunkIndex', chunkIndex.toString());
+      fd.append('chunk', new File([chunk], 'chunk'));
 
-      let lastTime = 0;
-      let lastLoaded = 0;
+      const xhr = new XMLHttpRequest();
+      let isAbortedByUser = false;
 
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable && onProgress) {
-          const now = Date.now();
-          const percent = (e.loaded / e.total) * 100;
-
-          let speed = '0 B/s';
-          if (lastTime > 0) {
-            const timeDiff = (now - lastTime) / 1000;
-            const bytesDiff = e.loaded - lastLoaded;
-            if (timeDiff > 0) {
-              speed = formatSpeed(bytesDiff / timeDiff);
-            }
-          }
-
-          lastTime = now;
-          lastLoaded = e.loaded;
-          onProgress({ percent, speed });
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        if (signal) {
+          signal.removeEventListener('abort', onAbort);
         }
-      });
+      };
+
+      const onAbort = () => {
+        isAbortedByUser = true;
+        xhr.abort();
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', onAbort);
+        if (signal.aborted) {
+          cleanup();
+          reject(new Error('上传已取消'));
+          return;
+        }
+      }
+
+      // 30 秒超时：只 abort，不直接 reject，由 abort 事件统一处理
+      const timeoutId = setTimeout(() => {
+        xhr.abort();
+      }, 30000);
 
       xhr.addEventListener('load', () => {
+        cleanup();
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(xhr.responseText);
+          resolve();
         } else {
           try {
             this.handleResponseError(xhr.status);
-            reject(new Error(xhr.responseText));
+            reject(new Error(xhr.responseText || '上传失败'));
           } catch (e) {
             reject(e);
           }
         }
       });
 
-      xhr.addEventListener('error', () => reject(new Error('Network error')));
-      xhr.open('POST', '/upload');
+      xhr.addEventListener('error', () => {
+        cleanup();
+        reject(new Error('网络错误'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        cleanup();
+        if (isAbortedByUser) {
+          reject(new Error('上传已取消'));
+        } else {
+          reject(new Error('分片上传超时'));
+        }
+      });
+
+      xhr.open('POST', '/upload/chunk');
       xhr.send(fd);
     });
+  }
+
+  private async uploadChunks(
+    uploadId: string,
+    file: File,
+    pendingIndices: number[],
+    totalChunks: number,
+    completedCount: number,
+    onProgress?: (data: { percent: number; speed: string }) => void,
+    signal?: AbortSignal
+  ): Promise<number[]> {
+    const chunkSize = 5 * 1024 * 1024;
+    const concurrency = 3;
+    const uploaded: number[] = [];
+    let activeCount = 0;
+    let doneCount = completedCount;
+    let error: Error | null = null;
+    const queue = [...pendingIndices];
+
+    const startTime = Date.now();
+
+    return new Promise((resolve, reject) => {
+      const checkDone = () => {
+        if (activeCount === 0) {
+          if (error) {
+            reject(error);
+          } else if (queue.length === 0) {
+            resolve(uploaded);
+          }
+        }
+      };
+
+      const tryNext = () => {
+        if (error) return;
+        if (signal?.aborted) {
+          error = new Error('上传已取消');
+          checkDone();
+          return;
+        }
+        while (activeCount < concurrency && queue.length > 0 && !error && !signal?.aborted) {
+          const idx = queue.shift()!;
+          activeCount++;
+          const start = idx * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          const chunk = file.slice(start, end);
+
+          this.uploadChunkWithSignal(uploadId, idx, chunk, signal)
+            .then(() => {
+              uploaded.push(idx);
+              doneCount++;
+              activeCount--;
+
+              if (onProgress && !signal?.aborted) {
+                const now = Date.now();
+                const elapsed = (now - startTime) / 1000;
+                const percent = (doneCount / totalChunks) * 100;
+                // 已上传字节数：已完成分片 * chunkSize（最后一个是近似值）
+                const bytesUploaded = Math.min(doneCount * chunkSize, file.size);
+                const speed = elapsed > 0 ? this.formatSpeed(bytesUploaded / elapsed) : this.formatSpeed(0);
+                onProgress({ percent, speed });
+              }
+
+              tryNext();
+              checkDone();
+            })
+            .catch((e) => {
+              activeCount--;
+              if (!error) {
+                error = e;
+              }
+              checkDone();
+            });
+        }
+      };
+
+      tryNext();
+    });
+  }
+
+  async uploadMap(
+    file: File,
+    onProgress?: (data: { percent: number; speed: string }) => void,
+    signal?: AbortSignal
+  ): Promise<{ success: true } | { success: false; uploadId: string; uploadedChunks: number[] }> {
+    const chunkSize = 5 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    // 1. init
+    const initResponse = await this.post('/upload/init', {
+      filename: file.name,
+      fileSize: file.size,
+      totalChunks,
+    });
+    if (!initResponse.ok) throw new Error(await initResponse.text());
+    const { uploadId } = await initResponse.json();
+
+    // 2. upload all chunks
+    const pendingIndices: number[] = [];
+    for (let i = 0; i < totalChunks; i++) pendingIndices.push(i);
+
+    try {
+      await this.uploadChunks(uploadId, file, pendingIndices, totalChunks, 0, onProgress, signal);
+    } catch (e: any) {
+      if (signal?.aborted) {
+        throw new Error('上传已取消');
+      }
+      // 超时或网络错误：返回 uploadId 供续传使用
+      return { success: false, uploadId, uploadedChunks: [] };
+    }
+
+    // 3. merge
+    const mergeResponse = await this.post('/upload/merge', {
+      uploadId,
+      filename: file.name,
+    });
+    if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+    return { success: true };
+  }
+
+  async resumeUpload(
+    uploadId: string,
+    file: File,
+    onProgress?: (data: { percent: number; speed: string }) => void,
+    signal?: AbortSignal
+  ) {
+    const chunkSize = 5 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    // 1. 获取服务端已上传分片
+    const statusResponse = await this.post('/upload/status', { uploadId });
+    if (!statusResponse.ok) throw new Error(await statusResponse.text());
+    const { uploadedChunks: serverChunks } = await statusResponse.json();
+
+    const uploadedSet = new Set(serverChunks);
+    const pendingIndices: number[] = [];
+    for (let i = 0; i < totalChunks; i++) {
+      if (!uploadedSet.has(i)) pendingIndices.push(i);
+    }
+
+    if (pendingIndices.length === 0) {
+      // 所有分片都已上传，直接 merge
+      const mergeResponse = await this.post('/upload/merge', {
+        uploadId,
+        filename: file.name,
+      });
+      if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+      return;
+    }
+
+    // 2. 上传缺失分片
+    const completedCount = totalChunks - pendingIndices.length;
+    await this.uploadChunks(uploadId, file, pendingIndices, totalChunks, completedCount, onProgress, signal);
+
+    // 3. merge
+    const mergeResponse = await this.post('/upload/merge', {
+      uploadId,
+      filename: file.name,
+    });
+    if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+  }
+
+  async cancelUpload(uploadId: string) {
+    const response = await this.post('/upload/cancel', { uploadId });
+    if (!response.ok) throw new Error(await response.text());
   }
 
   async deleteMap(mapName: string) {
