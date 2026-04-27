@@ -31,22 +31,26 @@ type StorePlugin struct {
 }
 
 var (
-	treeCache     *GitHubTreeResponse
-	treeCacheTime time.Time
+	treeCache     = make(map[string]*GitHubTreeResponse)
+	treeCacheTime = make(map[string]time.Time)
 	treeCacheMut  sync.Mutex
 )
 
-func getTreeData(forceRefresh bool, proxyUrl, githubToken string) (*GitHubTreeResponse, error) {
+func getTreeData(forceRefresh bool, proxyUrl, githubToken, repo string) (*GitHubTreeResponse, error) {
+	if repo == "" {
+		repo = "LaoYutang/l4d2-plugins-store"
+	}
+
 	treeCacheMut.Lock()
 	defer treeCacheMut.Unlock()
 
-	if !forceRefresh && time.Since(treeCacheTime) < 10*time.Minute && treeCache != nil {
-		return treeCache, nil
+	if !forceRefresh && time.Since(treeCacheTime[repo]) < 10*time.Minute && treeCache[repo] != nil {
+		return treeCache[repo], nil
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	rawUrl := "https://api.github.com/repos/LaoYutang/l4d2-plugins-store/git/trees/master?recursive=1"
+	rawUrl := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/master?recursive=1", repo)
 	fetchUrl := rawUrl
 	if proxyUrl != "" {
 		proxyUrl = strings.TrimSuffix(proxyUrl, "/")
@@ -77,13 +81,13 @@ func getTreeData(forceRefresh bool, proxyUrl, githubToken string) (*GitHubTreeRe
 		return nil, fmt.Errorf("解析 GitHub 数据失败: %v", err)
 	}
 
-	treeCache = &treeResp
-	treeCacheTime = time.Now()
-	return treeCache, nil
+	treeCache[repo] = &treeResp
+	treeCacheTime[repo] = time.Now()
+	return treeCache[repo], nil
 }
 
-func FetchStorePlugins(forceRefresh bool, proxyUrl, githubToken string) ([]StorePlugin, error) {
-	tree, err := getTreeData(forceRefresh, proxyUrl, githubToken)
+func FetchStorePlugins(forceRefresh bool, proxyUrl, githubToken, repo string) ([]StorePlugin, error) {
+	tree, err := getTreeData(forceRefresh, proxyUrl, githubToken, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +146,12 @@ func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 	return result
 }
 
-func DownloadStorePlugin(pluginName, proxyUrl, githubToken string) error {
-	tree, err := getTreeData(false, proxyUrl, githubToken)
+func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
+	if repo == "" {
+		repo = "LaoYutang/l4d2-plugins-store"
+	}
+
+	tree, err := getTreeData(false, proxyUrl, githubToken, repo)
 	if err != nil {
 		return err
 	}
@@ -199,7 +207,7 @@ func DownloadStorePlugin(pluginName, proxyUrl, githubToken string) error {
 			}
 			encodedPath := strings.Join(parts, "/")
 
-			rawUrl := "https://raw.githubusercontent.com/LaoYutang/l4d2-plugins-store/master/" + encodedPath
+			rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/master/%s", repo, encodedPath)
 			downloadUrl := rawUrl
 			if proxyUrl != "" {
 				proxyUrl = strings.TrimSuffix(proxyUrl, "/")

@@ -211,22 +211,24 @@ class ApiService {
     return response.json();
   }
 
-  async getStorePlugins(forceRefresh: boolean = false, proxyUrl: string = '', githubToken: string = '') {
+  async getStorePlugins(forceRefresh: boolean = false, proxyUrl: string = '', githubToken: string = '', repo: string = '') {
     const response = await this.postJson('/plugins/store/list', {
       force_refresh: forceRefresh,
       proxy_url: proxyUrl,
       github_token: githubToken,
+      repo,
     });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     return data || [];
   }
 
-  async downloadStorePlugin(name: string, proxyUrl: string, githubToken: string = '') {
+  async downloadStorePlugin(name: string, proxyUrl: string, githubToken: string = '', repo: string = '') {
     const response = await this.postJson('/plugins/store/download', {
       name,
       proxy_url: proxyUrl,
       github_token: githubToken,
+      repo,
     });
     if (!response.ok) throw new Error(await response.text());
   }

@@ -51,6 +51,11 @@
     if (savedToken) {
       githubToken.value = savedToken;
     }
+    // Load saved custom repo
+    const savedRepo = localStorage.getItem('l4d2_manager_plugin_repo');
+    if (customRepo.value.length === 0 && savedRepo) {
+      customRepo.value = [savedRepo];
+    }
   });
 
   import { onUnmounted } from 'vue';
@@ -104,6 +109,28 @@
   // GitHub Token variables
   const githubToken = ref('');
   const tokenModalVisible = ref(false);
+
+  // Custom repo variables
+  const repoOptions = [
+    { label: '官方仓库', value: 'LaoYutang/l4d2-plugins-store' },
+  ];
+  const savedRepo = localStorage.getItem('l4d2_manager_plugin_repo');
+  const customRepo = ref<string[]>(savedRepo ? [savedRepo] : []);
+
+  watch(customRepo, (newVal) => {
+    let valToSave = '';
+    if (newVal && newVal.length > 0) {
+      if (newVal.length > 1) {
+        newVal.shift();
+      }
+      valToSave = newVal[0] || '';
+    }
+    if (valToSave) {
+      localStorage.setItem('l4d2_manager_plugin_repo', valToSave);
+    } else {
+      localStorage.removeItem('l4d2_manager_plugin_repo');
+    }
+  });
 
   // Store drawer layout
   const searchSectionRef = ref<HTMLElement | null>(null);
@@ -170,6 +197,10 @@
 
   const getPopupContainer = (trigger: HTMLElement) => {
     return footerContainerRef.value || trigger || document.body;
+  };
+
+  const getRepoTooltipContainer = () => {
+    return storeContainerRef.value || document.body;
   };
 
   const openPresetModal = async () => {
@@ -401,7 +432,8 @@
     storeLoading.value = true;
     try {
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
-      storePlugins.value = await api.getStorePlugins(forceRefresh, proxy, githubToken.value);
+      const repo = customRepo.value.length > 0 ? customRepo.value[0] || '' : '';
+      storePlugins.value = await api.getStorePlugins(forceRefresh, proxy, githubToken.value, repo);
     } catch (error: any) {
       message.error('获取商店列表失败: ' + error.message);
     } finally {
@@ -430,7 +462,8 @@
     const hide = message.loading(`正在下载 ${plugin.name}...`, 0);
     try {
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
-      await api.downloadStorePlugin(plugin.name, proxy, githubToken.value);
+      const repo = customRepo.value.length > 0 ? customRepo.value[0] || '' : '';
+      await api.downloadStorePlugin(plugin.name, proxy, githubToken.value, repo);
       message.success(`插件 ${plugin.name} 下载成功`);
       // 本地即时更新已安装状态，避免重新请求 GitHub
       const idx = storePlugins.value.findIndex((p) => p.name === plugin.name);
@@ -1063,6 +1096,30 @@
       </template>
       <div ref="storeContainerRef" class="flex flex-col flex-1 min-h-0">
         <div ref="searchSectionRef" class="mb-4 space-y-4 flex-shrink-0">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="whitespace-nowrap font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1"
+              >自定义仓库:
+              <a-tooltip placement="topLeft" :getPopupContainer="getRepoTooltipContainer">
+                <template #title>
+                  <div style="max-width: 280px; word-break: break-all; white-space: normal;">
+                    仓库必须为公开仓库，且根目录下需包含 plugins/ 文件夹（每个插件一个子目录），分支固定为 master。
+                  </div>
+                </template>
+                <span class="text-gray-400 cursor-help hover:text-gray-500 dark:hover:text-gray-300 text-xs">(?)</span>
+              </a-tooltip>
+            </span>
+            <a-select
+              v-model:value="customRepo"
+              class="w-full sm:flex-1"
+              :options="repoOptions"
+              mode="tags"
+              :max-tag-count="1"
+              show-search
+              allow-clear
+              placeholder="默认使用官方仓库"
+            />
+          </div>
+
           <div class="flex flex-col sm:flex-row sm:items-center gap-2">
             <span class="whitespace-nowrap font-medium text-gray-700 dark:text-gray-300"
               >加速源:</span
