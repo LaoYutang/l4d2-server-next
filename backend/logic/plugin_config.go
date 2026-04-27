@@ -40,6 +40,12 @@ func GetPluginConfigs(pluginName string) ([]PluginConfigFile, error) {
 				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".smx") {
 					baseName := strings.TrimSuffix(entry.Name(), ".smx")
 					candidateConfigs[baseName+".cfg"] = true
+
+					if strings.HasPrefix(baseName, "l4d2_") {
+						candidateConfigs["l4d_"+strings.TrimPrefix(baseName, "l4d2_")+".cfg"] = true
+					} else if strings.HasPrefix(baseName, "l4d_") {
+						candidateConfigs["l4d2_"+strings.TrimPrefix(baseName, "l4d_")+".cfg"] = true
+					}
 				}
 			}
 		}
