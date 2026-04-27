@@ -4,6 +4,7 @@ import (
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/controller"
 	"l4d2-manager-next/db"
+	"l4d2-manager-next/logic"
 	"l4d2-manager-next/middlewares"
 	"l4d2-manager-next/utility"
 	"net/http"
@@ -23,6 +24,9 @@ func main() {
 
 	// Initialize Chunk Upload Cleaner
 	go controller.StartChunkUploadCleaner()
+
+	// Clean leftover plugin download temp directories from previous runs
+	go logic.CleanDownloadTemp()
 
 	router := gin.Default()
 

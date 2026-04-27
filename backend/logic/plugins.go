@@ -23,6 +23,7 @@ const (
 	DefaultStorePath   = "./plugins"
 	ConfigFileName     = "plugins.yaml"
 	PluginsKey         = "enabled_plugins"
+	DownloadTempDir    = ".download_temp"
 )
 
 var (
@@ -139,6 +140,9 @@ func GetPlugins() ([]Plugin, error) {
 			continue
 		}
 		name := entry.Name()
+		if name == DownloadTempDir {
+			continue
+		}
 		// Exact match check
 		status := "disabled"
 		if enabledMap[name] {

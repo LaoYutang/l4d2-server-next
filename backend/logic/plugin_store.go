@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type GitHubTreeResponse struct {
@@ -132,7 +134,7 @@ func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 	installedSet := make(map[string]bool)
 	if entries, err := os.ReadDir(storePath); err == nil {
 		for _, e := range entries {
-			if e.IsDir() {
+			if e.IsDir() && e.Name() != DownloadTempDir {
 				installedSet[e.Name()] = true
 			}
 		}
@@ -144,6 +146,17 @@ func markInstalledPlugins(plugins []StorePlugin) []StorePlugin {
 		result[i].Installed = installedSet[result[i].Name]
 	}
 	return result
+}
+
+func getDownloadTempPath(id string) string {
+	return filepath.Join(getStorePath(), DownloadTempDir, id)
+}
+
+// CleanDownloadTemp 启动时整体清空 .download_temp/，删除上次运行残留。
+// 调用点位于 main.go 的 router.Run 之前，此时 HTTP 服务尚未对外提供，
+// 不可能存在正在进行的下载，整体 RemoveAll 安全。
+func CleanDownloadTemp() {
+	os.RemoveAll(filepath.Join(getStorePath(), DownloadTempDir))
 }
 
 func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
@@ -169,21 +182,16 @@ func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
 	}
 
 	storePath := getStorePath()
-	destDir := filepath.Join(storePath, pluginName)
-	if _, err := os.Stat(destDir); !os.IsNotExist(err) {
+	finalDir := filepath.Join(storePath, pluginName)
+	if _, err := os.Stat(finalDir); !os.IsNotExist(err) {
 		return fmt.Errorf("插件 %s 已存在，请先删除", pluginName)
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("创建插件目录失败: %v", err)
+	tempDir := getDownloadTempPath(uuid.New().String())
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return fmt.Errorf("创建临时目录失败: %v", err)
 	}
-
-	success := false
-	defer func() {
-		if !success {
-			os.RemoveAll(destDir)
-		}
-	}()
+	defer os.RemoveAll(tempDir)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(filesToDownload))
@@ -194,7 +202,7 @@ func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
 			defer wg.Done()
 
 			relPath := strings.TrimPrefix(path, prefix)
-			localPath := filepath.Join(destDir, relPath)
+			localPath := filepath.Join(tempDir, relPath)
 
 			if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 				errChan <- fmt.Errorf("创建目录失败: %v", err)
@@ -230,7 +238,13 @@ func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
 		}
 	}
 
-	success = true
+	if _, err := os.Stat(finalDir); !os.IsNotExist(err) {
+		return fmt.Errorf("插件 %s 已存在，请先删除", pluginName)
+	}
+	if err := os.Rename(tempDir, finalDir); err != nil {
+		return fmt.Errorf("提交插件目录失败: %v", err)
+	}
+
 	writePluginSource(pluginName, "store")
 	return nil
 }
