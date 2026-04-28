@@ -111,9 +111,7 @@
   const tokenModalVisible = ref(false);
 
   // Custom repo variables
-  const repoOptions = [
-    { label: '官方仓库', value: 'LaoYutang/l4d2-plugins-store' },
-  ];
+  const repoOptions = [{ label: '官方仓库', value: 'LaoYutang/l4d2-plugins-store' }];
   const savedRepo = localStorage.getItem('l4d2_manager_plugin_repo');
   const customRepo = ref<string[]>(savedRepo ? [savedRepo] : []);
 
@@ -151,7 +149,7 @@
   const getModalContainer = () => document.body;
 
   const proxyOptions = [
-    { label: 'laoyutang.cn', value: 'https://gh-proxy.laoyutang.cn/' },
+    { label: 'laoyutang.cn(仅官方插件库可用)', value: 'https://gh-proxy.laoyutang.cn/' },
     { label: 'gh.dpik.top', value: 'https://gh.dpik.top/' },
     { label: 'gh-proxy.com', value: 'https://gh-proxy.com/' },
     { label: 'hk.gh-proxy.com', value: 'https://hk.gh-proxy.com/' },
@@ -1097,15 +1095,20 @@
       <div ref="storeContainerRef" class="flex flex-col flex-1 min-h-0">
         <div ref="searchSectionRef" class="mb-4 space-y-4 flex-shrink-0">
           <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-            <span class="whitespace-nowrap font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1"
+            <span
+              class="whitespace-nowrap font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1"
               >自定义仓库:
               <a-tooltip placement="topLeft" :getPopupContainer="getRepoTooltipContainer">
                 <template #title>
-                  <div style="max-width: 280px; word-break: break-all; white-space: normal;">
-                    仓库必须为公开仓库，且根目录下需包含 plugins/ 文件夹（每个插件一个子目录），分支固定为 master。
+                  <div style="max-width: 280px; word-break: break-all; white-space: normal">
+                    仓库必须为公开仓库，且根目录下需包含 plugins/
+                    文件夹（每个插件一个子目录），分支固定为 master。
                   </div>
                 </template>
-                <span class="text-gray-400 cursor-help hover:text-gray-500 dark:hover:text-gray-300 text-xs">(?)</span>
+                <span
+                  class="text-gray-400 cursor-help hover:text-gray-500 dark:hover:text-gray-300 text-xs"
+                  >(?)</span
+                >
               </a-tooltip>
             </span>
             <a-select
