@@ -457,6 +457,12 @@ pull_image() {
     local full_image
     full_image=$(get_image "$image")
 
+    # 如本地已有相同镜像的其他 registry 标签，直接迁移
+    if ensure_image_tag "$image"; then
+        print_success "${display_name} 镜像已存在，跳过拉取"
+        return 0
+    fi
+
     print_info "正在拉取 ${display_name}: ${full_image}"
     echo ""
     if docker pull "$full_image"; then
@@ -486,6 +492,36 @@ show_image_info() {
     else
         echo -e "    状态: ${DIM}未拉取${NC}"
     fi
+}
+
+# 确保本地存在指定 registry 的镜像标签；如不存在，尝试从本地其他 registry 标签迁移
+ensure_image_tag() {
+    local image="$1"
+    local full_image
+    full_image=$(get_image "$image")
+
+    # 已存在则无需操作
+    if docker image inspect "$full_image" &>/dev/null; then
+        return 0
+    fi
+
+    # 查找本地已有的相同镜像（匹配任何 registry 前缀）
+    local existing_image
+    existing_image=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(^|/)${image}$" | head -1)
+
+    if [[ -n "$existing_image" && "$existing_image" != "$full_image" ]]; then
+        print_info "迁移镜像标签: ${existing_image} -> ${full_image}"
+        docker tag "$existing_image" "$full_image"
+        return 0
+    fi
+
+    return 1
+}
+
+# 批量迁移游戏服务器和管理面板镜像标签
+migrate_image_tags() {
+    ensure_image_tag "$IMAGE_GAME"
+    ensure_image_tag "$IMAGE_MANAGER"
 }
 
 # ═══════════════════════════════════════════
@@ -1358,6 +1394,10 @@ menu_images() {
                     print_success "加速源已设置为: ${MIRROR_URL}"
                 else
                     print_success "加速源已清除"
+                fi
+                # 迁移已有镜像标签到新 registry
+                if require_docker; then
+                    migrate_image_tags
                 fi
                 # 更新 compose 文件中的镜像地址
                 if [[ "$(count_instances)" -gt 0 ]]; then
