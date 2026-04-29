@@ -217,8 +217,17 @@ load_mirror() {
     fi
 }
 
+# 去除镜像源地址中的协议头
+normalize_mirror_url() {
+    local url="$1"
+    url="${url#http://}"
+    url="${url#https://}"
+    echo "$url"
+}
+
 # 保存镜像加速源配置
 save_mirror() {
+    MIRROR_URL=$(normalize_mirror_url "$MIRROR_URL")
     printf 'MIRROR_URL=%q\n' "$MIRROR_URL" > "$MIRROR_CONF"
 }
 
@@ -226,8 +235,10 @@ save_mirror() {
 get_image() {
     local image="$1"
     load_mirror
-    if [[ -n "$MIRROR_URL" ]]; then
-        echo "${MIRROR_URL}/${image}"
+    local mirror_url
+    mirror_url=$(normalize_mirror_url "$MIRROR_URL")
+    if [[ -n "$mirror_url" ]]; then
+        echo "${mirror_url}/${image}"
     else
         echo "$image"
     fi
@@ -568,6 +579,7 @@ try_import_existing() {
     if [[ "$image_line" == *"/"*"/"*"/"* ]]; then
         local mirror
         mirror=$(echo "$image_line" | sed "s|/laoyutang/.*||")
+        mirror=$(normalize_mirror_url "$mirror")
         if [[ -n "$mirror" ]]; then
             MIRROR_URL="$mirror"
             save_mirror
