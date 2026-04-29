@@ -468,11 +468,8 @@ pull_image() {
     local full_image
     full_image=$(get_image "$image")
 
-    # 如本地已有相同镜像的其他 registry 标签，直接迁移
-    if ensure_image_tag "$image"; then
-        print_success "${display_name} 镜像已存在，跳过拉取"
-        return 0
-    fi
+    # 如本地有相同镜像的其他 registry 标签，先静默迁移（不影响正常更新拉取）
+    ensure_image_tag "$image" > /dev/null 2>&1 || true
 
     print_info "正在拉取 ${display_name}: ${full_image}"
     echo ""
