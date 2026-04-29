@@ -663,7 +663,7 @@ func restoreServerConfig(cfg *BackupServerConfig) {
 		fmt.Printf("Warning: failed to restore server.cfg: %v\n", err)
 	}
 
-	syncFiles := []string{"server.cfg.100tick", "server.cfg.60tick", "server.cfg.30tick"}
+	syncFiles := []string{"server.cfg.128tick", "server.cfg.100tick", "server.cfg.60tick", "server.cfg.30tick"}
 	for _, fname := range syncFiles {
 		fpath := filepath.Join(consts.GamePath, "cfg", fname)
 		if _, err := os.Stat(fpath); err == nil {

@@ -708,11 +708,13 @@ quick_setup() {
     print_menu_item "1" "30  tick"
     print_menu_item "2" "60  tick"
     print_menu_item "3" "100 tick" "推荐"
+    print_menu_item "4" "128 tick"
     local tick_choice
     tick_choice=$(read_input "选择 Tick 率" "3")
     case "$tick_choice" in
         1) TICK=30 ;;
         2) TICK=60 ;;
+        4) TICK=128 ;;
         *) TICK=100 ;;
     esac
 
@@ -816,11 +818,13 @@ add_instance() {
     print_menu_item "1" "30  tick"
     print_menu_item "2" "60  tick"
     print_menu_item "3" "100 tick" "推荐"
+    print_menu_item "4" "128 tick"
     local tick_choice
     tick_choice=$(read_input "选择 Tick 率" "3")
     case "$tick_choice" in
         1) TICK=30 ;;
         2) TICK=60 ;;
+        4) TICK=128 ;;
         *) TICK=100 ;;
     esac
 
@@ -1021,6 +1025,7 @@ _edit_game_server() {
                 print_menu_item "1" "30  tick"
                 print_menu_item "2" "60  tick"
                 print_menu_item "3" "100 tick" "推荐"
+                print_menu_item "4" "128 tick"
                 print_menu_item "0" "不修改"
                 echo ""
                 local tc
@@ -1029,6 +1034,7 @@ _edit_game_server() {
                     1) TICK=30;  print_success "Tick 率已设为 30" ;;
                     2) TICK=60;  print_success "Tick 率已设为 60" ;;
                     3) TICK=100; print_success "Tick 率已设为 100" ;;
+                    4) TICK=128; print_success "Tick 率已设为 128" ;;
                 esac
                 press_enter ;;
             3)

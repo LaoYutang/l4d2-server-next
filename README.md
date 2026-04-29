@@ -112,7 +112,7 @@ services:
     networks:
       - l4d2-network
     environment:
-      - L4D2_TICK=100 # 30,60,100
+      - L4D2_TICK=100 # 30,60,100,128
       - L4D2_VAC=false # false: 添加-insecure, true: 不添加
       - L4D2_PORT=27015
       - L4D2_RCON_PASSWORD=[rcon密码] # 请修改此处

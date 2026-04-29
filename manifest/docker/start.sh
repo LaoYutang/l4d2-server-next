@@ -12,6 +12,10 @@ elif [ "${L4D2_TICK}" = "100" ]; then
     echo "设置tickrate为100"
     cp /l4d2/left4dead2/cfg/server.cfg.100tick /l4d2/left4dead2/cfg/server.cfg
     REAL_TICK=100
+elif [ "${L4D2_TICK}" = "128" ]; then
+    echo "设置tickrate为128"
+    cp /l4d2/left4dead2/cfg/server.cfg.128tick /l4d2/left4dead2/cfg/server.cfg
+    REAL_TICK=128
 else
     echo "设置tickrate为30"
     cp /l4d2/left4dead2/cfg/server.cfg.30tick /l4d2/left4dead2/cfg/server.cfg
