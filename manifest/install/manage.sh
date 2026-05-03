@@ -338,6 +338,8 @@ generate_compose() {
             printf '%s\n' "      - /etc/timezone:/etc/timezone:ro"
             printf '%s\n' "    networks:"
             printf '%s\n' "      - l4d2-network"
+            printf '%s\n' "    security_opt:"
+            printf '%s\n' "      - seccomp:unconfined # Docker 29.3+ 默认 seccomp 与 32 位 srcds 不兼容，低版本可省略此项"
             printf '%s\n' "    environment:"
             list_env "L4D2_TICK" "${TICK}"
             list_env "L4D2_VAC" "${VAC}"

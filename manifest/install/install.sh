@@ -73,6 +73,8 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - l4d2-network
+    security_opt:
+      - seccomp:unconfined # Docker 29.3+ 默认 seccomp 与 32 位 srcds 不兼容，低版本可省略此项
     environment:
       - L4D2_TICK=100 # 30,60,100,128
       - L4D2_VAC=false # false: 添加-insecure, true: 不添加

@@ -111,6 +111,8 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - l4d2-network
+    security_opt:
+      - seccomp:unconfined # Docker 29.3+ 默认 seccomp 与 32 位 srcds 不兼容，低版本可省略此项
     environment:
       - L4D2_TICK=100 # 30,60,100,128
       - L4D2_VAC=false # false: 添加-insecure, true: 不添加
@@ -144,6 +146,8 @@ services:
 ```sh
 docker-compose up -d
 ```
+
+> **关于 `security_opt` 配置**：Docker 29.3+ 版本的默认 seccomp profile 收紧了对部分 32 位 syscalls 的放行规则，导致 `srcds_linux` 无法正常启动。如果你使用的是 **Docker 29.3 以下版本**，可以删除上述 `security_opt` 字段。
 
 ### 2. 仅部署管理器 (Linux)
 
