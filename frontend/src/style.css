@@ -78,7 +78,6 @@ body {
 }
 
 :root.dark .markdown-body code {
-  background: #374151;
   color: #f472b6;
 }
 
