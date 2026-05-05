@@ -577,6 +577,14 @@
     detailModalVisible.value = true;
   };
 
+  const localPluginRow = (record: Plugin) => ({
+    onDblclick: () => openDetail(record.name),
+  });
+
+  const storePluginRow = (record: StorePlugin) => ({
+    onDblclick: () => openDetail(record.name, true),
+  });
+
   const enabledColumns = computed(() => {
     const cols = [
       {
@@ -788,6 +796,7 @@
             row-key="name"
             :scroll="{ x: 'max-content' }"
             :row-selection="rowSelection"
+            :customRow="localPluginRow"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -958,6 +967,7 @@
             row-key="name"
             :scroll="{ x: 'max-content' }"
             :row-selection="rowSelection"
+            :customRow="localPluginRow"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -1226,6 +1236,7 @@
           :pagination="storePagination"
           @change="handleStoreTableChange"
           size="middle"
+          :customRow="storePluginRow"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'name'">
