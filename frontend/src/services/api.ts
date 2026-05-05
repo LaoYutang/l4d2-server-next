@@ -233,6 +233,18 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
   }
 
+  async getPluginReadme(name: string, fromStore: boolean = false, proxyUrl: string = '', githubToken: string = '', repo: string = '') {
+    const response = await this.postJson('/plugins/readme', {
+      name,
+      from_store: fromStore,
+      proxy_url: proxyUrl,
+      github_token: githubToken,
+      repo,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
   async listBackups() {
     const response = await this.post('/plugins/backups/list');
     if (!response.ok) throw new Error(await response.text());

@@ -30,10 +30,12 @@
     DownloadOutlined,
     CheckCircleOutlined,
     LinkOutlined,
+    FileTextOutlined,
   } from '@ant-design/icons-vue';
   import { api } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
+  import PluginDetailModal from '../components/PluginDetailModal.vue';
   import { useAuthStore } from '../stores/auth';
 
   const authStore = useAuthStore();
@@ -184,6 +186,9 @@
 
   const configModalVisible = ref(false);
   const currentConfigPlugin = ref('');
+  const detailModalVisible = ref(false);
+  const currentDetailPlugin = ref('');
+  const currentDetailIsStore = ref(false);
   const pendingFiles = ref<File[]>([]);
   let uploadTimer: any = null;
 
@@ -566,6 +571,12 @@
     configModalVisible.value = true;
   };
 
+  const openDetail = (pluginName: string, isStore: boolean = false) => {
+    currentDetailPlugin.value = pluginName;
+    currentDetailIsStore.value = isStore;
+    detailModalVisible.value = true;
+  };
+
   const enabledColumns = computed(() => {
     const cols = [
       {
@@ -627,7 +638,7 @@
       {
         title: '操作',
         key: 'actions',
-        width: 110,
+        width: 200,
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'size') : cols;
@@ -808,6 +819,15 @@
                     <template #icon><SettingOutlined /></template>
                     配置
                   </a-button>
+                  <a-button
+                    type="default"
+                    size="small"
+                    class="!flex !items-center !justify-center"
+                    @click="openDetail((record as Plugin).name)"
+                  >
+                    <template #icon><FileTextOutlined /></template>
+                    详情
+                  </a-button>
                   <a-popconfirm
                     v-if="authStore.isAdmin"
                     title="确定要禁用这个插件吗？"
@@ -977,6 +997,16 @@
                       启用
                     </a-button>
                   </a-popconfirm>
+
+                  <a-button
+                    type="default"
+                    size="small"
+                    class="!flex !items-center !justify-center"
+                    @click="openDetail((record as Plugin).name)"
+                  >
+                    <template #icon><FileTextOutlined /></template>
+                    详情
+                  </a-button>
 
                   <a-popconfirm
                     v-if="authStore.isAdmin"
@@ -1214,25 +1244,36 @@
             </template>
 
             <template v-else-if="column.key === 'actions'">
-              <a-tag
-                v-if="(record as StorePlugin).installed"
-                color="success"
-                class="!flex !items-center !w-fit gap-1 !cursor-default"
-              >
-                <template #icon><CheckCircleOutlined /></template>
-                已安装
-              </a-tag>
-              <a-button
-                v-else
-                type="primary"
-                size="small"
-                :loading="downloadingPlugin[record.name]"
-                @click="downloadFromStore(record as StorePlugin)"
-                class="!flex !items-center !justify-center"
-              >
-                <template #icon><DownloadOutlined /></template>
-                下载
-              </a-button>
+              <div class="flex items-center gap-1">
+                <a-button
+                  type="default"
+                  size="small"
+                  class="!flex !items-center !justify-center"
+                  @click="openDetail((record as StorePlugin).name, true)"
+                >
+                  <template #icon><FileTextOutlined /></template>
+                  详情
+                </a-button>
+                <a-tag
+                  v-if="(record as StorePlugin).installed"
+                  color="success"
+                  class="!flex !items-center !w-fit gap-1 !cursor-default"
+                >
+                  <template #icon><CheckCircleOutlined /></template>
+                  已安装
+                </a-tag>
+                <a-button
+                  v-else
+                  type="primary"
+                  size="small"
+                  :loading="downloadingPlugin[record.name]"
+                  @click="downloadFromStore(record as StorePlugin)"
+                  class="!flex !items-center !justify-center"
+                >
+                  <template #icon><DownloadOutlined /></template>
+                  下载
+                </a-button>
+              </div>
             </template>
           </template>
         </a-table>
@@ -1276,6 +1317,15 @@
     </a-modal>
 
     <PluginConfigModal v-model:open="configModalVisible" :plugin-name="currentConfigPlugin" />
+
+    <PluginDetailModal
+      v-model:open="detailModalVisible"
+      :plugin-name="currentDetailPlugin"
+      :is-store-plugin="currentDetailIsStore"
+      :proxy-url="selectedProxy[0] || ''"
+      :github-token="githubToken"
+      :repo="customRepo[0] || ''"
+    />
   </div>
 </template>
 

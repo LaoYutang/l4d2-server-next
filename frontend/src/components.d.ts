@@ -54,6 +54,7 @@ declare module 'vue' {
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
     PluginConfigModal: typeof import('./components/PluginConfigModal.vue')['default']
+    PluginDetailModal: typeof import('./components/PluginDetailModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

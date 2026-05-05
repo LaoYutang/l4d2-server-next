@@ -271,3 +271,43 @@ func ApplyPreset(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "预设应用成功"})
 }
+
+type GetPluginReadmeRequest struct {
+	Name        string `json:"name"`
+	FromStore   bool   `json:"from_store"`
+	ProxyUrl    string `json:"proxy_url"`
+	GithubToken string `json:"github_token"`
+	Repo        string `json:"repo"`
+}
+
+func GetPluginReadme(c *gin.Context) {
+	var req GetPluginReadmeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+
+	if req.Name == "" {
+		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
+		return
+	}
+
+	// Try local read first
+	content, fileName, err := logic.GetPluginReadme(req.Name)
+	if err == nil {
+		c.JSON(http.StatusOK, gin.H{"content": content, "file_name": fileName})
+		return
+	}
+
+	// If from_store and local failed, try fetching from GitHub
+	if req.FromStore {
+		content, fileName, err2 := logic.FetchStorePluginReadme(req.Name, req.ProxyUrl, req.GithubToken, req.Repo)
+		if err2 == nil {
+			c.JSON(http.StatusOK, gin.H{"content": content, "file_name": fileName})
+			return
+		}
+	}
+
+	// No readme found — not an error, just empty
+	c.JSON(http.StatusOK, gin.H{"content": "", "file_name": ""})
+}
