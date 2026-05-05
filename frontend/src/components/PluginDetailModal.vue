@@ -105,10 +105,6 @@ const handleCancel = () => {
   overflow-wrap: break-word;
 }
 
-:global(.dark) .markdown-body {
-  color: #d1d5db;
-}
-
 /* Headings */
 .markdown-body :deep(h1) {
   font-size: 1.75rem;
@@ -118,10 +114,6 @@ const handleCancel = () => {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #e5e7eb;
   color: #111827;
-}
-:global(.dark) .markdown-body :deep(h1) {
-  border-bottom-color: #374151;
-  color: #f9fafb;
 }
 
 .markdown-body :deep(h2) {
@@ -133,10 +125,6 @@ const handleCancel = () => {
   border-bottom: 1px solid #e5e7eb;
   color: #1f2937;
 }
-:global(.dark) .markdown-body :deep(h2) {
-  border-bottom-color: #374151;
-  color: #f3f4f6;
-}
 
 .markdown-body :deep(h3) {
   font-size: 1.25rem;
@@ -145,15 +133,13 @@ const handleCancel = () => {
   margin-bottom: 0.5rem;
   color: #374151;
 }
-:global(.dark) .markdown-body :deep(h3) {
-  color: #e5e7eb;
-}
 
 .markdown-body :deep(h4) {
   font-size: 1.1rem;
   font-weight: 600;
   margin-top: 0.875rem;
   margin-bottom: 0.5rem;
+  color: #374151;
 }
 
 .markdown-body :deep(h5),
@@ -162,12 +148,18 @@ const handleCancel = () => {
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.5rem;
+  color: #4b5563;
 }
 
 /* Paragraphs */
 .markdown-body :deep(p) {
   margin-top: 0;
   margin-bottom: 0.75rem;
+}
+
+.markdown-body :deep(strong),
+.markdown-body :deep(em) {
+  color: inherit;
 }
 
 /* Links */
@@ -210,11 +202,6 @@ const handleCancel = () => {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   word-break: break-word;
 }
-:global(.dark) .markdown-body :deep(code) {
-  background: #374151;
-  color: #f472b6;
-}
-
 /* Lists */
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
@@ -251,11 +238,6 @@ const handleCancel = () => {
   color: #6b7280;
   border-radius: 0 6px 6px 0;
 }
-:global(.dark) .markdown-body :deep(blockquote) {
-  border-left-color: #4b5563;
-  background: #1f2937;
-  color: #9ca3af;
-}
 
 .markdown-body :deep(blockquote p) {
   margin-bottom: 0;
@@ -278,24 +260,17 @@ const handleCancel = () => {
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
-:global(.dark) .markdown-body :deep(th),
-:global(.dark) .markdown-body :deep(td) {
-  border-color: #4b5563;
-}
-
 .markdown-body :deep(th) {
   background: #f3f4f6;
   font-weight: 600;
-}
-:global(.dark) .markdown-body :deep(th) {
-  background: #374151;
 }
 
 .markdown-body :deep(tr:nth-child(even)) {
   background: #f9fafb;
 }
-:global(.dark) .markdown-body :deep(tr:nth-child(even)) {
-  background: #1f2937;
+
+.markdown-body :deep(tr:nth-child(odd)) {
+  background: #ffffff;
 }
 
 /* Horizontal rule */
@@ -303,9 +278,6 @@ const handleCancel = () => {
   border: none;
   border-top: 1px solid #e5e7eb;
   margin: 1.25rem 0;
-}
-:global(.dark) .markdown-body :deep(hr) {
-  border-top-color: #374151;
 }
 
 /* Images */
