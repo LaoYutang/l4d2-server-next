@@ -635,7 +635,7 @@
         title: '插件名称',
         dataIndex: 'name',
         key: 'name',
-        ellipsis: true,
+        ...(isMobile.value ? {} : { ellipsis: true }),
       },
       {
         title: '大小',
@@ -1232,7 +1232,7 @@
           :data-source="filteredStorePlugins"
           :loading="storeLoading"
           row-key="name"
-          :scroll="{ y: tableScrollY }"
+          :scroll="{ x: isMobile ? 'max-content' : undefined, y: tableScrollY }"
           :pagination="storePagination"
           @change="handleStoreTableChange"
           size="middle"
@@ -1240,7 +1240,7 @@
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'name'">
-              <a-tooltip placement="topLeft" :getPopupContainer="getBody">
+              <a-tooltip v-if="!isMobile" placement="topLeft" :getPopupContainer="getBody">
                 <template #title>
                   <div style="word-break: break-all; white-space: normal; max-width: 280px">
                     {{ record.name }}
@@ -1248,6 +1248,7 @@
                 </template>
                 <div class="truncate">{{ record.name }}</div>
               </a-tooltip>
+              <span v-else>{{ record.name }}</span>
             </template>
 
             <template v-else-if="column.key === 'size'">
