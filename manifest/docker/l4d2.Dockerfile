@@ -12,6 +12,7 @@ RUN dpkg --add-architecture i386 && \
   lib32stdc++6 \
   libc6:i386 \
   libstdc++6:i386 \
+  zlib1g:i386 \
   wget \
   vim \
   curl \
