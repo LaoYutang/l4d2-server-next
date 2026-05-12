@@ -673,6 +673,43 @@ func DisablePlugins(names []string) error {
 	return nil
 }
 
+func GetPluginReadme(name string) (content string, fileName string, err error) {
+	storePath := getStorePath()
+	pluginDir := filepath.Join(storePath, name)
+
+	entries, err := os.ReadDir(pluginDir)
+	if err != nil {
+		return "", "", fmt.Errorf("插件目录不存在: %s", name)
+	}
+
+	var mdFiles []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
+			mdFiles = append(mdFiles, e.Name())
+		}
+	}
+
+	if len(mdFiles) == 0 {
+		return "", "", fmt.Errorf("插件 %s 没有说明文档", name)
+	}
+
+	// Prefer README.md
+	selectedFile := mdFiles[0]
+	for _, f := range mdFiles {
+		if strings.EqualFold(f, "README.md") {
+			selectedFile = f
+			break
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(pluginDir, selectedFile))
+	if err != nil {
+		return "", "", fmt.Errorf("读取说明文档失败: %v", err)
+	}
+
+	return string(data), selectedFile, nil
+}
+
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {

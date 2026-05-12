@@ -291,3 +291,81 @@ func downloadFile(urlStr, filepath string, githubToken string) error {
 	_, err = io.Copy(out, resp.Body)
 	return err
 }
+
+func FetchStorePluginReadme(name, proxyUrl, githubToken, repo string) (content string, fileName string, err error) {
+	if repo == "" {
+		repo = "LaoYutang/l4d2-plugins-store"
+	}
+
+	// Reuse the cached tree data (same cache as store listing)
+	tree, err := getTreeData(false, proxyUrl, githubToken, repo)
+	if err != nil {
+		return "", "", fmt.Errorf("获取仓库信息失败: %v", err)
+	}
+
+	// Find .md files in plugins/{name}/
+	prefix := "plugins/" + name + "/"
+	var mdFiles []string
+	for _, item := range tree.Tree {
+		if item.Type == "blob" && strings.HasPrefix(item.Path, prefix) {
+			base := strings.TrimPrefix(item.Path, prefix)
+			if strings.HasSuffix(strings.ToLower(base), ".md") {
+				mdFiles = append(mdFiles, base)
+			}
+		}
+	}
+
+	if len(mdFiles) == 0 {
+		return "", "", fmt.Errorf("商店插件 %s 没有说明文档", name)
+	}
+
+	// Prefer README.md
+	selectedFile := mdFiles[0]
+	for _, f := range mdFiles {
+		if strings.EqualFold(f, "README.md") {
+			selectedFile = f
+			break
+		}
+	}
+
+	// Download the selected md file content only
+	parts := strings.Split(prefix+selectedFile, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	encodedPath := strings.Join(parts, "/")
+
+	rawContentUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/master/%s", repo, encodedPath)
+	downloadUrl := rawContentUrl
+	if proxyUrl != "" {
+		proxyUrl = strings.TrimSuffix(proxyUrl, "/")
+		downloadUrl = proxyUrl + "/" + rawContentUrl
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", downloadUrl, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("创建请求失败: %v", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	if githubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+githubToken)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("下载说明文档失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", "", fmt.Errorf("下载说明文档 HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("读取说明文档失败: %v", err)
+	}
+
+	return string(data), selectedFile, nil
+}

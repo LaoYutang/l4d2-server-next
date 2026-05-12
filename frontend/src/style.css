@@ -41,19 +41,111 @@ body {
   @apply bg-blue-900/30 text-blue-400;
 }
 
-/* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
+/* Markdown Body Dark Mode */
+:root.dark .markdown-body {
+  color: #e5e7eb;
+}
+
+:root.dark .markdown-body h1 {
+  color: #f9fafb;
+  border-bottom-color: #374151;
+}
+
+:root.dark .markdown-body h2 {
+  color: #f3f4f6;
+  border-bottom-color: #374151;
+}
+
+:root.dark .markdown-body h3 {
+  color: #e5e7eb;
+}
+
+:root.dark .markdown-body h4 {
+  color: #e5e7eb;
+}
+
+:root.dark .markdown-body h5,
+:root.dark .markdown-body h6 {
+  color: #d1d5db;
+}
+
+:root.dark .markdown-body a {
+  color: #60a5fa;
+}
+
+:root.dark .markdown-body a:hover {
+  color: #93c5fd;
+}
+
+:root.dark .markdown-body code {
+  color: #f472b6;
+}
+
+:root.dark .markdown-body pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+
+:root.dark .markdown-body blockquote {
+  border-left-color: #4b5563;
+  background: #1f2937;
+  color: #9ca3af;
+}
+
+:root.dark .markdown-body th,
+:root.dark .markdown-body td {
+  border-color: #4b5563;
+}
+
+:root.dark .markdown-body th {
+  background: #374151;
+}
+
+:root.dark .markdown-body tr:nth-child(even) {
+  background: #1f2937;
+}
+
+:root.dark .markdown-body tr:nth-child(odd) {
+  background: #111827;
+}
+
+:root.dark .markdown-body hr {
+  border-top-color: #374151;
+}
+
+/* Global Scrollbar */
+*::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-.custom-scrollbar::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+*::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 9999px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-600;
+*::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root.dark *::-webkit-scrollbar-thumb {
+  background: #374151;
+}
+:root.dark *::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+:root.dark * {
+  scrollbar-color: #374151 transparent;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
