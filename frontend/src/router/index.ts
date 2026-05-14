@@ -13,6 +13,7 @@ const Admins = () => import('../views/Admins.vue');
 const ServerInfo = () => import('../views/ServerInfo.vue');
 const ServerConfig = () => import('../views/ServerConfig.vue');
 const Backup = () => import('../views/Backup.vue');
+const Logs = () => import('../views/Logs.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -77,6 +78,11 @@ const router = createRouter({
           path: 'backup',
           name: 'Backup',
           component: Backup,
+        },
+        {
+          path: 'logs',
+          name: 'Logs',
+          component: Logs,
         },
       ],
     },

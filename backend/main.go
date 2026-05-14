@@ -55,8 +55,6 @@ func main() {
 		c.Next()
 	})
 
-	router.StaticFS("/", http.Dir("./static"))
-
 	// 如果本地的private.key不存在，创建一个随机HS256密钥
 	const privateKeyPath = "./private.key"
 	var privateKey []byte
@@ -198,6 +196,16 @@ func main() {
 		admins.POST("/add", controller.AddAdmin)
 		admins.POST("/delete", controller.DeleteAdmin)
 	}
+
+	// Logs Group
+	logs := router.Group("/logs", middlewares.Auth(privateKey))
+	{
+		logs.POST("/list", controller.ListSourceModLogs)
+	}
+	router.GET("/logs/stream", middlewares.Auth(privateKey), controller.StreamSourceModLog)
+
+	// Static files fallback: serve from ./static for unmatched routes (SPA)
+	router.NoRoute(gin.WrapH(http.FileServer(http.Dir("./static"))))
 
 	port := os.Getenv("L4D2_MANAGER_PORT")
 	if port == "" {

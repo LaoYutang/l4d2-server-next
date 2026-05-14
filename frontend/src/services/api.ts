@@ -746,6 +746,38 @@ class ApiService {
     return response.json();
   }
 
+  async getSourceModLogs() {
+    const response = await this.post('/logs/list');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  streamLog(
+    filename: string,
+    onLine: (line: string) => void,
+    onError: (err: string) => void
+  ): EventSource {
+    const urlObj = new URL('/logs/stream', window.location.origin);
+    urlObj.searchParams.append('password', this.getPassword());
+    urlObj.searchParams.append('file', filename);
+
+    const es = new EventSource(urlObj.toString());
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.line !== undefined) {
+          onLine(data.line);
+        }
+      } catch {
+        onLine(event.data);
+      }
+    };
+    es.onerror = () => {
+      onError('连接中断');
+    };
+    return es;
+  }
+
   async getSelfServiceStatus() {
     const response = await fetch('/self-service/status', { method: 'POST' });
     if (!response.ok) throw new Error(await response.text());
