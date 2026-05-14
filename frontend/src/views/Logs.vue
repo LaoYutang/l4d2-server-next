@@ -260,7 +260,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Content -->
-      <div class="flex-1 min-h-0">
+      <div class="flex-1 min-h-0 min-w-0">
         <a-card
           class="h-full overflow-hidden shadow-xl border-0"
           :body-style="{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
@@ -311,14 +311,14 @@ onUnmounted(() => {
           <!-- Log Display -->
           <div
             ref="logContainer"
-            class="flex-1 overflow-y-auto p-4 font-mono text-sm bg-[#1e1e1e] text-gray-300 space-y-0.5"
+            class="flex-1 overflow-auto p-4 font-mono text-sm bg-[#1e1e1e] text-gray-300 space-y-0.5 min-w-0"
             @scroll="handleScroll"
           >
             <template v-if="logLines.length > 0">
               <div
                 v-for="(line, index) in logLines"
                 :key="index"
-                class="break-words whitespace-pre-wrap leading-snug"
+                class="whitespace-pre leading-snug"
               >
                 <span>{{ line }}</span>
               </div>
