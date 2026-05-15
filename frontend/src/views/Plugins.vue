@@ -1,5 +1,14 @@
 <script setup lang="ts">
-  import { ref, computed, onMounted, onErrorCaptured, reactive, watch, nextTick } from 'vue';
+  import {
+    ref,
+    computed,
+    onMounted,
+    onUnmounted,
+    onErrorCaptured,
+    reactive,
+    watch,
+    nextTick,
+  } from 'vue';
   import {
     message,
     Card as ACard,
@@ -60,10 +69,10 @@
     }
   });
 
-  import { onUnmounted } from 'vue';
   onUnmounted(() => {
     window.removeEventListener('resize', handleResize);
     storeResizeObserver?.disconnect();
+    stopStoreDownloadPolling();
   });
 
   const drawerWidth = computed(() => {
@@ -82,6 +91,17 @@
     file_count: number;
     size: number;
     installed: boolean;
+  }
+
+  type StorePluginDownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+
+  interface StorePluginDownloadProgress {
+    name: string;
+    repo: string;
+    status: StorePluginDownloadStatus;
+    downloaded: number;
+    total: number;
+    message: string;
   }
 
   const plugins = ref<Plugin[]>([]);
@@ -105,8 +125,9 @@
   const storeLoading = ref(false);
   const storePlugins = ref<StorePlugin[]>([]);
   const storeSearchText = ref('');
-  const downloadingPlugin = ref<Record<string, boolean>>({});
+  const downloadProgress = ref<Record<string, StorePluginDownloadProgress>>({});
   const storeInstallFilter = ref<'all' | 'installed' | 'not-installed'>('all');
+  let storeDownloadRefreshInterval: number | null = null;
 
   // GitHub Token variables
   const githubToken = ref('');
@@ -437,11 +458,121 @@
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
       const repo = customRepo.value.length > 0 ? customRepo.value[0] || '' : '';
       storePlugins.value = await api.getStorePlugins(forceRefresh, proxy, githubToken.value, repo);
+      loadStoreDownloadStatus();
     } catch (error: any) {
       message.error('获取商店列表失败: ' + error.message);
     } finally {
       storeLoading.value = false;
     }
+  };
+
+  const defaultStoreRepo = 'LaoYutang/l4d2-plugins-store';
+
+  const getCurrentStoreRepo = () => {
+    return customRepo.value.length > 0 ? customRepo.value[0] || '' : '';
+  };
+
+  const normalizeStoreRepo = (repo: string = '') => {
+    return repo || defaultStoreRepo;
+  };
+
+  const getDownloadProgressKey = (name: string, repo: string = getCurrentStoreRepo()) => {
+    return `${normalizeStoreRepo(repo)}\n${name}`;
+  };
+
+  const isActiveDownloadStatus = (status?: StorePluginDownloadStatus) => {
+    return status === 'pending' || status === 'downloading';
+  };
+
+  const getPluginDownloadProgress = (plugin: StorePlugin) => {
+    return downloadProgress.value[getDownloadProgressKey(plugin.name)];
+  };
+
+  const isStoreDownloadActive = (plugin: StorePlugin) => {
+    return isActiveDownloadStatus(getPluginDownloadProgress(plugin)?.status);
+  };
+
+  const getStoreDownloadLabel = (plugin: StorePlugin) => {
+    const progress = getPluginDownloadProgress(plugin);
+    if (!progress) return '下载';
+    const total = progress.total || plugin.file_count || 0;
+    return `${progress.downloaded}/${total}`;
+  };
+
+  const hasActiveStoreDownloads = () => {
+    return Object.values(downloadProgress.value).some((progress) =>
+      isActiveDownloadStatus(progress.status)
+    );
+  };
+
+  const stopStoreDownloadPolling = () => {
+    if (storeDownloadRefreshInterval) {
+      clearInterval(storeDownloadRefreshInterval);
+      storeDownloadRefreshInterval = null;
+    }
+  };
+
+  let loadingStoreDownloadStatus = false;
+  const loadStoreDownloadStatus = async () => {
+    if (loadingStoreDownloadStatus) return;
+    loadingStoreDownloadStatus = true;
+
+    const repo = getCurrentStoreRepo();
+    const repoKey = normalizeStoreRepo(repo);
+
+    try {
+      const tasks = (await api.getStorePluginDownloadStatus(repo)) as StorePluginDownloadProgress[];
+      const nextProgress = { ...downloadProgress.value };
+
+      for (const key of Object.keys(nextProgress)) {
+        if (key.startsWith(`${repoKey}\n`)) {
+          delete nextProgress[key];
+        }
+      }
+
+      let hasActiveInResponse = false;
+      for (const task of tasks) {
+        const key = getDownloadProgressKey(task.name, task.repo);
+        const previous = downloadProgress.value[key];
+
+        if (isActiveDownloadStatus(task.status)) {
+          nextProgress[key] = task;
+          hasActiveInResponse = true;
+          continue;
+        }
+
+        if (previous && isActiveDownloadStatus(previous.status)) {
+          if (task.status === 'completed') {
+            const idx = storePlugins.value.findIndex((p) => p.name === task.name);
+            if (idx !== -1) storePlugins.value[idx]!.installed = true;
+            message.success(`插件 ${task.name} 下载成功`);
+            fetchPlugins();
+          } else if (task.status === 'failed') {
+            message.error(`插件 ${task.name} 下载失败: ${task.message || '未知错误'}`);
+          } else if (task.status === 'cancelled') {
+            message.info(`插件 ${task.name} 下载已取消`);
+          }
+        }
+      }
+
+      downloadProgress.value = nextProgress;
+
+      if (!hasActiveInResponse && !hasActiveStoreDownloads()) {
+        stopStoreDownloadPolling();
+      }
+    } catch (error: any) {
+      if (storeVisible.value) {
+        message.error('获取下载进度失败: ' + error.message);
+      }
+    } finally {
+      loadingStoreDownloadStatus = false;
+    }
+  };
+
+  const startStoreDownloadPolling = () => {
+    if (storeDownloadRefreshInterval) return;
+    loadStoreDownloadStatus();
+    storeDownloadRefreshInterval = window.setInterval(loadStoreDownloadStatus, 1000);
   };
 
   const filteredStorePlugins = computed(() => {
@@ -459,24 +590,64 @@
   });
 
   const downloadFromStore = async (plugin: StorePlugin) => {
-    if (downloadingPlugin.value[plugin.name]) return;
+    if (isStoreDownloadActive(plugin)) return;
 
-    downloadingPlugin.value[plugin.name] = true;
-    const hide = message.loading(`正在下载 ${plugin.name}...`, 0);
+    const repo = getCurrentStoreRepo();
+    const repoKey = normalizeStoreRepo(repo);
+    const key = getDownloadProgressKey(plugin.name, repo);
+    downloadProgress.value = {
+      ...downloadProgress.value,
+      [key]: {
+        name: plugin.name,
+        repo: repoKey,
+        status: 'pending',
+        downloaded: 0,
+        total: plugin.file_count,
+        message: '等待下载',
+      },
+    };
+
     try {
       const proxy = selectedProxy.value.length > 0 ? selectedProxy.value[0] || '' : '';
-      const repo = customRepo.value.length > 0 ? customRepo.value[0] || '' : '';
-      await api.downloadStorePlugin(plugin.name, proxy, githubToken.value, repo);
-      message.success(`插件 ${plugin.name} 下载成功`);
-      // 本地即时更新已安装状态，避免重新请求 GitHub
-      const idx = storePlugins.value.findIndex((p) => p.name === plugin.name);
-      if (idx !== -1) storePlugins.value[idx]!.installed = true;
-      fetchPlugins();
+      const progress = (await api.downloadStorePlugin(
+        plugin.name,
+        proxy,
+        githubToken.value,
+        repo
+      )) as StorePluginDownloadProgress;
+      downloadProgress.value = {
+        ...downloadProgress.value,
+        [getDownloadProgressKey(progress.name, progress.repo)]: progress,
+      };
+      startStoreDownloadPolling();
     } catch (error: any) {
+      const nextProgress = { ...downloadProgress.value };
+      delete nextProgress[key];
+      downloadProgress.value = nextProgress;
       message.error(`下载失败: ` + error.message);
+      if (!hasActiveStoreDownloads()) {
+        stopStoreDownloadPolling();
+      }
+    }
+  };
+
+  const cancelStoreDownload = async (plugin: StorePlugin) => {
+    const progress = getPluginDownloadProgress(plugin);
+    const repo = progress?.repo || getCurrentStoreRepo();
+    const key = getDownloadProgressKey(plugin.name, repo);
+
+    try {
+      await api.cancelStorePluginDownload(plugin.name, repo);
+      const nextProgress = { ...downloadProgress.value };
+      delete nextProgress[key];
+      downloadProgress.value = nextProgress;
+      message.success(`已取消 ${plugin.name} 下载`);
+    } catch (error: any) {
+      message.error('取消下载失败: ' + error.message);
     } finally {
-      downloadingPlugin.value[plugin.name] = false;
-      hide();
+      if (!hasActiveStoreDownloads()) {
+        stopStoreDownloadPolling();
+      }
     }
   };
 
@@ -486,6 +657,7 @@
 
   watch(storeVisible, (val) => {
     if (val) {
+      startStoreDownloadPolling();
       nextTick(() => {
         computeStoreTableScrollY();
         if (storeContainerRef.value && !storeResizeObserver) {
@@ -496,6 +668,9 @@
     } else {
       storeResizeObserver?.disconnect();
       storeResizeObserver = null;
+      if (!hasActiveStoreDownloads()) {
+        stopStoreDownloadPolling();
+      }
     }
   });
 
@@ -1274,11 +1449,28 @@
                   <template #icon><CheckCircleOutlined /></template>
                   已安装
                 </a-tag>
+                <a-popconfirm
+                  v-else-if="isStoreDownloadActive(record as StorePlugin)"
+                  title="确定要取消下载这个插件吗？"
+                  ok-text="确定"
+                  cancel-text="取消"
+                  :getPopupContainer="getBody"
+                  @confirm="cancelStoreDownload(record as StorePlugin)"
+                >
+                  <a-button
+                    type="primary"
+                    danger
+                    size="small"
+                    class="!flex !items-center !justify-center min-w-[64px]"
+                  >
+                    <template #icon><SyncOutlined /></template>
+                    {{ getStoreDownloadLabel(record as StorePlugin) }}
+                  </a-button>
+                </a-popconfirm>
                 <a-button
                   v-else
                   type="primary"
                   size="small"
-                  :loading="downloadingPlugin[record.name]"
                   @click="downloadFromStore(record as StorePlugin)"
                   class="!flex !items-center !justify-center"
                 >

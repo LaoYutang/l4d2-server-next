@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	DefaultPluginStoreRepo         = "LaoYutang/l4d2-plugins-store"
+	StorePluginDownloadConcurrency = 3
 )
 
 type GitHubTreeResponse struct {
@@ -32,16 +38,66 @@ type StorePlugin struct {
 	Installed bool   `json:"installed"`
 }
 
-var (
-	treeCache     = make(map[string]*GitHubTreeResponse)
-	treeCacheTime = make(map[string]time.Time)
-	treeCacheMut  sync.Mutex
+type StorePluginDownloadStatus string
+
+const (
+	StorePluginDownloadStatusPending     StorePluginDownloadStatus = "pending"
+	StorePluginDownloadStatusDownloading StorePluginDownloadStatus = "downloading"
+	StorePluginDownloadStatusCompleted   StorePluginDownloadStatus = "completed"
+	StorePluginDownloadStatusFailed      StorePluginDownloadStatus = "failed"
+	StorePluginDownloadStatusCancelled   StorePluginDownloadStatus = "cancelled"
 )
 
-func getTreeData(forceRefresh bool, proxyUrl, githubToken, repo string) (*GitHubTreeResponse, error) {
+type StorePluginDownloadProgress struct {
+	Name       string                    `json:"name"`
+	Repo       string                    `json:"repo"`
+	Status     StorePluginDownloadStatus `json:"status"`
+	Downloaded int                       `json:"downloaded"`
+	Total      int                       `json:"total"`
+	Message    string                    `json:"message"`
+}
+
+type storePluginDownloadTask struct {
+	name        string
+	repo        string
+	proxyUrl    string
+	githubToken string
+	prefix      string
+	files       []string
+	tempDir     string
+	finalDir    string
+	ctx         context.Context
+	cancel      context.CancelFunc
+
+	mu         sync.RWMutex
+	status     StorePluginDownloadStatus
+	downloaded int
+	total      int
+	message    string
+}
+
+var (
+	treeCache              = make(map[string]*GitHubTreeResponse)
+	treeCacheTime          = make(map[string]time.Time)
+	treeCacheMut           sync.Mutex
+	storeDownloadTaskMut   sync.Mutex
+	storeDownloadTasks     = make(map[string]*storePluginDownloadTask)
+	storeDownloadSemaphore = make(chan struct{}, StorePluginDownloadConcurrency)
+)
+
+func normalizeStoreRepo(repo string) string {
 	if repo == "" {
-		repo = "LaoYutang/l4d2-plugins-store"
+		return DefaultPluginStoreRepo
 	}
+	return repo
+}
+
+func getStoreDownloadTaskKey(repo, pluginName string) string {
+	return normalizeStoreRepo(repo) + "\x00" + pluginName
+}
+
+func getTreeData(forceRefresh bool, proxyUrl, githubToken, repo string) (*GitHubTreeResponse, error) {
+	repo = normalizeStoreRepo(repo)
 
 	treeCacheMut.Lock()
 	defer treeCacheMut.Unlock()
@@ -152,23 +208,55 @@ func getDownloadTempPath(id string) string {
 	return filepath.Join(getStorePath(), DownloadTempDir, id)
 }
 
-// CleanDownloadTemp 启动时整体清空 .download_temp/，删除上次运行残留。
-// 调用点位于 main.go 的 router.Run 之前，此时 HTTP 服务尚未对外提供，
-// 不可能存在正在进行的下载，整体 RemoveAll 安全。
-func CleanDownloadTemp() {
-	os.RemoveAll(filepath.Join(getStorePath(), DownloadTempDir))
+func (t *storePluginDownloadTask) snapshot() StorePluginDownloadProgress {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return StorePluginDownloadProgress{
+		Name:       t.name,
+		Repo:       t.repo,
+		Status:     t.status,
+		Downloaded: t.downloaded,
+		Total:      t.total,
+		Message:    t.message,
+	}
 }
 
-func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
-	if repo == "" {
-		repo = "LaoYutang/l4d2-plugins-store"
-	}
+func (t *storePluginDownloadTask) isActive() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
-	tree, err := getTreeData(false, proxyUrl, githubToken, repo)
-	if err != nil {
-		return err
-	}
+	return t.status == StorePluginDownloadStatusPending || t.status == StorePluginDownloadStatusDownloading
+}
 
+func (t *storePluginDownloadTask) setStatus(status StorePluginDownloadStatus, message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.status = status
+	t.message = message
+}
+
+func (t *storePluginDownloadTask) incrementDownloaded() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.downloaded++
+}
+
+func (t *storePluginDownloadTask) requestCancel() {
+	t.cancel()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.status == StorePluginDownloadStatusPending || t.status == StorePluginDownloadStatusDownloading {
+		t.status = StorePluginDownloadStatusCancelled
+		t.message = "下载已取消"
+	}
+}
+
+func findStorePluginFiles(tree *GitHubTreeResponse, pluginName string) ([]string, string) {
 	var filesToDownload []string
 	prefix := "plugins/" + pluginName + "/"
 	for _, item := range tree.Tree {
@@ -176,94 +264,271 @@ func DownloadStorePlugin(pluginName, proxyUrl, githubToken, repo string) error {
 			filesToDownload = append(filesToDownload, item.Path)
 		}
 	}
+	return filesToDownload, prefix
+}
 
+// CleanDownloadTemp 启动时整体清空 .download_temp/，删除上次运行残留。
+// 调用点位于 main.go 的 router.Run 之前，此时 HTTP 服务尚未对外提供，
+// 不可能存在正在进行的下载，整体 RemoveAll 安全。
+func CleanDownloadTemp() {
+	os.RemoveAll(filepath.Join(getStorePath(), DownloadTempDir))
+}
+
+func StartStorePluginDownload(pluginName, proxyUrl, githubToken, repo string) (StorePluginDownloadProgress, error) {
+	repo = normalizeStoreRepo(repo)
+
+	tree, err := getTreeData(false, proxyUrl, githubToken, repo)
+	if err != nil {
+		return StorePluginDownloadProgress{}, err
+	}
+
+	filesToDownload, prefix := findStorePluginFiles(tree, pluginName)
 	if len(filesToDownload) == 0 {
-		return fmt.Errorf("未找到插件或插件为空")
+		return StorePluginDownloadProgress{}, fmt.Errorf("未找到插件或插件为空")
 	}
 
 	storePath := getStorePath()
 	finalDir := filepath.Join(storePath, pluginName)
 	if _, err := os.Stat(finalDir); !os.IsNotExist(err) {
-		return fmt.Errorf("插件 %s 已存在，请先删除", pluginName)
+		return StorePluginDownloadProgress{}, fmt.Errorf("插件 %s 已存在，请先删除", pluginName)
 	}
 
 	tempDir := getDownloadTempPath(uuid.New().String())
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return fmt.Errorf("创建临时目录失败: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(filesToDownload))
-
-	for _, file := range filesToDownload {
-		wg.Add(1)
-		go func(path string, token string) {
-			defer wg.Done()
-
-			relPath := strings.TrimPrefix(path, prefix)
-			localPath := filepath.Join(tempDir, relPath)
-
-			if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-				errChan <- fmt.Errorf("创建目录失败: %v", err)
-				return
-			}
-
-			parts := strings.Split(path, "/")
-			for i, p := range parts {
-				parts[i] = url.PathEscape(p)
-			}
-			encodedPath := strings.Join(parts, "/")
-
-			rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/master/%s", repo, encodedPath)
-			downloadUrl := rawUrl
-			if proxyUrl != "" {
-				proxyUrl = strings.TrimSuffix(proxyUrl, "/")
-				downloadUrl = proxyUrl + "/" + rawUrl
-			}
-
-			if err := downloadFileWithRetry(downloadUrl, localPath, 3, token); err != nil {
-				errChan <- fmt.Errorf("下载文件 %s 失败: %v", relPath, err)
-				return
-			}
-		}(file, githubToken)
+		return StorePluginDownloadProgress{}, fmt.Errorf("创建临时目录失败: %v", err)
 	}
 
-	wg.Wait()
-	close(errChan)
+	ctx, cancel := context.WithCancel(context.Background())
+	task := &storePluginDownloadTask{
+		name:        pluginName,
+		repo:        repo,
+		proxyUrl:    strings.TrimSuffix(proxyUrl, "/"),
+		githubToken: githubToken,
+		prefix:      prefix,
+		files:       filesToDownload,
+		tempDir:     tempDir,
+		finalDir:    finalDir,
+		ctx:         ctx,
+		cancel:      cancel,
+		status:      StorePluginDownloadStatusPending,
+		total:       len(filesToDownload),
+		message:     "等待下载",
+	}
 
-	for err := range errChan {
-		if err != nil {
-			return err
+	key := getStoreDownloadTaskKey(repo, pluginName)
+	storeDownloadTaskMut.Lock()
+	if existing, ok := storeDownloadTasks[key]; ok {
+		if existing.isActive() {
+			progress := existing.snapshot()
+			storeDownloadTaskMut.Unlock()
+			cancel()
+			os.RemoveAll(tempDir)
+			return progress, nil
+		}
+		delete(storeDownloadTasks, key)
+	}
+	for _, existing := range storeDownloadTasks {
+		if existing.name == pluginName && existing.isActive() {
+			storeDownloadTaskMut.Unlock()
+			cancel()
+			os.RemoveAll(tempDir)
+			return StorePluginDownloadProgress{}, fmt.Errorf("插件 %s 正在下载", pluginName)
 		}
 	}
+	storeDownloadTasks[key] = task
+	storeDownloadTaskMut.Unlock()
 
-	if _, err := os.Stat(finalDir); !os.IsNotExist(err) {
-		return fmt.Errorf("插件 %s 已存在，请先删除", pluginName)
+	go task.run()
+
+	return task.snapshot(), nil
+}
+
+func ListStorePluginDownloadProgress(repo string) []StorePluginDownloadProgress {
+	repo = normalizeStoreRepo(repo)
+
+	storeDownloadTaskMut.Lock()
+	defer storeDownloadTaskMut.Unlock()
+
+	progress := make([]StorePluginDownloadProgress, 0, len(storeDownloadTasks))
+	for _, task := range storeDownloadTasks {
+		if task.repo == repo {
+			progress = append(progress, task.snapshot())
+		}
 	}
-	if err := os.Rename(tempDir, finalDir); err != nil {
-		return fmt.Errorf("提交插件目录失败: %v", err)
+	return progress
+}
+
+func CancelStorePluginDownload(pluginName, repo string) (StorePluginDownloadProgress, error) {
+	repo = normalizeStoreRepo(repo)
+	key := getStoreDownloadTaskKey(repo, pluginName)
+
+	storeDownloadTaskMut.Lock()
+	task, ok := storeDownloadTasks[key]
+	storeDownloadTaskMut.Unlock()
+	if !ok {
+		return StorePluginDownloadProgress{}, fmt.Errorf("下载任务不存在")
 	}
 
-	writePluginSource(pluginName, "store")
+	task.requestCancel()
+	return task.snapshot(), nil
+}
+
+func (t *storePluginDownloadTask) run() {
+	defer t.cancel()
+
+	if t.ctx.Err() != nil {
+		os.RemoveAll(t.tempDir)
+		t.setStatus(StorePluginDownloadStatusCancelled, "下载已取消")
+		return
+	}
+
+	t.setStatus(StorePluginDownloadStatusDownloading, "下载中")
+	if _, err := os.Stat(t.finalDir); !os.IsNotExist(err) {
+		os.RemoveAll(t.tempDir)
+		t.setStatus(StorePluginDownloadStatusFailed, fmt.Sprintf("插件 %s 已存在，请先删除", t.name))
+		return
+	}
+
+	if err := t.downloadFiles(); err != nil {
+		os.RemoveAll(t.tempDir)
+		if t.ctx.Err() != nil {
+			t.setStatus(StorePluginDownloadStatusCancelled, "下载已取消")
+			return
+		}
+		t.setStatus(StorePluginDownloadStatusFailed, err.Error())
+		return
+	}
+
+	if t.ctx.Err() != nil {
+		os.RemoveAll(t.tempDir)
+		t.setStatus(StorePluginDownloadStatusCancelled, "下载已取消")
+		return
+	}
+
+	if _, err := os.Stat(t.finalDir); !os.IsNotExist(err) {
+		os.RemoveAll(t.tempDir)
+		t.setStatus(StorePluginDownloadStatusFailed, fmt.Sprintf("插件 %s 已存在，请先删除", t.name))
+		return
+	}
+	if err := os.Rename(t.tempDir, t.finalDir); err != nil {
+		os.RemoveAll(t.tempDir)
+		t.setStatus(StorePluginDownloadStatusFailed, fmt.Sprintf("提交插件目录失败: %v", err))
+		return
+	}
+
+	writePluginSource(t.name, "store")
+	t.setStatus(StorePluginDownloadStatusCompleted, "插件下载成功")
+}
+
+func (t *storePluginDownloadTask) downloadFiles() error {
+	workerCount := len(t.files)
+	if workerCount > StorePluginDownloadConcurrency {
+		workerCount = StorePluginDownloadConcurrency
+	}
+
+	jobs := make(chan string)
+	errChan := make(chan error, 1)
+	var wg sync.WaitGroup
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range jobs {
+				if t.ctx.Err() != nil {
+					return
+				}
+				if err := t.downloadOneFile(path); err != nil {
+					select {
+					case errChan <- err:
+					default:
+					}
+					t.cancel()
+					return
+				}
+				t.incrementDownloaded()
+			}
+		}()
+	}
+
+	go func() {
+		defer close(jobs)
+		for _, file := range t.files {
+			select {
+			case <-t.ctx.Done():
+				return
+			case jobs <- file:
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	select {
+	case err := <-errChan:
+		return err
+	default:
+	}
+	return t.ctx.Err()
+}
+
+func (t *storePluginDownloadTask) downloadOneFile(path string) error {
+	select {
+	case storeDownloadSemaphore <- struct{}{}:
+		defer func() { <-storeDownloadSemaphore }()
+	case <-t.ctx.Done():
+		return t.ctx.Err()
+	}
+
+	relPath := strings.TrimPrefix(path, t.prefix)
+	localPath := filepath.Join(t.tempDir, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %v", err)
+	}
+
+	parts := strings.Split(path, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	encodedPath := strings.Join(parts, "/")
+
+	rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/master/%s", t.repo, encodedPath)
+	downloadUrl := rawUrl
+	if t.proxyUrl != "" {
+		downloadUrl = t.proxyUrl + "/" + rawUrl
+	}
+
+	if err := downloadFileWithRetry(t.ctx, downloadUrl, localPath, 3, t.githubToken); err != nil {
+		return fmt.Errorf("下载文件 %s 失败: %v", relPath, err)
+	}
 	return nil
 }
 
-func downloadFileWithRetry(url, filepath string, retries int, githubToken string) error {
+func downloadFileWithRetry(ctx context.Context, url, filepath string, retries int, githubToken string) error {
 	var err error
 	for i := 0; i < retries; i++ {
-		err = downloadFile(url, filepath, githubToken)
+		err = downloadFile(ctx, url, filepath, githubToken)
 		if err == nil {
 			return nil
 		}
-		time.Sleep(1 * time.Second)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if i < retries-1 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(1 * time.Second):
+			}
+		}
 	}
 	return err
 }
 
-func downloadFile(urlStr, filepath string, githubToken string) error {
+func downloadFile(ctx context.Context, urlStr, filepath string, githubToken string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", urlStr, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return err
 	}
@@ -293,9 +558,7 @@ func downloadFile(urlStr, filepath string, githubToken string) error {
 }
 
 func FetchStorePluginReadme(name, proxyUrl, githubToken, repo string) (content string, fileName string, err error) {
-	if repo == "" {
-		repo = "LaoYutang/l4d2-plugins-store"
-	}
+	repo = normalizeStoreRepo(repo)
 
 	// Reuse the cached tree data (same cache as store listing)
 	tree, err := getTreeData(false, proxyUrl, githubToken, repo)

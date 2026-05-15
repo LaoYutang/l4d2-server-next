@@ -115,12 +115,55 @@ func DownloadStorePlugin(c *gin.Context) {
 
 	LogOp(c, req, "从商店下载插件:", req.Name)
 
-	if err := logic.DownloadStorePlugin(req.Name, req.ProxyUrl, req.GithubToken, req.Repo); err != nil {
+	progress, err := logic.StartStorePluginDownload(req.Name, req.ProxyUrl, req.GithubToken, req.Repo)
+	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "下载插件失败: %v", err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "插件下载成功"})
+	c.JSON(http.StatusOK, progress)
+}
+
+type StoreDownloadStatusRequest struct {
+	Repo string `json:"repo"`
+}
+
+func GetStoreDownloadStatus(c *gin.Context) {
+	var req StoreDownloadStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// allow empty body
+	}
+
+	c.JSON(http.StatusOK, logic.ListStorePluginDownloadProgress(req.Repo))
+}
+
+func CancelStoreDownload(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	var req DownloadPluginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+
+	if req.Name == "" {
+		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
+		return
+	}
+
+	LogOp(c, req, "取消商店插件下载:", req.Name)
+
+	progress, err := logic.CancelStorePluginDownload(req.Name, req.Repo)
+	if err != nil {
+		FailWithError(c, http.StatusInternalServerError, "取消下载失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, progress)
 }
 
 func EnablePlugin(c *gin.Context) {

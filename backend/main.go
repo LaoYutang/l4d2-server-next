@@ -175,6 +175,8 @@ func main() {
 		plugins.POST("/readme", controller.GetPluginReadme)
 		plugins.POST("/store/list", controller.GetStorePlugins)
 		plugins.POST("/store/download", controller.DownloadStorePlugin)
+		plugins.POST("/store/download/status", controller.GetStoreDownloadStatus)
+		plugins.POST("/store/download/cancel", controller.CancelStoreDownload)
 		plugins.POST("/backups/list", controller.ListBackups)
 		plugins.POST("/backups/create", controller.CreateBackup)
 		plugins.POST("/backups/restore", controller.RestoreBackup)

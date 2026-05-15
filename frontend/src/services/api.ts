@@ -231,6 +231,20 @@ class ApiService {
       repo,
     });
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getStorePluginDownloadStatus(repo: string = '') {
+    const response = await this.postJson('/plugins/store/download/status', { repo });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    return data || [];
+  }
+
+  async cancelStorePluginDownload(name: string, repo: string = '') {
+    const response = await this.postJson('/plugins/store/download/cancel', { name, repo });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async getPluginReadme(name: string, fromStore: boolean = false, proxyUrl: string = '', githubToken: string = '', repo: string = '') {
