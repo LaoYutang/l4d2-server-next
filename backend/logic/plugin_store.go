@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,6 +78,52 @@ type storePluginDownloadTask struct {
 	message    string
 }
 
+type gitLFSPointer struct {
+	OID  string
+	Size int64
+}
+
+type gitLFSBatchRequest struct {
+	Operation string                `json:"operation"`
+	Transfers []string              `json:"transfers,omitempty"`
+	Ref       gitLFSRef             `json:"ref"`
+	Objects   []gitLFSObjectRequest `json:"objects"`
+}
+
+type gitLFSRef struct {
+	Name string `json:"name"`
+}
+
+type gitLFSObjectRequest struct {
+	OID  string `json:"oid"`
+	Size int64  `json:"size"`
+}
+
+type gitLFSBatchResponse struct {
+	Objects []gitLFSObjectResponse `json:"objects"`
+}
+
+type gitLFSObjectResponse struct {
+	OID     string             `json:"oid"`
+	Size    int64              `json:"size"`
+	Actions gitLFSActions      `json:"actions"`
+	Error   *gitLFSObjectError `json:"error,omitempty"`
+}
+
+type gitLFSActions struct {
+	Download *gitLFSAction `json:"download"`
+}
+
+type gitLFSAction struct {
+	Href   string            `json:"href"`
+	Header map[string]string `json:"header,omitempty"`
+}
+
+type gitLFSObjectError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
 var (
 	treeCache              = make(map[string]*GitHubTreeResponse)
 	treeCacheTime          = make(map[string]time.Time)
@@ -96,6 +144,13 @@ func getStoreDownloadTaskKey(repo, pluginName string) string {
 	return normalizeStoreRepo(repo) + "\x00" + pluginName
 }
 
+func applyProxy(proxyUrl, rawUrl string) string {
+	if proxyUrl == "" {
+		return rawUrl
+	}
+	return strings.TrimSuffix(proxyUrl, "/") + "/" + rawUrl
+}
+
 func getTreeData(forceRefresh bool, proxyUrl, githubToken, repo string) (*GitHubTreeResponse, error) {
 	repo = normalizeStoreRepo(repo)
 
@@ -109,11 +164,7 @@ func getTreeData(forceRefresh bool, proxyUrl, githubToken, repo string) (*GitHub
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	rawUrl := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/master?recursive=1", repo)
-	fetchUrl := rawUrl
-	if proxyUrl != "" {
-		proxyUrl = strings.TrimSuffix(proxyUrl, "/")
-		fetchUrl = proxyUrl + "/" + rawUrl
-	}
+	fetchUrl := applyProxy(proxyUrl, rawUrl)
 
 	req, err := http.NewRequest("GET", fetchUrl, nil)
 	if err != nil {
@@ -494,21 +545,29 @@ func (t *storePluginDownloadTask) downloadOneFile(path string) error {
 	encodedPath := strings.Join(parts, "/")
 
 	rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/master/%s", t.repo, encodedPath)
-	downloadUrl := rawUrl
-	if t.proxyUrl != "" {
-		downloadUrl = t.proxyUrl + "/" + rawUrl
-	}
+	downloadUrl := applyProxy(t.proxyUrl, rawUrl)
 
 	if err := downloadFileWithRetry(t.ctx, downloadUrl, localPath, 3, t.githubToken); err != nil {
 		return fmt.Errorf("下载文件 %s 失败: %v", relPath, err)
+	}
+	if err := t.downloadGitLFSObjectIfNeeded(localPath); err != nil {
+		return fmt.Errorf("下载 LFS 文件 %s 失败: %v", relPath, err)
 	}
 	return nil
 }
 
 func downloadFileWithRetry(ctx context.Context, url, filepath string, retries int, githubToken string) error {
+	headers := make(map[string]string)
+	if githubToken != "" {
+		headers["Authorization"] = "Bearer " + githubToken
+	}
+	return downloadFileWithHeadersRetry(ctx, url, filepath, retries, headers)
+}
+
+func downloadFileWithHeadersRetry(ctx context.Context, url, filepath string, retries int, headers map[string]string) error {
 	var err error
 	for i := 0; i < retries; i++ {
-		err = downloadFile(ctx, url, filepath, githubToken)
+		err = downloadFile(ctx, url, filepath, headers)
 		if err == nil {
 			return nil
 		}
@@ -526,15 +585,15 @@ func downloadFileWithRetry(ctx context.Context, url, filepath string, retries in
 	return err
 }
 
-func downloadFile(ctx context.Context, urlStr, filepath string, githubToken string) error {
+func downloadFile(ctx context.Context, urlStr, filepath string, headers map[string]string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-	if githubToken != "" {
-		req.Header.Set("Authorization", "Bearer "+githubToken)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)
@@ -555,6 +614,139 @@ func downloadFile(ctx context.Context, urlStr, filepath string, githubToken stri
 
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+func parseGitLFSPointer(path string) (*gitLFSPointer, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, 4096))
+	if err != nil {
+		return nil, err
+	}
+
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "version https://git-lfs.github.com/spec/v1" {
+		return nil, nil
+	}
+
+	pointer := &gitLFSPointer{}
+	sizeSet := false
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "oid sha256:") {
+			pointer.OID = strings.TrimPrefix(line, "oid sha256:")
+		} else if strings.HasPrefix(line, "size ") {
+			size, err := strconv.ParseInt(strings.TrimPrefix(line, "size "), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("LFS pointer size 无效: %v", err)
+			}
+			pointer.Size = size
+			sizeSet = true
+		}
+	}
+
+	if pointer.OID == "" || !sizeSet {
+		return nil, fmt.Errorf("LFS pointer 缺少 oid 或 size")
+	}
+
+	return pointer, nil
+}
+
+func (t *storePluginDownloadTask) downloadGitLFSObjectIfNeeded(localPath string) error {
+	pointer, err := parseGitLFSPointer(localPath)
+	if err != nil || pointer == nil {
+		return err
+	}
+
+	action, err := t.getGitLFSDownloadAction(pointer)
+	if err != nil {
+		return err
+	}
+
+	downloadUrl := applyProxy(t.proxyUrl, action.Href)
+	if err := downloadFileWithHeadersRetry(t.ctx, downloadUrl, localPath, 3, action.Header); err != nil {
+		return err
+	}
+
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return err
+	}
+	if info.Size() != pointer.Size {
+		return fmt.Errorf("LFS 文件大小不匹配，期望 %d，实际 %d", pointer.Size, info.Size())
+	}
+
+	return nil
+}
+
+func (t *storePluginDownloadTask) getGitLFSDownloadAction(pointer *gitLFSPointer) (*gitLFSAction, error) {
+	payload := gitLFSBatchRequest{
+		Operation: "download",
+		Transfers: []string{"basic"},
+		Ref:       gitLFSRef{Name: "refs/heads/master"},
+		Objects: []gitLFSObjectRequest{
+			{
+				OID:  pointer.OID,
+				Size: pointer.Size,
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	rawUrl := fmt.Sprintf("https://github.com/%s.git/info/lfs/objects/batch", t.repo)
+	req, err := http.NewRequestWithContext(t.ctx, "POST", applyProxy(t.proxyUrl, rawUrl), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	req.Header.Set("Accept", "application/vnd.git-lfs+json")
+	req.Header.Set("Content-Type", "application/vnd.git-lfs+json")
+	if t.githubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+t.githubToken)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		msg := strings.TrimSpace(string(data))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return nil, fmt.Errorf("LFS Batch API 返回 %s: %s", resp.Status, msg)
+	}
+
+	var batchResp gitLFSBatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
+		return nil, fmt.Errorf("解析 LFS Batch 响应失败: %v", err)
+	}
+	if len(batchResp.Objects) == 0 {
+		return nil, fmt.Errorf("LFS Batch 响应缺少对象")
+	}
+
+	obj := batchResp.Objects[0]
+	if obj.Error != nil {
+		return nil, fmt.Errorf("LFS 对象错误 %d: %s", obj.Error.Code, obj.Error.Message)
+	}
+	if obj.Actions.Download == nil || obj.Actions.Download.Href == "" {
+		return nil, fmt.Errorf("LFS Batch 响应缺少下载地址")
+	}
+
+	return obj.Actions.Download, nil
 }
 
 func FetchStorePluginReadme(name, proxyUrl, githubToken, repo string) (content string, fileName string, err error) {
