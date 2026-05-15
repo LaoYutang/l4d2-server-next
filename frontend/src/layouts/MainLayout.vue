@@ -26,8 +26,11 @@
   const router = useRouter();
   const route = useRoute();
 
+  const MENU_COLLAPSED_STORAGE_KEY = 'l4d2_manager_menu_collapsed';
+  const storedCollapsed = localStorage.getItem(MENU_COLLAPSED_STORAGE_KEY);
+
   const mobileOpen = ref(false);
-  const collapsed = ref(true);
+  const collapsed = ref(storedCollapsed === null ? true : storedCollapsed === 'true');
   const selectedKeys = ref<string[]>([]);
 
   // Sync selected keys with route
@@ -38,6 +41,10 @@
     },
     { immediate: true }
   );
+
+  watch(collapsed, (val) => {
+    localStorage.setItem(MENU_COLLAPSED_STORAGE_KEY, String(val));
+  });
 
   const handleLogout = () => {
     authStore.logout();
