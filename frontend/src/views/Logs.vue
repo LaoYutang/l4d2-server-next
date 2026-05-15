@@ -81,6 +81,9 @@
       (line) => {
         if (!isPaused.value && line !== '') {
           logLines.value.push(line);
+          if (logLines.value.length > 200) {
+            logLines.value = logLines.value.slice(-200);
+          }
         }
       },
       (err) => {
@@ -98,11 +101,10 @@
   };
 
   watch(
-    logLines,
+    () => logLines.value.length,
     () => {
       nextTick(scrollToBottom);
-    },
-    { deep: true }
+    }
   );
 
   onMounted(() => {

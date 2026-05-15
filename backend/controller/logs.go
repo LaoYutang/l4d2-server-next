@@ -218,8 +218,16 @@ func StreamSourceModLog(c *gin.Context) {
 	buf := make([]byte, maxCapacity)
 	scanner.Buffer(buf, maxCapacity)
 
+	var historyLines []string
 	for scanner.Scan() {
-		line := scanner.Text()
+		historyLines = append(historyLines, scanner.Text())
+	}
+
+	// Only send last 200 lines to avoid overwhelming the frontend
+	if len(historyLines) > 200 {
+		historyLines = historyLines[len(historyLines)-200:]
+	}
+	for _, line := range historyLines {
 		sendSSELine(c, decodeLogLine([]byte(line)), flusher)
 	}
 
