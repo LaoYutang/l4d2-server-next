@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,8 @@ var (
 	ipAttempts = make(map[string]*loginAttempt)
 	mutex      sync.Mutex
 )
+
+const bearerPrefix = "Bearer "
 
 func Auth(privateKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -41,10 +44,7 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 		}
 		mutex.Unlock()
 
-		password := c.PostForm("password")
-		if password == "" {
-			password = c.Query("password")
-		}
+		credential := getBearerCredential(c.GetHeader("Authorization"))
 		realPassword := os.Getenv("L4D2_MANAGER_PASSWORD")
 		if realPassword == "" {
 			realPassword = "laoyutangnb"
@@ -52,11 +52,11 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 
 		success := false
 		role := ""
-		if password == realPassword {
+		if credential == realPassword {
 			success = true
 			role = "admin"
 			c.Set("privateKey", privateKey)
-		} else if parsedToken, err := jwt.Parse(password, getKeyfunc(privateKey)); err == nil && parsedToken.Valid {
+		} else if parsedToken, err := jwt.Parse(credential, getKeyfunc(privateKey)); err == nil && parsedToken.Valid {
 			success = true
 			role = "guest"
 		}
@@ -91,6 +91,16 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 			c.Abort()
 		}
 	}
+}
+
+func getBearerCredential(header string) string {
+	if len(header) < len(bearerPrefix) {
+		return ""
+	}
+	if !strings.EqualFold(header[:len(bearerPrefix)], bearerPrefix) {
+		return ""
+	}
+	return strings.TrimSpace(header[len(bearerPrefix):])
 }
 
 func getKeyfunc(privateKey []byte) jwt.Keyfunc {

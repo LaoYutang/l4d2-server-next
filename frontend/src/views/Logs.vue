@@ -35,7 +35,7 @@
   const isLogExpanded = ref(false);
   const logContainer = ref<HTMLElement | null>(null);
   const shouldAutoScroll = ref(true);
-  let eventSource: EventSource | null = null;
+  let logStream: { close: () => void } | null = null;
 
   const formatFileSize = (size: number): string => {
     if (size < 1024) return `${size}B`;
@@ -71,9 +71,9 @@
   };
 
   const selectFile = (filename: string) => {
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
+    if (logStream) {
+      logStream.close();
+      logStream = null;
     }
 
     selectedFile.value = filename;
@@ -81,7 +81,7 @@
     isPaused.value = false;
     shouldAutoScroll.value = true;
 
-    eventSource = api.streamLog(
+    logStream = api.streamLog(
       filename,
       (line) => {
         if (!isPaused.value && line !== '') {
@@ -122,9 +122,9 @@
   });
 
   onUnmounted(() => {
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
+    if (logStream) {
+      logStream.close();
+      logStream = null;
     }
   });
 </script>

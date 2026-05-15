@@ -1,14 +1,22 @@
 import { useAuthStore } from '../stores/auth';
 
+export interface LogStream {
+  close: () => void;
+}
+
 class ApiService {
-  private getPassword() {
+  private getCredential() {
     const authStore = useAuthStore();
     return authStore.password;
   }
 
+  private createAuthHeaders(): Record<string, string> {
+    const credential = this.getCredential();
+    return credential ? { Authorization: `Bearer ${credential}` } : {};
+  }
+
   private createFormData(data?: Record<string, any>) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     if (data) {
       Object.entries(data).forEach(([key, value]) => {
         if (value instanceof File) {
@@ -45,6 +53,7 @@ class ApiService {
     const fd = this.createFormData(data);
     const response = await fetch(url, {
       method: 'POST',
+      headers: this.createAuthHeaders(),
       body: fd,
     });
 
@@ -55,7 +64,6 @@ class ApiService {
 
   async get(url: string, params?: Record<string, any>) {
     const urlObj = new URL(url, window.location.origin);
-    urlObj.searchParams.append('password', this.getPassword());
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         urlObj.searchParams.append(key, String(value));
@@ -64,6 +72,7 @@ class ApiService {
 
     const response = await fetch(urlObj.toString(), {
       method: 'GET',
+      headers: this.createAuthHeaders(),
     });
 
     this.handleResponseError(response.status);
@@ -72,12 +81,10 @@ class ApiService {
   }
 
   async postJson(url: string, data: any) {
-    const urlObj = new URL(url, window.location.origin);
-    urlObj.searchParams.append('password', this.getPassword());
-
-    const response = await fetch(urlObj.toString(), {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
+        ...this.createAuthHeaders(),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
@@ -89,19 +96,23 @@ class ApiService {
   }
 
   async validatePassword() {
-    const fd = new FormData();
-    fd.append('password', this.getPassword());
-    const response = await fetch('/auth', { method: 'POST', body: fd });
+    const response = await fetch('/auth', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+    });
     if (response.ok) return { success: true };
     return { success: false, message: await response.text() };
   }
 
   async generateTempAuthCode(expiredHours: number) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('expired', expiredHours.toString());
 
-    const response = await fetch('/auth/getTempAuthCode', { method: 'POST', body: fd });
+    const response = await fetch('/auth/getTempAuthCode', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
     this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
@@ -391,7 +402,6 @@ class ApiService {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const fd = new FormData();
-      fd.append('password', this.getPassword());
       fd.append('uploadId', uploadId);
       fd.append('chunkIndex', chunkIndex.toString());
       fd.append('chunk', new File([chunk], 'chunk'));
@@ -454,6 +464,10 @@ class ApiService {
       });
 
       xhr.open('POST', '/upload/chunk');
+      const credential = this.getCredential();
+      if (credential) {
+        xhr.setRequestHeader('Authorization', `Bearer ${credential}`);
+      }
       xhr.send(fd);
     });
   }
@@ -624,10 +638,13 @@ class ApiService {
 
   async deleteMap(mapName: string) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('map', mapName);
 
-    const response = await fetch('/remove', { method: 'POST', body: fd });
+    const response = await fetch('/remove', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
     this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
@@ -635,10 +652,13 @@ class ApiService {
 
   async changeMap(mapName: string) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('mapName', mapName);
 
-    const response = await fetch('/rcon/changemap', { method: 'POST', body: fd });
+    const response = await fetch('/rcon/changemap', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
     this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
@@ -693,27 +713,39 @@ class ApiService {
 
   async addDownloadTask(url: string) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('url', url);
-    const response = await fetch('/download/add', { method: 'POST', body: fd });
+    const response = await fetch('/download/add', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
 
   async restartDownloadTask(index: number) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('index', index.toString());
-    const response = await fetch('/download/restart', { method: 'POST', body: fd });
+    const response = await fetch('/download/restart', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
 
   async cancelDownloadTask(index: number) {
     const fd = new FormData();
-    fd.append('password', this.getPassword());
     fd.append('index', index.toString());
-    const response = await fetch('/download/cancel', { method: 'POST', body: fd });
+    const response = await fetch('/download/cancel', {
+      method: 'POST',
+      headers: this.createAuthHeaders(),
+      body: fd,
+    });
+    this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   }
@@ -770,26 +802,82 @@ class ApiService {
     filename: string,
     onLine: (line: string) => void,
     onError: (err: string) => void
-  ): EventSource {
+  ): LogStream {
     const urlObj = new URL('/logs/stream', window.location.origin);
-    urlObj.searchParams.append('password', this.getPassword());
     urlObj.searchParams.append('file', filename);
 
-    const es = new EventSource(urlObj.toString());
-    es.onmessage = (event) => {
+    const controller = new AbortController();
+    let closed = false;
+
+    const handleSSEData = (dataText: string) => {
       try {
-        const data = JSON.parse(event.data);
+        const data = JSON.parse(dataText);
         if (data.line !== undefined) {
           onLine(data.line);
         }
       } catch {
-        onLine(event.data);
+        onLine(dataText);
       }
     };
-    es.onerror = () => {
-      onError('连接中断');
+
+    const handleSSEEvent = (eventText: string) => {
+      const dataText = eventText
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+
+      if (dataText) {
+        handleSSEData(dataText);
+      }
     };
-    return es;
+
+    fetch(urlObj.toString(), {
+      method: 'GET',
+      headers: this.createAuthHeaders(),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        this.handleResponseError(response.status);
+        if (!response.ok) throw new Error(await response.text());
+        if (!response.body) throw new Error('浏览器不支持日志流');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let eventEnd = buffer.indexOf('\n\n');
+          while (eventEnd !== -1) {
+            const eventText = buffer.slice(0, eventEnd);
+            buffer = buffer.slice(eventEnd + 2);
+            handleSSEEvent(eventText);
+            eventEnd = buffer.indexOf('\n\n');
+          }
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          handleSSEEvent(buffer);
+        }
+      })
+      .catch((e: any) => {
+        if (!closed && e?.name !== 'AbortError') {
+          onError(e?.message || '连接中断');
+        }
+      });
+
+    return {
+      close: () => {
+        closed = true;
+        controller.abort();
+      },
+    };
   }
 
   async getSelfServiceStatus() {

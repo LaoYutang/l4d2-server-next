@@ -24,11 +24,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   const login = async (pwd: string) => {
     try {
-      const fd = new FormData();
-      fd.append('password', pwd);
       const response = await fetch('/auth', {
         method: 'POST',
-        body: fd,
+        headers: {
+          Authorization: `Bearer ${pwd}`,
+        },
       });
 
       if (response.ok) {
