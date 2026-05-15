@@ -610,12 +610,6 @@ func DeletePlugin(name string) error {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	// 禁止删除当前系统对应的插件平台
-	nameLower := strings.ToLower(name)
-	if strings.Contains(nameLower, "插件平台") && strings.Contains(nameLower, runtime.GOOS) {
-		return fmt.Errorf("不能删除当前系统对应的插件平台，该插件为必要组件")
-	}
-
 	if err := loadConfig(); err != nil {
 		// ignore
 	}
