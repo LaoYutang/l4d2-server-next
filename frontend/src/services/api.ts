@@ -664,6 +664,12 @@ class ApiService {
     return response.text();
   }
 
+  async renameMap(oldName: string, newName: string): Promise<{ name: string; message: string }> {
+    const response = await this.post('/rename', { oldName, newName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
   async changeMap(mapName: string) {
     const fd = new FormData();
     fd.append('mapName', mapName);

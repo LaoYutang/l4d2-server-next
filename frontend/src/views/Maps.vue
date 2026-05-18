@@ -15,6 +15,7 @@
     PlayCircleOutlined,
     SearchOutlined,
     DownloadOutlined,
+    EditOutlined,
   } from '@ant-design/icons-vue';
 
   const activeTab = ref('local');
@@ -23,6 +24,10 @@
   const loading = ref(false);
   const searchQuery = ref('');
   const selectedRowKeys = ref<string[]>([]);
+  const renameVisible = ref(false);
+  const renamingMap = ref(false);
+  const renameOldName = ref('');
+  const renameNewName = ref('');
 
   // Upload
   const fileList = ref<any[]>([]);
@@ -266,6 +271,35 @@
     });
   };
 
+  const openRenameModal = (name: string) => {
+    renameOldName.value = name;
+    renameNewName.value = name;
+    renameVisible.value = true;
+  };
+
+  const submitRenameMap = async () => {
+    const newName = renameNewName.value.trim();
+    if (!renameOldName.value || !newName) {
+      message.error('请输入新的地图名称');
+      return;
+    }
+
+    renamingMap.value = true;
+    try {
+      const result = await api.renameMap(renameOldName.value, newName);
+      selectedRowKeys.value = selectedRowKeys.value.map((key) =>
+        key === renameOldName.value ? result.name : key
+      );
+      message.success(result.message || '重命名成功');
+      renameVisible.value = false;
+      loadMaps();
+    } catch (e: any) {
+      message.error('重命名失败: ' + e.message);
+    } finally {
+      renamingMap.value = false;
+    }
+  };
+
   const confirmClearMaps = async () => {
     Modal.confirm({
       title: '警告：这将删除所有第三方地图文件！',
@@ -459,7 +493,7 @@
   const mapColumns = [
     { title: '地图名称', dataIndex: 'name', key: 'name' },
     { title: '大小', dataIndex: 'size', key: 'size', width: 120 },
-    { title: '操作', key: 'action', width: 100, align: 'right' as const },
+    { title: '操作', key: 'action', width: 180, align: 'right' as const },
   ];
 
   const taskColumns = [
@@ -618,6 +652,16 @@
                 <a-space>
                   <a-button
                     size="small"
+                    type="text"
+                    @click="openRenameModal(record.name)"
+                    class="!flex !items-center !justify-center"
+                    title="重命名"
+                  >
+                    <template #icon><edit-outlined /></template>
+                    <span class="hidden sm:inline">重命名</span>
+                  </a-button>
+                  <a-button
+                    size="small"
                     danger
                     type="text"
                     @click="deleteMap(record.name)"
@@ -632,6 +676,27 @@
             </template>
           </a-table>
         </div>
+
+        <a-modal
+          v-model:open="renameVisible"
+          title="重命名地图"
+          @ok="submitRenameMap"
+          :confirmLoading="renamingMap"
+        >
+          <div class="space-y-3">
+            <div class="text-sm text-gray-500 dark:text-gray-400 break-all">
+              当前名称: {{ renameOldName }}
+            </div>
+            <a-input
+              v-model:value="renameNewName"
+              placeholder="请输入新的地图名称"
+              @pressEnter="submitRenameMap"
+            />
+            <div class="text-xs text-gray-400 dark:text-gray-500">
+              保存时会自动清理特殊字符，未填写 .vpk 时会自动补齐。
+            </div>
+          </div>
+        </a-modal>
       </a-tab-pane>
 
       <a-tab-pane key="upload" tab="上传地图">
