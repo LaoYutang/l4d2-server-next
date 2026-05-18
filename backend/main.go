@@ -134,6 +134,7 @@ func main() {
 		download.POST("/list", controller.GetDownloadTasksInfo)
 		download.POST("/cancel", controller.CancelDownloadTask)
 		download.POST("/restart", controller.RestartDownloadTask)
+		download.POST("/workshop/parse", controller.ParseWorkshopDownloadLink)
 	}
 
 	// Monitor Group

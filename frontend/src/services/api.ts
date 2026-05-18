@@ -4,6 +4,20 @@ export interface LogStream {
   close: () => void;
 }
 
+export interface WorkshopDownloadItem {
+  publishedfileid: string;
+  title: string;
+  filename: string;
+  file_size: string;
+  file_url: string;
+  preview_url: string;
+}
+
+export interface WorkshopParseResult {
+  source_id: string;
+  items: WorkshopDownloadItem[];
+}
+
 class ApiService {
   private getCredential() {
     const authStore = useAuthStore();
@@ -711,9 +725,12 @@ class ApiService {
     }
   }
 
-  async addDownloadTask(url: string) {
+  async addDownloadTask(url: string, filename?: string) {
     const fd = new FormData();
     fd.append('url', url);
+    if (filename) {
+      fd.append('filename', filename);
+    }
     const response = await fetch('/download/add', {
       method: 'POST',
       headers: this.createAuthHeaders(),
@@ -722,6 +739,12 @@ class ApiService {
     this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
+  }
+
+  async parseWorkshopLink(url: string): Promise<WorkshopParseResult> {
+    const response = await this.postJson('/download/workshop/parse', { url });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async restartDownloadTask(index: number) {

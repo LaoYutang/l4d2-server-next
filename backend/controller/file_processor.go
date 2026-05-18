@@ -72,19 +72,65 @@ func recordMap(filename string) error {
 
 // sanitizeFilename 清理文件名中的空格和特殊符号，替换为下划线
 func sanitizeFilename(filename string) string {
+	filename = strings.TrimSpace(strings.ReplaceAll(filename, "\x00", ""))
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = filepath.Base(filename)
+
 	// 分离文件名和扩展名
 	ext := filepath.Ext(filename)
 	nameWithoutExt := strings.TrimSuffix(filename, ext)
+	ext = sanitizeFileExtension(ext)
 
 	// 使用正则表达式匹配需要替换的字符
 	// 匹配空格、特殊符号等，但保留中文字符、英文字母、数字、连字符、下划线
 	reg := regexp.MustCompile(`[^\p{L}\p{N}\-_]+`)
 	cleanName := reg.ReplaceAllString(nameWithoutExt, "_")
+	cleanName = strings.Trim(cleanName, "._-")
 
 	// 如果存在myl4d2addons_前缀则去除
 	cleanName = strings.TrimPrefix(cleanName, "myl4d2addons_")
+	cleanName = strings.Trim(cleanName, "._-")
+	if cleanName == "" {
+		cleanName = "downloaded_file"
+	}
+	if isWindowsReservedFilename(cleanName) {
+		cleanName += "_"
+	}
+	cleanName = truncateFilenamePart(cleanName, 180)
 
 	return cleanName + ext
+}
+
+func sanitizeFileExtension(ext string) string {
+	if ext == "" {
+		return ""
+	}
+	extName := strings.TrimPrefix(strings.ToLower(ext), ".")
+	reg := regexp.MustCompile(`[^a-z0-9]+`)
+	extName = reg.ReplaceAllString(extName, "")
+	if extName == "" {
+		return ""
+	}
+	return "." + truncateFilenamePart(extName, 16)
+}
+
+func truncateFilenamePart(value string, maxRunes int) string {
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes])
+}
+
+func isWindowsReservedFilename(name string) bool {
+	switch strings.ToUpper(name) {
+	case "CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return true
+	default:
+		return false
+	}
 }
 
 // ProcessFile 处理文件（vpk或zip或rar或7z），统一的文件处理入口

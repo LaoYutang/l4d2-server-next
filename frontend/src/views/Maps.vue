@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted, h, watch, reactive } from 'vue';
   defineOptions({ name: 'Maps' });
-  import { api } from '../services/api';
+  import { api, type WorkshopParseResult } from '../services/api';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -13,6 +13,8 @@
     ExclamationCircleOutlined,
     CloseCircleOutlined,
     PlayCircleOutlined,
+    SearchOutlined,
+    DownloadOutlined,
   } from '@ant-design/icons-vue';
 
   const activeTab = ref('local');
@@ -31,6 +33,13 @@
   const newTaskUrl = ref('');
   const addingTask = ref(false);
   const addTaskVisible = ref(false);
+  const workshopParseVisible = ref(false);
+  const workshopUrl = ref('');
+  const workshopParsing = ref(false);
+  const workshopAddingAll = ref(false);
+  const workshopResult = ref<WorkshopParseResult | null>(null);
+  const addingWorkshopItems = ref<Record<string, boolean>>({});
+  const addedWorkshopItems = ref<Record<string, boolean>>({});
   let downloadRefreshInterval: number | null = null;
 
   // Local Maps Logic
@@ -300,6 +309,117 @@
     }
   };
 
+  const workshopItems = computed(() => workshopResult.value?.items || []);
+
+  const getWorkshopDownloadFilename = (item: any) => {
+    const title = String(item.title || '').trim();
+    if (title) {
+      return /\.(vpk|zip|rar|7z)$/i.test(title) ? title : `${title}.vpk`;
+    }
+    return `${item.publishedfileid}.vpk`;
+  };
+
+  const isWorkshopItemAdded = (item: any) => {
+    return !!addedWorkshopItems.value[item.publishedfileid];
+  };
+
+  const allWorkshopItemsAdded = computed(() => {
+    return workshopItems.value.length > 0 && workshopItems.value.every(isWorkshopItemAdded);
+  });
+
+  const formatWorkshopFileSize = (size: string | number) => {
+    const bytes = Number(size);
+    if (!Number.isFinite(bytes) || bytes <= 0) return '未知大小';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const parseWorkshopLink = async () => {
+    const link = workshopUrl.value.trim();
+    if (!link) {
+      message.error('请输入工坊链接或 ID');
+      return;
+    }
+
+    workshopParsing.value = true;
+    workshopResult.value = null;
+    addedWorkshopItems.value = {};
+    addingWorkshopItems.value = {};
+    try {
+      const result = await api.parseWorkshopLink(link);
+      workshopResult.value = result;
+      message.success(`解析成功，共 ${result.items.length} 个可下载文件`);
+    } catch (e: any) {
+      message.error('解析失败: ' + e.message);
+    } finally {
+      workshopParsing.value = false;
+    }
+  };
+
+  const openWorkshopParseModal = () => {
+    workshopParseVisible.value = true;
+  };
+
+  const addWorkshopDownload = async (item: any, refresh = true) => {
+    if (!item.file_url) {
+      message.error('该工坊条目没有可用下载链接');
+      return false;
+    }
+
+    const itemID = item.publishedfileid;
+    addingWorkshopItems.value = { ...addingWorkshopItems.value, [itemID]: true };
+    try {
+      await api.addDownloadTask(item.file_url, getWorkshopDownloadFilename(item));
+      addedWorkshopItems.value = { ...addedWorkshopItems.value, [itemID]: true };
+      if (refresh) {
+        message.success(`${getWorkshopDownloadFilename(item)} 已添加到下载任务`);
+        loadDownloadTasks();
+      }
+      return true;
+    } catch (e: any) {
+      if (refresh) {
+        message.error('添加下载任务失败: ' + e.message);
+      }
+      return false;
+    } finally {
+      addingWorkshopItems.value = { ...addingWorkshopItems.value, [itemID]: false };
+    }
+  };
+
+  const downloadAllWorkshopItems = async () => {
+    const pendingItems = workshopItems.value.filter((item) => !isWorkshopItemAdded(item));
+    if (pendingItems.length === 0) return;
+
+    workshopAddingAll.value = true;
+    let successCount = 0;
+    let failCount = 0;
+    try {
+      for (const item of pendingItems) {
+        const ok = await addWorkshopDownload(item, false);
+        if (ok) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        message.success(`已添加 ${successCount} 个工坊下载任务`);
+        loadDownloadTasks();
+      }
+      if (failCount > 0) {
+        message.warning(`${failCount} 个任务添加失败`);
+      }
+      if (successCount > 0 && failCount === 0) {
+        workshopParseVisible.value = false;
+      }
+    } finally {
+      workshopAddingAll.value = false;
+    }
+  };
+
   const cancelTask = async (index: number) => {
     try {
       await api.cancelDownloadTask(index);
@@ -347,6 +467,13 @@
     { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
     { title: '进度', dataIndex: 'progress', key: 'progress', width: 200 },
     { title: '操作', key: 'action', width: 80, align: 'right' as const },
+  ];
+
+  const workshopColumns = [
+    { title: '预览', key: 'preview', width: 84 },
+    { title: '工坊地图', key: 'info' },
+    { title: '大小', key: 'size', width: 120 },
+    { title: '操作', key: 'action', width: 110 },
   ];
 
   const getFileNameFromUrl = (url: string) => {
@@ -596,14 +723,23 @@
         <div class="space-y-4">
           <!-- Add Task & Actions -->
           <div class="flex justify-between items-center">
-            <a-button
-              type="primary"
-              @click="addTaskVisible = true"
-              class="!flex !items-center !justify-center"
-            >
-              <template #icon><plus-outlined /></template>
-              添加任务
-            </a-button>
+            <div class="flex gap-2 flex-wrap">
+              <a-button
+                type="primary"
+                @click="addTaskVisible = true"
+                class="!flex !items-center !justify-center"
+              >
+                <template #icon><plus-outlined /></template>
+                添加任务
+              </a-button>
+              <a-button
+                @click="openWorkshopParseModal"
+                class="!flex !items-center !justify-center"
+              >
+                <template #icon><search-outlined /></template>
+                解析工坊链接
+              </a-button>
+            </div>
 
             <a-button
               v-if="downloadTasks.length > 0"
@@ -728,6 +864,94 @@
 支持 .vpk, .zip, .rar, .7z 格式"
             :rows="6"
           />
+        </a-modal>
+
+        <a-modal
+          v-model:open="workshopParseVisible"
+          title="解析工坊链接"
+          width="920px"
+          :footer="null"
+        >
+          <div class="space-y-4">
+            <a-input-search
+              v-model:value="workshopUrl"
+              placeholder="粘贴 Steam 工坊链接、合集链接或输入工坊 ID"
+              enter-button="解析"
+              :loading="workshopParsing"
+              @search="parseWorkshopLink"
+            />
+
+            <div v-if="workshopResult" class="space-y-3">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="text-sm text-gray-600 dark:text-gray-400">
+                  解析到 {{ workshopItems.length }} 个可下载文件
+                  <span class="ml-2 text-xs text-gray-400">源 ID: {{ workshopResult.source_id }}</span>
+                </div>
+                <a-button
+                  type="primary"
+                  :loading="workshopAddingAll"
+                  :disabled="workshopItems.length === 0 || allWorkshopItemsAdded"
+                  @click="downloadAllWorkshopItems"
+                  class="!flex !items-center !justify-center"
+                >
+                  <template #icon><download-outlined /></template>
+                  全部下载
+                </a-button>
+              </div>
+
+              <a-table
+                :columns="workshopColumns"
+                :dataSource="workshopItems"
+                :pagination="{ pageSize: 8, showSizeChanger: false }"
+                :rowKey="(record: any) => record.publishedfileid"
+                size="small"
+                :scroll="{ x: 720 }"
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'preview'">
+                    <div
+                      class="w-14 h-14 rounded border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center"
+                    >
+                      <img
+                        v-if="record.preview_url"
+                        :src="record.preview_url"
+                        :alt="record.title"
+                        class="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                      <file-text-outlined v-else class="text-xl text-gray-400" />
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'info'">
+                    <div class="min-w-[260px]">
+                      <div class="font-medium text-sm break-words dark:text-gray-100">
+                        {{ record.title || `工坊 ${record.publishedfileid}` }}
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        ID: {{ record.publishedfileid }}
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'size'">
+                    <a-tag>{{ formatWorkshopFileSize(record.file_size) }}</a-tag>
+                  </template>
+                  <template v-else-if="column.key === 'action'">
+                    <a-button
+                      size="small"
+                      type="primary"
+                      :loading="addingWorkshopItems[record.publishedfileid]"
+                      :disabled="isWorkshopItemAdded(record)"
+                      @click="addWorkshopDownload(record)"
+                      class="!flex !items-center !justify-center"
+                    >
+                      <template #icon><download-outlined /></template>
+                      {{ isWorkshopItemAdded(record) ? '已添加' : '下载' }}
+                    </a-button>
+                  </template>
+                </template>
+              </a-table>
+            </div>
+          </div>
         </a-modal>
       </a-tab-pane>
     </a-tabs>

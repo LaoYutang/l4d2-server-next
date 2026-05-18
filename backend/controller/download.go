@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"mime"
 	"net/http"
 	"os"
@@ -28,46 +29,65 @@ const (
 )
 
 type downloadTask struct {
-	url              string          // 下载链接
-	status           DOWNLOAD_STATUS // 状态
-	message          string          // 错误消息
-	progress         float64         // 进度
-	cancel           chan struct{}   // 取消信号通道
-	cancelled        bool            // 标记是否已取消
-	downloadSpeed    float64         // 下载速度 (bytes/second)
-	startTime        time.Time       // 下载开始时间
-	lastUpdate       time.Time       // 上次更新时间
-	downloadedBytes  int64           // 已下载字节数
-	lastSecondBytes  int64           // 上一秒的下载字节数
-	speedUpdateTimer *time.Ticker    // 速度更新定时器
-	mu               sync.RWMutex    // 读写锁，保护并发访问
-	semaphore        chan struct{}   // 并发控制信号量
-	totalSize        int64           // 文件总大小
-	filename         string          // 文件名
+	url               string          // 下载链接
+	status            DOWNLOAD_STATUS // 状态
+	message           string          // 错误消息
+	progress          float64         // 进度
+	cancel            chan struct{}   // 取消信号通道
+	cancelled         bool            // 标记是否已取消
+	downloadSpeed     float64         // 下载速度 (bytes/second)
+	startTime         time.Time       // 下载开始时间
+	lastUpdate        time.Time       // 上次更新时间
+	downloadedBytes   int64           // 已下载字节数
+	lastSecondBytes   int64           // 上一秒的下载字节数
+	speedUpdateTimer  *time.Ticker    // 速度更新定时器
+	mu                sync.RWMutex    // 读写锁，保护并发访问
+	semaphore         chan struct{}   // 并发控制信号量
+	totalSize         int64           // 文件总大小
+	filename          string          // 文件名
+	preferredFilename string          // 优先使用的文件名
 }
 
 // 新增下载任务
 func NewDownloadTask(url string, semaphore chan struct{}) *downloadTask {
+	return NewDownloadTaskWithFilename(url, "", semaphore)
+}
+
+func NewDownloadTaskWithFilename(url string, filename string, semaphore chan struct{}) *downloadTask {
 	res := &downloadTask{
-		url:              url,
-		status:           DOWNLOAD_STATUS_PENDING,
-		cancel:           make(chan struct{}),
-		cancelled:        false,
-		downloadSpeed:    0,
-		startTime:        time.Now(),
-		lastUpdate:       time.Now(),
-		downloadedBytes:  0,
-		lastSecondBytes:  0,
-		speedUpdateTimer: time.NewTicker(5 * time.Second),
-		semaphore:        semaphore,
-		totalSize:        0, // 初始化文件总大小
-		filename:         "",
+		url:               url,
+		status:            DOWNLOAD_STATUS_PENDING,
+		cancel:            make(chan struct{}),
+		cancelled:         false,
+		downloadSpeed:     0,
+		startTime:         time.Now(),
+		lastUpdate:        time.Now(),
+		downloadedBytes:   0,
+		lastSecondBytes:   0,
+		speedUpdateTimer:  time.NewTicker(5 * time.Second),
+		semaphore:         semaphore,
+		totalSize:         0, // 初始化文件总大小
+		filename:          "",
+		preferredFilename: cleanDownloadFilename(filename),
 	}
 
 	// 启动协程下载文件
 	go res.download()
 
 	return res
+}
+
+func cleanDownloadFilename(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return ""
+	}
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = filepath.Base(filename)
+	if filename == "." || filename == "/" {
+		return ""
+	}
+	return sanitizeFilename(filename)
 }
 
 // 添加取消方法
@@ -144,8 +164,12 @@ func (dt *downloadTask) download() {
 		return
 	}
 
-	// 从URL中提取文件名
-	fileName := dt.determineFileName(resp)
+	// 优先使用调用方指定的文件名；普通链接仍从响应头或 URL 推断。
+	fileName := dt.preferredFilename
+	if fileName == "" {
+		fileName = dt.determineFileName(resp)
+	}
+	fileName = cleanDownloadFilename(fileName)
 	if fileName == "" {
 		fileName = "downloaded_file"
 	}
@@ -400,7 +424,11 @@ func NewDownloader() *downloader {
 }
 
 func (d *downloader) AddTask(url string) {
-	task := NewDownloadTask(url, d.semaphore)
+	d.AddTaskWithFilename(url, "")
+}
+
+func (d *downloader) AddTaskWithFilename(url string, filename string) {
+	task := NewDownloadTaskWithFilename(url, filename, d.semaphore)
 	d.tasks = append(d.tasks, task)
 }
 
@@ -428,6 +456,37 @@ func init() {
 	Downloader = NewDownloader()
 }
 
+type ParseWorkshopDownloadRequest struct {
+	URL string `json:"url"`
+}
+
+func ParseWorkshopDownloadLink(c *gin.Context) {
+	var req ParseWorkshopDownloadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+	if strings.TrimSpace(req.URL) == "" {
+		FailWithError(c, http.StatusBadRequest, "工坊链接不能为空")
+		return
+	}
+
+	LogOp(c, req, "解析工坊链接")
+
+	result, err := logic.ParseWorkshopDownloadLink(req.URL)
+	if err != nil {
+		status := http.StatusBadGateway
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "工坊链接") || strings.Contains(errMsg, "工坊 ID") {
+			status = http.StatusBadRequest
+		}
+		FailWithError(c, status, "解析工坊链接失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 func AddDownloadTask(c *gin.Context) {
 	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "获取磁盘使用信息失败: %v", err)
@@ -441,12 +500,17 @@ func AddDownloadTask(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "下载链接不能为空")
 		return
 	}
-	LogOp(c, nil, "添加下载任务:", url)
+	filename := c.PostForm("filename")
+	LogOp(c, nil, "添加下载任务:", url, filename)
 
 	// 识别切分多个http连接
 	urls := splitURLString(url)
 	for _, singleURL := range urls {
-		Downloader.AddTask(singleURL)
+		if filename != "" && len(urls) == 1 {
+			Downloader.AddTaskWithFilename(singleURL, filename)
+		} else {
+			Downloader.AddTask(singleURL)
+		}
 	}
 	c.String(http.StatusOK, "下载任务已添加")
 }
@@ -515,12 +579,13 @@ func RestartDownloadTask(c *gin.Context) {
 	// 获取原任务的URL
 	originalTask := Downloader.tasks[index]
 	taskURL := originalTask.url
+	taskFilename := originalTask.preferredFilename
 
 	// 取消原任务
 	originalTask.Cancel()
 
 	// 创建新的下载任务
-	newTask := NewDownloadTask(taskURL, Downloader.semaphore)
+	newTask := NewDownloadTaskWithFilename(taskURL, taskFilename, Downloader.semaphore)
 
 	// 替换原任务
 	Downloader.tasks[index] = newTask
