@@ -55,6 +55,7 @@ cat > /data/l4d2/docker-compose.yaml << EOF
 volumes:
   l4d2-data:
   l4d2-plugins:
+  l4d2-manager-data:
 
 networks:
   l4d2-network:
@@ -94,6 +95,7 @@ services:
     volumes:
       - l4d2-data:/left4dead2
       - l4d2-plugins:/plugins
+      - l4d2-manager-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - /proc:/host/proc:ro
       - /etc/localtime:/etc/localtime:ro

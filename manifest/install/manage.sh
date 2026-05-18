@@ -309,9 +309,11 @@ generate_compose() {
                 printf '%s\n' "      type: none"
                 printf '%s\n' "      o: bind"
                 printf '%s\n' "      device: ${BIND_PLUGINS_DIR}"
+                printf '%s\n' "  ${name}-manager-data:"
             else
                 printf '%s\n' "  ${name}-data:"
                 printf '%s\n' "  ${name}-plugins:"
+                printf '%s\n' "  ${name}-manager-data:"
             fi
         done
         printf '\n'
@@ -360,6 +362,7 @@ generate_compose() {
             printf '%s\n' "    volumes:"
             printf '%s\n' "      - ${name}-data:/left4dead2"
             printf '%s\n' "      - ${name}-plugins:/plugins"
+            printf '%s\n' "      - ${name}-manager-data:/data"
             printf '%s\n' "      - /var/run/docker.sock:/var/run/docker.sock"
             printf '%s\n' "      - /proc:/host/proc:ro"
             printf '%s\n' "      - /etc/localtime:/etc/localtime:ro"
@@ -641,7 +644,10 @@ try_import_existing() {
         ((imported++))
     done
 
-    [[ $imported -gt 0 ]] && print_success "共导入 ${imported} 个实例配置"
+    if [[ $imported -gt 0 ]]; then
+        print_success "共导入 ${imported} 个实例配置"
+        generate_compose
+    fi
 }
 
 # 一键安装启动（首次快捷入口）
@@ -1248,6 +1254,7 @@ remove_instance() {
     print_info "正在删除数据卷..."
     docker volume rm "${volume_prefix}-data" 2>/dev/null || true
     docker volume rm "${volume_prefix}-plugins" 2>/dev/null || true
+    docker volume rm "${volume_prefix}-manager-data" 2>/dev/null || true
 
     # 删除软链接
     if [[ "$target" == "l4d2" ]]; then

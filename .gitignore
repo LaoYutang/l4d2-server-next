@@ -3,6 +3,8 @@ private.key
 /backend/static/
 /backend/plugins/
 /backend/manager_config.json
+/backend/data/
+/data/
 *.exe
 *.db
 *.db-shm

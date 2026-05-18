@@ -56,7 +56,7 @@ func main() {
 	})
 
 	// 如果本地的private.key不存在，创建一个随机HS256密钥
-	const privateKeyPath = "./private.key"
+	privateKeyPath := consts.PrivateKeyPath
 	var privateKey []byte
 	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
 		privateKey = []byte(random.RandNumeralOrLetter(16))

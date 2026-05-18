@@ -92,6 +92,7 @@ bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/mas
 volumes:
   l4d2-data:
   l4d2-plugins:
+  l4d2-manager-data:
 
 networks:
   l4d2-network:
@@ -129,6 +130,7 @@ services:
     volumes:
       - l4d2-data:/left4dead2 # 与游戏服务器共享数据卷
       - l4d2-plugins:/plugins # 插件数据持久化
+      - l4d2-manager-data:/data # 管理器运行数据持久化（key/监控/配置）
       - /proc:/host/proc:ro # 挂载宿主机进程信息用于监控
       - /etc/localtime:/etc/localtime:ro # 同步宿主机时区
       - /etc/timezone:/etc/timezone:ro
@@ -160,6 +162,7 @@ docker run -d \
   --net host \
   -v /path/to/your/l4d2/left4dead2:/left4dead2 \
   -v l4d2-plugins:/plugins \
+  -v l4d2-manager-data:/data \
   -v /proc:/host/proc:ro \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \

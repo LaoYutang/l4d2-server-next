@@ -1,6 +1,7 @@
 package db
 
 import (
+	"l4d2-manager-next/consts"
 	"l4d2-manager-next/model"
 	"log"
 	"os"
@@ -21,7 +22,11 @@ func InitDB() {
 
 	var err error
 	// 使用 glebarez/sqlite (纯 Go 驱动)
-	DB, err = gorm.Open(sqlite.Open("monitor.db"), &gorm.Config{
+	if err = consts.EnsureManagerDataPath(); err != nil {
+		log.Printf("Failed to create manager data directory: %v", err)
+		return
+	}
+	DB, err = gorm.Open(sqlite.Open(consts.MonitorDBPath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {

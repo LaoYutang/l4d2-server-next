@@ -2,12 +2,11 @@ package logic
 
 import (
 	"encoding/json"
+	"l4d2-manager-next/consts"
 	"os"
 	"sync"
 	"time"
 )
-
-const ManagerConfigPath = "manager_config.json"
 
 type ManagerConfig struct {
 	EnableSelfService   bool      `json:"enable_self_service"`
@@ -31,12 +30,12 @@ func LoadManagerConfig() {
 		EnableSelfService: false,
 	}
 
-	if _, err := os.Stat(ManagerConfigPath); os.IsNotExist(err) {
+	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
 		saveManagerConfig()
 		return
 	}
 
-	data, err := os.ReadFile(ManagerConfigPath)
+	data, err := os.ReadFile(consts.ManagerConfigPath)
 	if err != nil {
 		return
 	}
@@ -49,7 +48,10 @@ func saveManagerConfig() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ManagerConfigPath, data, 0644)
+	if err := consts.EnsureManagerDataPath(); err != nil {
+		return err
+	}
+	return os.WriteFile(consts.ManagerConfigPath, data, 0644)
 }
 
 func GetSelfServiceConfig() ManagerConfig {
