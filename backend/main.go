@@ -27,6 +27,7 @@ func main() {
 
 	// Clean leftover plugin download temp directories from previous runs
 	go logic.CleanDownloadTemp()
+	go logic.CleanPluginExportTemp()
 
 	router := gin.Default()
 
@@ -165,6 +166,10 @@ func main() {
 	{
 		plugins.POST("/list", controller.GetPlugins)
 		plugins.POST("/upload", controller.UploadPlugin)
+		plugins.POST("/export-all/start", controller.StartExportAllPlugins)
+		plugins.POST("/export-all/status", controller.GetExportAllPluginsStatus)
+		plugins.POST("/export-all/download", controller.DownloadExportAllPlugins)
+		plugins.POST("/export-all/cancel", controller.CancelExportAllPlugins)
 		plugins.POST("/enable", controller.EnablePlugin)
 		plugins.POST("/enable-batch", controller.EnablePlugins)
 		plugins.POST("/disable", controller.DisablePlugin)
