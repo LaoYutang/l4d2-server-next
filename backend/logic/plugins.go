@@ -214,14 +214,25 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 		return fmt.Errorf("empty zip file or only junk files")
 	}
 
-	// Case A: Single plugin (Root is left4dead2)
+	// Case A: Single plugin (Root is left4dead2, with optional markdown docs)
 	isSinglePlugin := true
+	hasSinglePluginRoot := false
 	for _, f := range validFiles {
 		name := decodedNames[f]
+		if name == "left4dead2" || strings.HasPrefix(name, "left4dead2/") {
+			hasSinglePluginRoot = true
+			continue
+		}
+		if isPluginRootMarkdown(name) {
+			continue
+		}
 		if !strings.HasPrefix(name, "left4dead2/") {
 			isSinglePlugin = false
 			break
 		}
+	}
+	if !hasSinglePluginRoot {
+		isSinglePlugin = false
 	}
 
 	storePath := getStorePath()
@@ -250,7 +261,7 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 		// Zip uses forward slash
 		parts := strings.Split(name, "/")
 		if len(parts) < 2 {
-			// File at root (e.g. "readme.txt") -> Invalid for multi-plugin
+			// File at zip root (e.g. "readme.txt") -> Invalid for multi-plugin
 			return fmt.Errorf("invalid structure: file %s at root", name)
 		}
 		rootDir := parts[0]
@@ -259,7 +270,7 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 
 	// Validate each plugin dir
 	for rootDir, files := range pluginDirs {
-		// Strict check: every file must be either inside rootDir/left4dead2/ OR be the rootDir/left4dead2/ folder itself
+		// Strict check: every file must be inside rootDir/left4dead2/ or be a markdown doc in the plugin root.
 		expectedPrefix := rootDir + "/left4dead2/"
 
 		for _, f := range files {
@@ -275,7 +286,10 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 				if name == rootDir || name == rootDir+"/" {
 					continue
 				}
-				return fmt.Errorf("invalid structure in %s: must only contain left4dead2 folder, found %s", rootDir, name)
+				if strings.HasPrefix(name, rootDir+"/") && isPluginRootMarkdown(strings.TrimPrefix(name, rootDir+"/")) {
+					continue
+				}
+				return fmt.Errorf("invalid structure in %s: must only contain left4dead2 folder and root markdown docs, found %s", rootDir, name)
 			}
 		}
 
@@ -320,6 +334,11 @@ func isJunkFile(name string) bool {
 		return true
 	}
 	return false
+}
+
+func isPluginRootMarkdown(name string) bool {
+	name = strings.Trim(name, "/")
+	return name != "" && !strings.Contains(name, "/") && strings.HasSuffix(strings.ToLower(name), ".md")
 }
 
 func extractFiles(files []*zip.File, destDir string, stripPrefix string, decodedNames map[*zip.File]string) error {
