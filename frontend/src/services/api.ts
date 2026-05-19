@@ -18,6 +18,16 @@ export interface WorkshopParseResult {
   items: WorkshopDownloadItem[];
 }
 
+export type PluginExportStatus = 'pending' | 'compressing' | 'completed' | 'failed' | 'cancelled';
+
+export interface PluginExportProgress {
+  task_id: string;
+  status: PluginExportStatus;
+  processed: number;
+  total: number;
+  message: string;
+}
+
 class ApiService {
   private getCredential() {
     const authStore = useAuthStore();
@@ -182,6 +192,36 @@ class ApiService {
   async uploadPlugin(file: File | File[]) {
     const response = await this.post('/plugins/upload', { file });
     if (!response.ok) throw new Error(await response.text());
+  }
+
+  async startExportAllPlugins(): Promise<PluginExportProgress> {
+    const response = await this.post('/plugins/export-all/start');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getExportAllPluginsStatus(taskId: string): Promise<PluginExportProgress> {
+    const response = await this.postJson('/plugins/export-all/status', { task_id: taskId });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async downloadExportedPlugins(taskId: string) {
+    const response = await this.postJson('/plugins/export-all/download', { task_id: taskId });
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plugins_all.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async cancelExportAllPlugins(taskId: string): Promise<PluginExportProgress> {
+    const response = await this.postJson('/plugins/export-all/cancel', { task_id: taskId });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async enablePlugin(name: string) {

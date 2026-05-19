@@ -25,6 +25,7 @@
     Select as ASelect,
     Tag as ATag,
     Modal as AModal,
+    Progress as AProgress,
     InputPassword as AInputPassword,
   } from 'ant-design-vue';
   import {
@@ -41,7 +42,7 @@
     LinkOutlined,
     FileTextOutlined,
   } from '@ant-design/icons-vue';
-  import { api } from '../services/api';
+  import { api, type PluginExportProgress } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
   import PluginDetailModal from '../components/PluginDetailModal.vue';
@@ -73,6 +74,7 @@
     window.removeEventListener('resize', handleResize);
     storeResizeObserver?.disconnect();
     stopStoreDownloadPolling();
+    stopPluginExportPolling();
   });
 
   const drawerWidth = computed(() => {
@@ -212,6 +214,13 @@
   const currentDetailIsStore = ref(false);
   const pendingFiles = ref<File[]>([]);
   let uploadTimer: any = null;
+
+  const exportProgressVisible = ref(false);
+  const exportingPlugins = ref(false);
+  const cancellingPluginExport = ref(false);
+  const exportDownloaded = ref(false);
+  const exportProgress = ref<PluginExportProgress | null>(null);
+  let exportProgressInterval: number | null = null;
 
   const presetModalVisible = ref(false);
   const presets = ref<any[]>([]);
@@ -368,6 +377,170 @@
     }, 100);
 
     return false; // Prevent default upload behavior
+  };
+
+  const isPluginExportActive = computed(() => {
+    const status = exportProgress.value?.status;
+    return status === 'pending' || status === 'compressing';
+  });
+
+  const exportPercent = computed(() => {
+    const progress = exportProgress.value;
+    if (!progress) return 0;
+    if (progress.status === 'completed') return 100;
+    if (progress.total <= 0) return 0;
+    return Math.min(99, Math.floor((progress.processed / progress.total) * 100));
+  });
+
+  const exportProgressStatus = computed(() => {
+    const status = exportProgress.value?.status;
+    if (status === 'completed') return 'success';
+    if (status === 'failed') return 'exception';
+    if (status === 'cancelled') return 'normal';
+    return 'active';
+  });
+
+  const exportProgressText = computed(() => {
+    const progress = exportProgress.value;
+    if (!progress) return '准备导出插件...';
+    if (progress.total <= 0) return progress.message || '正在扫描插件文件...';
+    return `${progress.message || '正在压缩插件文件'} (${progress.processed}/${progress.total})`;
+  });
+
+  const stopPluginExportPolling = () => {
+    if (exportProgressInterval) {
+      clearInterval(exportProgressInterval);
+      exportProgressInterval = null;
+    }
+  };
+
+  const downloadCompletedPluginExport = async (taskId: string) => {
+    if (exportDownloaded.value) return;
+    exportDownloaded.value = true;
+    stopPluginExportPolling();
+
+    try {
+      await api.downloadExportedPlugins(taskId);
+      message.success('插件导出完成，已开始下载');
+    } catch (error: any) {
+      message.error('下载导出文件失败: ' + error.message);
+      exportProgress.value = {
+        task_id: taskId,
+        status: 'failed',
+        processed: exportProgress.value?.processed || 0,
+        total: exportProgress.value?.total || 0,
+        message: error.message || '下载导出文件失败',
+      };
+    } finally {
+      exportingPlugins.value = false;
+    }
+  };
+
+  let loadingPluginExportStatus = false;
+  const loadPluginExportStatus = async () => {
+    if (loadingPluginExportStatus) return;
+    const taskId = exportProgress.value?.task_id;
+    if (!taskId) return;
+
+    loadingPluginExportStatus = true;
+    try {
+      const progress = await api.getExportAllPluginsStatus(taskId);
+      exportProgress.value = progress;
+
+      if (progress.status === 'completed') {
+        await downloadCompletedPluginExport(progress.task_id);
+      } else if (progress.status === 'failed') {
+        stopPluginExportPolling();
+        exportingPlugins.value = false;
+        message.error('导出插件失败: ' + (progress.message || '未知错误'));
+      } else if (progress.status === 'cancelled') {
+        stopPluginExportPolling();
+        exportingPlugins.value = false;
+        message.info('插件导出已取消');
+      }
+    } catch (error: any) {
+      stopPluginExportPolling();
+      exportingPlugins.value = false;
+      message.error('获取导出进度失败: ' + error.message);
+    } finally {
+      loadingPluginExportStatus = false;
+    }
+  };
+
+  const startPluginExportPolling = () => {
+    if (exportProgressInterval) return;
+    exportProgressInterval = window.setInterval(loadPluginExportStatus, 1000);
+  };
+
+  const handleExportAllPlugins = async () => {
+    if (exportingPlugins.value) return;
+
+    exportingPlugins.value = true;
+    exportDownloaded.value = false;
+    exportProgressVisible.value = true;
+    exportProgress.value = {
+      task_id: '',
+      status: 'pending',
+      processed: 0,
+      total: 0,
+      message: '正在扫描插件文件...',
+    };
+
+    try {
+      const progress = await api.startExportAllPlugins();
+      exportProgress.value = progress;
+
+      if (progress.status === 'completed') {
+        await downloadCompletedPluginExport(progress.task_id);
+      } else if (progress.status === 'failed') {
+        exportingPlugins.value = false;
+        message.error('导出插件失败: ' + (progress.message || '未知错误'));
+      } else {
+        startPluginExportPolling();
+      }
+    } catch (error: any) {
+      exportingPlugins.value = false;
+      exportProgress.value = {
+        task_id: '',
+        status: 'failed',
+        processed: 0,
+        total: 0,
+        message: error.message || '启动导出失败',
+      };
+      message.error('启动导出失败: ' + error.message);
+    }
+  };
+
+  const cancelPluginExport = async (closeAfterCancel: boolean = false) => {
+    const taskId = exportProgress.value?.task_id;
+    if (!taskId || !isPluginExportActive.value) {
+      exportProgressVisible.value = false;
+      return;
+    }
+
+    cancellingPluginExport.value = true;
+    stopPluginExportPolling();
+    try {
+      const progress = await api.cancelExportAllPlugins(taskId);
+      exportProgress.value = progress;
+      message.info('插件导出已取消');
+    } catch (error: any) {
+      message.error('取消导出失败: ' + error.message);
+    } finally {
+      exportingPlugins.value = false;
+      cancellingPluginExport.value = false;
+      if (closeAfterCancel) {
+        exportProgressVisible.value = false;
+      }
+    }
+  };
+
+  const handleExportModalCancel = () => {
+    if (isPluginExportActive.value) {
+      cancelPluginExport(true);
+    } else {
+      exportProgressVisible.value = false;
+    }
   };
 
   const togglePlugin = async (plugin: Plugin) => {
@@ -882,7 +1055,7 @@
         <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">插件管理</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-1">管理服务器插件和模组</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap justify-end gap-2">
         <a-button
           v-if="authStore.isAdmin"
           type="primary"
@@ -893,6 +1066,28 @@
           <template #icon><SettingOutlined /></template>
           应用预设
         </a-button>
+        <a-popconfirm
+          v-if="authStore.isAdmin"
+          overlayClassName="plugin-export-popconfirm"
+          placement="bottomRight"
+          ok-text="确定"
+          cancel-text="取消"
+          @confirm="handleExportAllPlugins"
+        >
+          <template #title>
+            <div class="max-w-[320px] leading-relaxed whitespace-normal">
+              导出会在压缩时占用服务器 CPU，下载时占用服务器带宽，请勿在游戏时进行此操作。确定继续吗？
+            </div>
+          </template>
+          <a-button
+            :loading="exportingPlugins"
+            :disabled="exportingPlugins"
+            class="!flex !items-center !justify-center"
+          >
+            <template #icon><DownloadOutlined /></template>
+            导出所有插件
+          </a-button>
+        </a-popconfirm>
         <a-button
           type="default"
           @click="fetchPlugins"
@@ -1103,7 +1298,7 @@
                 </div>
               </div>
 
-              <div class="flex flex-row gap-2 w-full lg:w-auto">
+              <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                 <a-upload
                   v-if="authStore.isAdmin"
                   v-model:file-list="fileList"
@@ -1285,6 +1480,55 @@
           </div>
         </a-radio-group>
       </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="exportProgressVisible"
+      title="导出所有插件"
+      :width="460"
+      :getContainer="getModalContainer"
+      @cancel="handleExportModalCancel"
+    >
+      <div class="space-y-4">
+        <a-alert
+          message="导出会在压缩时占用服务器 CPU，下载时占用服务器带宽，请勿在游戏时进行此操作。"
+          type="warning"
+          show-icon
+        />
+        <a-alert
+          v-if="exportProgress?.status === 'failed'"
+          :message="exportProgress.message || '导出失败'"
+          type="error"
+          show-icon
+        />
+        <a-alert
+          v-else-if="exportProgress?.status === 'cancelled'"
+          message="导出已取消"
+          type="info"
+          show-icon
+        />
+        <a-progress
+          :percent="exportPercent"
+          :status="exportProgressStatus"
+          :stroke-width="10"
+        />
+        <div class="text-sm text-gray-500 dark:text-gray-400">
+          {{ exportProgressText }}
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <a-button
+            v-if="isPluginExportActive"
+            danger
+            :loading="cancellingPluginExport"
+            @click="cancelPluginExport(false)"
+          >
+            取消导出
+          </a-button>
+          <a-button v-else @click="exportProgressVisible = false">关闭</a-button>
+        </div>
+      </template>
     </a-modal>
 
     <a-drawer
@@ -1555,6 +1799,20 @@
   }
   :deep(.ant-popconfirm-message) {
     white-space: nowrap;
+  }
+
+  :deep(.plugin-export-popconfirm) {
+    max-width: min(360px, calc(100vw - 32px));
+  }
+
+  :deep(.plugin-export-popconfirm .ant-popconfirm-message) {
+    align-items: flex-start;
+    white-space: normal;
+  }
+
+  :deep(.plugin-export-popconfirm .ant-popconfirm-title) {
+    white-space: normal;
+    word-break: break-word;
   }
 
   /* 修复 RadioButton 垂直排列时的边框问题 */

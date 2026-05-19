@@ -140,7 +140,7 @@ func GetPlugins() ([]Plugin, error) {
 			continue
 		}
 		name := entry.Name()
-		if name == DownloadTempDir {
+		if name == DownloadTempDir || name == ExportTempDir {
 			continue
 		}
 		// Exact match check

@@ -67,6 +67,109 @@ func UploadPlugin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "插件上传成功"})
 }
 
+type PluginExportTaskRequest struct {
+	TaskID string `json:"task_id"`
+}
+
+func StartExportAllPlugins(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	LogOp(c, nil, "导出所有插件")
+
+	progress, err := logic.StartPluginExportTask()
+	if err != nil {
+		FailWithError(c, http.StatusInternalServerError, "启动插件导出失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, progress)
+}
+
+func GetExportAllPluginsStatus(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	var req PluginExportTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+	if req.TaskID == "" {
+		FailWithError(c, http.StatusBadRequest, "导出任务ID不能为空")
+		return
+	}
+
+	progress, err := logic.GetPluginExportProgress(req.TaskID)
+	if err != nil {
+		FailWithError(c, http.StatusNotFound, "获取导出进度失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, progress)
+}
+
+func DownloadExportAllPlugins(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	var req PluginExportTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+	if req.TaskID == "" {
+		FailWithError(c, http.StatusBadRequest, "导出任务ID不能为空")
+		return
+	}
+
+	zipPath, err := logic.GetCompletedPluginExportPath(req.TaskID)
+	if err != nil {
+		FailWithError(c, http.StatusBadRequest, "下载导出文件失败: %v", err)
+		return
+	}
+	defer logic.CleanupPluginExportTask(req.TaskID)
+
+	c.FileAttachment(zipPath, logic.PluginExportFileName)
+}
+
+func CancelExportAllPlugins(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	var req PluginExportTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+	if req.TaskID == "" {
+		FailWithError(c, http.StatusBadRequest, "导出任务ID不能为空")
+		return
+	}
+
+	LogOp(c, req, "取消插件导出")
+
+	progress, err := logic.CancelPluginExportTask(req.TaskID)
+	if err != nil {
+		FailWithError(c, http.StatusNotFound, "取消导出失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, progress)
+}
+
 type GetStorePluginsRequest struct {
 	ForceRefresh bool   `json:"force_refresh"`
 	ProxyUrl     string `json:"proxy_url"`
