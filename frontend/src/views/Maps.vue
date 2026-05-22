@@ -534,6 +534,8 @@
   const taskColumns = [
     { title: '文件/URL', dataIndex: 'filename', key: 'filename' },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+    { title: '大小', dataIndex: 'formattedSize', key: 'size', width: 120 },
+    { title: '速度', dataIndex: 'formattedSpeed', key: 'speed', width: 130 },
     { title: '进度', dataIndex: 'progress', key: 'progress', width: 200 },
     { title: '操作', key: 'action', width: 80, align: 'right' as const },
   ];
@@ -668,7 +670,7 @@
             @change="handleTableChange"
             rowKey="name"
             :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
-            :scroll="{ x: 500 }"
+            :scroll="{ x: 760 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -908,6 +910,16 @@
                     }}
                   </a-tag>
                 </div>
+              </template>
+              <template v-else-if="column.key === 'size'">
+                <a-tag class="mr-0">
+                  {{ record.formattedSize || '未知大小' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'speed'">
+                <span class="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                  {{ record.status === 1 ? record.formattedSpeed || '0 B/s' : '-' }}
+                </span>
               </template>
               <template v-else-if="column.key === 'progress'">
                 <div class="flex flex-col items-start gap-1 min-w-[100px]">
