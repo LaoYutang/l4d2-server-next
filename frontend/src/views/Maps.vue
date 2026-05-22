@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted, h, watch, reactive } from 'vue';
   defineOptions({ name: 'Maps' });
-  import { api, type WorkshopParseResult } from '../services/api';
+  import { api, type DownloadLinkParseResult, type ParsedDownloadItem } from '../services/api';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -38,13 +38,14 @@
   const newTaskUrl = ref('');
   const addingTask = ref(false);
   const addTaskVisible = ref(false);
-  const workshopParseVisible = ref(false);
-  const workshopUrl = ref('');
-  const workshopParsing = ref(false);
-  const workshopAddingAll = ref(false);
-  const workshopResult = ref<WorkshopParseResult | null>(null);
-  const addingWorkshopItems = ref<Record<string, boolean>>({});
-  const addedWorkshopItems = ref<Record<string, boolean>>({});
+  const linkParseVisible = ref(false);
+  const linkUrl = ref('');
+  const linkParsing = ref(false);
+  const linkAddingSelected = ref(false);
+  const linkResult = ref<DownloadLinkParseResult | null>(null);
+  const addingParsedItems = ref<Record<string, boolean>>({});
+  const addedParsedItems = ref<Record<string, boolean>>({});
+  const selectedParsedItemKeys = ref<string[]>([]);
   let downloadRefreshInterval: number | null = null;
 
   // Local Maps Logic
@@ -343,25 +344,48 @@
     }
   };
 
-  const workshopItems = computed(() => workshopResult.value?.items || []);
+  const parsedItems = computed(() => linkResult.value?.items || []);
 
-  const getWorkshopDownloadFilename = (item: any) => {
-    const title = String(item.title || '').trim();
-    if (title) {
-      return /\.(vpk|zip|rar|7z)$/i.test(title) ? title : `${title}.vpk`;
-    }
-    return `${item.publishedfileid}.vpk`;
+  const getParsedItemKey = (item: ParsedDownloadItem | Record<string, any>) => {
+    return String(item.id || item.file_url || item.filename || item.title || '');
   };
 
-  const isWorkshopItemAdded = (item: any) => {
-    return !!addedWorkshopItems.value[item.publishedfileid];
+  const getParsedDownloadFilename = (item: ParsedDownloadItem | Record<string, any>) => {
+    return String(item.filename || item.title || item.id || 'downloaded_file').trim();
   };
 
-  const allWorkshopItemsAdded = computed(() => {
-    return workshopItems.value.length > 0 && workshopItems.value.every(isWorkshopItemAdded);
+  const isParsedItemAdded = (item: ParsedDownloadItem | Record<string, any>) => {
+    return !!addedParsedItems.value[getParsedItemKey(item)];
+  };
+
+  const sourceTypeLabel = computed(() => {
+    if (!linkResult.value) return '';
+    if (linkResult.value.source_type === 'workshop') return 'Steam 工坊';
+    if (linkResult.value.source_type === 'qq_flash_transfer') return 'QQ 闪传';
+    return linkResult.value.source_type;
   });
 
-  const formatWorkshopFileSize = (size: string | number) => {
+  const selectedPendingParsedItems = computed(() => {
+    const selected = new Set(selectedParsedItemKeys.value);
+    return parsedItems.value.filter(
+      (item) => selected.has(getParsedItemKey(item)) && item.supported && !isParsedItemAdded(item)
+    );
+  });
+
+  const parsedRowSelection = computed(() => ({
+    selectedRowKeys: selectedParsedItemKeys.value,
+    onChange: (keys: any[]) => {
+      selectedParsedItemKeys.value = keys.map(String);
+    },
+    getCheckboxProps: (record: ParsedDownloadItem | Record<string, any>) => ({
+      disabled: !record.supported || isParsedItemAdded(record),
+    }),
+  }));
+
+  const formatParsedFileSize = (size: string | number) => {
+    if (typeof size === 'string' && size.trim() && !/^\d+(\.\d+)?$/.test(size.trim())) {
+      return size.trim();
+    }
     const bytes = Number(size);
     if (!Number.isFinite(bytes) || bytes <= 0) return '未知大小';
     if (bytes < 1024) return `${bytes} B`;
@@ -370,45 +394,53 @@
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const parseWorkshopLink = async () => {
-    const link = workshopUrl.value.trim();
+  const parseDownloadLink = async () => {
+    const link = linkUrl.value.trim();
     if (!link) {
-      message.error('请输入工坊链接或 ID');
+      message.error('请输入要解析的链接或工坊 ID');
       return;
     }
 
-    workshopParsing.value = true;
-    workshopResult.value = null;
-    addedWorkshopItems.value = {};
-    addingWorkshopItems.value = {};
+    linkParsing.value = true;
+    linkResult.value = null;
+    selectedParsedItemKeys.value = [];
+    addedParsedItems.value = {};
+    addingParsedItems.value = {};
     try {
-      const result = await api.parseWorkshopLink(link);
-      workshopResult.value = result;
-      message.success(`解析成功，共 ${result.items.length} 个可下载文件`);
+      const result = await api.parseDownloadLink(link);
+      linkResult.value = result;
+      selectedParsedItemKeys.value = result.items
+        .filter((item) => item.supported)
+        .map((item) => getParsedItemKey(item));
+      message.success(`解析成功，共 ${result.items.length} 个文件`);
     } catch (e: any) {
       message.error('解析失败: ' + e.message);
     } finally {
-      workshopParsing.value = false;
+      linkParsing.value = false;
     }
   };
 
-  const openWorkshopParseModal = () => {
-    workshopParseVisible.value = true;
+  const openLinkParseModal = () => {
+    linkParseVisible.value = true;
   };
 
-  const addWorkshopDownload = async (item: any, refresh = true) => {
+  const addParsedDownload = async (item: ParsedDownloadItem | Record<string, any>, refresh = true) => {
+    if (!item.supported) {
+      message.error(item.disabled_reason || '该文件类型暂不支持加入地图下载任务');
+      return false;
+    }
     if (!item.file_url) {
-      message.error('该工坊条目没有可用下载链接');
+      message.error('该条目没有可用下载链接');
       return false;
     }
 
-    const itemID = item.publishedfileid;
-    addingWorkshopItems.value = { ...addingWorkshopItems.value, [itemID]: true };
+    const itemID = getParsedItemKey(item);
+    addingParsedItems.value = { ...addingParsedItems.value, [itemID]: true };
     try {
-      await api.addDownloadTask(item.file_url, getWorkshopDownloadFilename(item));
-      addedWorkshopItems.value = { ...addedWorkshopItems.value, [itemID]: true };
+      await api.addDownloadTask(item.file_url, getParsedDownloadFilename(item), item.referer);
+      addedParsedItems.value = { ...addedParsedItems.value, [itemID]: true };
       if (refresh) {
-        message.success(`${getWorkshopDownloadFilename(item)} 已添加到下载任务`);
+        message.success(`${getParsedDownloadFilename(item)} 已添加到下载任务`);
         loadDownloadTasks();
       }
       return true;
@@ -418,20 +450,23 @@
       }
       return false;
     } finally {
-      addingWorkshopItems.value = { ...addingWorkshopItems.value, [itemID]: false };
+      addingParsedItems.value = { ...addingParsedItems.value, [itemID]: false };
     }
   };
 
-  const downloadAllWorkshopItems = async () => {
-    const pendingItems = workshopItems.value.filter((item) => !isWorkshopItemAdded(item));
-    if (pendingItems.length === 0) return;
+  const downloadSelectedParsedItems = async () => {
+    const pendingItems = selectedPendingParsedItems.value;
+    if (pendingItems.length === 0) {
+      message.warning('没有可添加的选中文件');
+      return;
+    }
 
-    workshopAddingAll.value = true;
+    linkAddingSelected.value = true;
     let successCount = 0;
     let failCount = 0;
     try {
       for (const item of pendingItems) {
-        const ok = await addWorkshopDownload(item, false);
+        const ok = await addParsedDownload(item, false);
         if (ok) {
           successCount++;
         } else {
@@ -440,17 +475,17 @@
       }
 
       if (successCount > 0) {
-        message.success(`已添加 ${successCount} 个工坊下载任务`);
+        message.success(`已添加 ${successCount} 个下载任务`);
         loadDownloadTasks();
       }
       if (failCount > 0) {
         message.warning(`${failCount} 个任务添加失败`);
       }
       if (successCount > 0 && failCount === 0) {
-        workshopParseVisible.value = false;
+        linkParseVisible.value = false;
       }
     } finally {
-      workshopAddingAll.value = false;
+      linkAddingSelected.value = false;
     }
   };
 
@@ -503,10 +538,11 @@
     { title: '操作', key: 'action', width: 80, align: 'right' as const },
   ];
 
-  const workshopColumns = [
+  const parsedLinkColumns = [
     { title: '预览', key: 'preview', width: 84 },
-    { title: '工坊地图', key: 'info' },
+    { title: '文件', key: 'info' },
     { title: '大小', key: 'size', width: 120 },
+    { title: '状态', key: 'support', width: 150 },
     { title: '操作', key: 'action', width: 110 },
   ];
 
@@ -798,11 +834,11 @@
                 添加任务
               </a-button>
               <a-button
-                @click="openWorkshopParseModal"
+                @click="openLinkParseModal"
                 class="!flex !items-center !justify-center"
               >
                 <template #icon><search-outlined /></template>
-                解析工坊链接
+                解析链接
               </a-button>
             </div>
 
@@ -932,43 +968,46 @@
         </a-modal>
 
         <a-modal
-          v-model:open="workshopParseVisible"
-          title="解析工坊链接"
+          v-model:open="linkParseVisible"
+          title="解析链接"
           width="920px"
           :footer="null"
         >
           <div class="space-y-4">
             <a-input-search
-              v-model:value="workshopUrl"
-              placeholder="粘贴 Steam 工坊链接、合集链接或输入工坊 ID"
+              v-model:value="linkUrl"
+              placeholder="粘贴 Steam 工坊链接、合集链接、工坊 ID 或 QQ 闪传链接"
               enter-button="解析"
-              :loading="workshopParsing"
-              @search="parseWorkshopLink"
+              :loading="linkParsing"
+              @search="parseDownloadLink"
             />
 
-            <div v-if="workshopResult" class="space-y-3">
+            <div v-if="linkResult" class="space-y-3">
               <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div class="text-sm text-gray-600 dark:text-gray-400">
-                  解析到 {{ workshopItems.length }} 个可下载文件
-                  <span class="ml-2 text-xs text-gray-400">源 ID: {{ workshopResult.source_id }}</span>
+                  解析到 {{ parsedItems.length }} 个文件
+                  <span class="ml-2 text-xs text-gray-400">
+                    来源: {{ sourceTypeLabel }} · ID: {{ linkResult.source_id }}
+                  </span>
                 </div>
                 <a-button
                   type="primary"
-                  :loading="workshopAddingAll"
-                  :disabled="workshopItems.length === 0 || allWorkshopItemsAdded"
-                  @click="downloadAllWorkshopItems"
+                  :loading="linkAddingSelected"
+                  :disabled="selectedPendingParsedItems.length === 0"
+                  @click="downloadSelectedParsedItems"
                   class="!flex !items-center !justify-center"
                 >
                   <template #icon><download-outlined /></template>
-                  全部下载
+                  添加选中
                 </a-button>
               </div>
 
               <a-table
-                :columns="workshopColumns"
-                :dataSource="workshopItems"
+                :columns="parsedLinkColumns"
+                :dataSource="parsedItems"
                 :pagination="{ pageSize: 8, showSizeChanger: false }"
-                :rowKey="(record: any) => record.publishedfileid"
+                :rowKey="(record: any) => getParsedItemKey(record)"
+                :row-selection="parsedRowSelection"
                 size="small"
                 :scroll="{ x: 720 }"
               >
@@ -990,27 +1029,33 @@
                   <template v-else-if="column.key === 'info'">
                     <div class="min-w-[260px]">
                       <div class="font-medium text-sm break-words dark:text-gray-100">
-                        {{ record.title || `工坊 ${record.publishedfileid}` }}
+                        {{ record.title || record.filename || record.id }}
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        ID: {{ record.publishedfileid }}
+                        {{ record.filename }}
                       </div>
                     </div>
                   </template>
                   <template v-else-if="column.key === 'size'">
-                    <a-tag>{{ formatWorkshopFileSize(record.file_size) }}</a-tag>
+                    <a-tag>{{ formatParsedFileSize(record.file_size) }}</a-tag>
+                  </template>
+                  <template v-else-if="column.key === 'support'">
+                    <a-tag v-if="record.supported" color="success" class="mr-0">可添加</a-tag>
+                    <a-tag v-else color="default" class="mr-0">
+                      {{ record.disabled_reason || '不支持' }}
+                    </a-tag>
                   </template>
                   <template v-else-if="column.key === 'action'">
                     <a-button
                       size="small"
                       type="primary"
-                      :loading="addingWorkshopItems[record.publishedfileid]"
-                      :disabled="isWorkshopItemAdded(record)"
-                      @click="addWorkshopDownload(record)"
+                      :loading="addingParsedItems[getParsedItemKey(record)]"
+                      :disabled="!record.supported || isParsedItemAdded(record)"
+                      @click="addParsedDownload(record)"
                       class="!flex !items-center !justify-center"
                     >
                       <template #icon><download-outlined /></template>
-                      {{ isWorkshopItemAdded(record) ? '已添加' : '下载' }}
+                      {{ isParsedItemAdded(record) ? '已添加' : '添加' }}
                     </a-button>
                   </template>
                 </template>

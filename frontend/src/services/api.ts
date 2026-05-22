@@ -18,6 +18,24 @@ export interface WorkshopParseResult {
   items: WorkshopDownloadItem[];
 }
 
+export interface ParsedDownloadItem {
+  id: string;
+  title: string;
+  filename: string;
+  file_size: string;
+  file_url: string;
+  preview_url: string;
+  referer: string;
+  supported: boolean;
+  disabled_reason: string;
+}
+
+export interface DownloadLinkParseResult {
+  source_type: 'workshop' | 'qq_flash_transfer' | string;
+  source_id: string;
+  items: ParsedDownloadItem[];
+}
+
 export type PluginExportStatus = 'pending' | 'compressing' | 'completed' | 'failed' | 'cancelled';
 
 export interface PluginExportProgress {
@@ -771,11 +789,14 @@ class ApiService {
     }
   }
 
-  async addDownloadTask(url: string, filename?: string) {
+  async addDownloadTask(url: string, filename?: string, referer?: string) {
     const fd = new FormData();
     fd.append('url', url);
     if (filename) {
       fd.append('filename', filename);
+    }
+    if (referer) {
+      fd.append('referer', referer);
     }
     const response = await fetch('/download/add', {
       method: 'POST',
@@ -785,6 +806,12 @@ class ApiService {
     this.handleResponseError(response.status);
     if (!response.ok) throw new Error(await response.text());
     return response.text();
+  }
+
+  async parseDownloadLink(url: string): Promise<DownloadLinkParseResult> {
+    const response = await this.postJson('/download/link/parse', { url });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async parseWorkshopLink(url: string): Promise<WorkshopParseResult> {

@@ -30,6 +30,7 @@ const (
 
 type downloadTask struct {
 	url               string          // 下载链接
+	referer           string          // 下载请求 Referer
 	status            DOWNLOAD_STATUS // 状态
 	message           string          // 错误消息
 	progress          float64         // 进度
@@ -54,8 +55,13 @@ func NewDownloadTask(url string, semaphore chan struct{}) *downloadTask {
 }
 
 func NewDownloadTaskWithFilename(url string, filename string, semaphore chan struct{}) *downloadTask {
+	return NewDownloadTaskWithFilenameAndReferer(url, filename, "", semaphore)
+}
+
+func NewDownloadTaskWithFilenameAndReferer(url string, filename string, referer string, semaphore chan struct{}) *downloadTask {
 	res := &downloadTask{
 		url:               url,
+		referer:           cleanDownloadHeaderValue(referer),
 		status:            DOWNLOAD_STATUS_PENDING,
 		cancel:            make(chan struct{}),
 		cancelled:         false,
@@ -75,6 +81,17 @@ func NewDownloadTaskWithFilename(url string, filename string, semaphore chan str
 	go res.download()
 
 	return res
+}
+
+func cleanDownloadHeaderValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	return value
+}
+
+func defaultDownloadUserAgent() string {
+	return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 }
 
 func cleanDownloadFilename(filename string) string {
@@ -149,7 +166,18 @@ func (dt *downloadTask) download() {
 	go dt.updateSpeedPeriodically()
 
 	// 发送HTTP请求
-	resp, err := http.Get(dt.url)
+	req, err := http.NewRequest(http.MethodGet, dt.url, nil)
+	if err != nil {
+		dt.message = fmt.Sprintf("创建下载请求失败: %v", err)
+		dt.status = DOWNLOAD_STATUS_FAILED
+		return
+	}
+	req.Header.Set("User-Agent", defaultDownloadUserAgent())
+	if dt.referer != "" {
+		req.Header.Set("Referer", dt.referer)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		dt.message = fmt.Sprintf("下载失败: %v", err)
 		dt.status = DOWNLOAD_STATUS_FAILED
@@ -428,7 +456,11 @@ func (d *downloader) AddTask(url string) {
 }
 
 func (d *downloader) AddTaskWithFilename(url string, filename string) {
-	task := NewDownloadTaskWithFilename(url, filename, d.semaphore)
+	d.AddTaskWithFilenameAndReferer(url, filename, "")
+}
+
+func (d *downloader) AddTaskWithFilenameAndReferer(url string, filename string, referer string) {
+	task := NewDownloadTaskWithFilenameAndReferer(url, filename, referer, d.semaphore)
 	d.tasks = append(d.tasks, task)
 }
 
@@ -458,6 +490,39 @@ func init() {
 
 type ParseWorkshopDownloadRequest struct {
 	URL string `json:"url"`
+}
+
+type ParseDownloadLinkRequest struct {
+	URL string `json:"url"`
+}
+
+func ParseDownloadLink(c *gin.Context) {
+	var req ParseDownloadLinkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, http.StatusBadRequest, "参数错误: %v", err)
+		return
+	}
+	if strings.TrimSpace(req.URL) == "" {
+		FailWithError(c, http.StatusBadRequest, "链接不能为空")
+		return
+	}
+
+	LogOp(c, req, "解析下载链接")
+
+	result, err := logic.ParseDownloadLink(req.URL)
+	if err != nil {
+		status := http.StatusBadGateway
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "链接") ||
+			strings.Contains(errMsg, "ID") ||
+			strings.Contains(errMsg, "不支持") {
+			status = http.StatusBadRequest
+		}
+		FailWithError(c, status, "解析链接失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 func ParseWorkshopDownloadLink(c *gin.Context) {
@@ -501,13 +566,16 @@ func AddDownloadTask(c *gin.Context) {
 		return
 	}
 	filename := c.PostForm("filename")
-	LogOp(c, nil, "添加下载任务:", url, filename)
+	referer := c.PostForm("referer")
+	LogOp(c, nil, "添加下载任务:", url, filename, referer)
 
 	// 识别切分多个http连接
 	urls := splitURLString(url)
 	for _, singleURL := range urls {
 		if filename != "" && len(urls) == 1 {
-			Downloader.AddTaskWithFilename(singleURL, filename)
+			Downloader.AddTaskWithFilenameAndReferer(singleURL, filename, referer)
+		} else if referer != "" && len(urls) == 1 {
+			Downloader.AddTaskWithFilenameAndReferer(singleURL, "", referer)
 		} else {
 			Downloader.AddTask(singleURL)
 		}
@@ -580,12 +648,13 @@ func RestartDownloadTask(c *gin.Context) {
 	originalTask := Downloader.tasks[index]
 	taskURL := originalTask.url
 	taskFilename := originalTask.preferredFilename
+	taskReferer := originalTask.referer
 
 	// 取消原任务
 	originalTask.Cancel()
 
 	// 创建新的下载任务
-	newTask := NewDownloadTaskWithFilename(taskURL, taskFilename, Downloader.semaphore)
+	newTask := NewDownloadTaskWithFilenameAndReferer(taskURL, taskFilename, taskReferer, Downloader.semaphore)
 
 	// 替换原任务
 	Downloader.tasks[index] = newTask
