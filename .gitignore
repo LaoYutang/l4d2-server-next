@@ -14,3 +14,5 @@ __debug_*
 .vscode
 .cursor
 .claude
+.codex
+.omo

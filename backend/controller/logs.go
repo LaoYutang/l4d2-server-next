@@ -27,8 +27,8 @@ type LogFileInfo struct {
 }
 
 type LogListResponse struct {
-	Installed  bool                    `json:"installed"`
-	Message    string                  `json:"message,omitempty"`
+	Installed  bool                     `json:"installed"`
+	Message    string                   `json:"message,omitempty"`
 	Categories map[string][]LogFileInfo `json:"categories,omitempty"`
 }
 
