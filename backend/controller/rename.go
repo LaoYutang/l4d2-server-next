@@ -67,7 +67,11 @@ func RenameMap(c *gin.Context) {
 	oldPath := filepath.Join(consts.AddonsBasePath, oldName)
 	newPath := filepath.Join(consts.AddonsBasePath, newName)
 	if _, err := os.Stat(oldPath); err != nil {
-		FailWithError(c, http.StatusBadRequest, "地图文件不存在: %v", err)
+		if os.IsNotExist(err) {
+			FailWithError(c, http.StatusBadRequest, "地图文件不存在，无法重命名")
+		} else {
+			FailWithError(c, http.StatusBadRequest, "检查地图文件失败: %v", err)
+		}
 		return
 	}
 	if _, err := os.Stat(newPath); err == nil {

@@ -689,6 +689,7 @@
               <template v-else-if="column.key === 'action'">
                 <a-space>
                   <a-button
+                    v-if="record.size !== 'unknown'"
                     size="small"
                     type="text"
                     @click="openRenameModal(record.name)"

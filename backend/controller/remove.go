@@ -19,8 +19,8 @@ func Remove(c *gin.Context) {
 
 	mapPath := filepath.Join(consts.AddonsBasePath, c.PostForm("map"))
 	err := os.Remove(mapPath)
-	if err != nil {
-		FailWithError(c, http.StatusBadRequest, "地图不存在: %v", err)
+	if err != nil && !os.IsNotExist(err) {
+		FailWithError(c, http.StatusBadRequest, "删除地图文件失败: %v", err)
 		return
 	}
 
