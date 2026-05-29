@@ -1,9 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import MainLayout from '../layouts/MainLayout.vue';
-import Login from '../views/Login.vue';
-import Home from '../views/Home.vue';
-// Lazy load other views
+const MainLayout = () => import('../layouts/MainLayout.vue');
+const Login = () => import('../views/Login.vue');
+const Home = () => import('../views/Home.vue');
 const Maps = () => import('../views/Maps.vue');
 const Rcon = () => import('../views/Rcon.vue');
 const System = () => import('../views/System.vue');
