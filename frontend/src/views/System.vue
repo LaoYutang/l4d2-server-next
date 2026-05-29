@@ -276,16 +276,6 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
             <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-              <span>⚖️</span> 开源协议
-            </h3>
-            <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
-              本项目基于 Apache License 2.0 开源协议发布<br />
-              欢迎贡献代码和提出建议
-            </p>
-          </div>
-
-          <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
-            <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
               <span>ℹ️</span> 项目信息
             </h3>
             <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
@@ -302,19 +292,29 @@
               © 2026 开源社区贡献
             </p>
           </div>
+
+          <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
+            <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+              <span>⚖️</span> 开源协议
+            </h3>
+            <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+              本项目基于 Apache License 2.0 开源协议发布<br />
+              欢迎贡献代码和提出建议
+            </p>
+            <a
+              href="https://github.com/LaoYutang/l4d2-server-next/blob/master/LICENSE"
+              target="_blank"
+              class="mt-3 inline-flex text-blue-500 dark:text-blue-400 hover:underline"
+            >
+              查看许可证
+            </a>
+          </div>
         </div>
 
         <a-divider />
 
         <div class="text-center text-gray-500 dark:text-gray-400 text-sm">
-          <span>Made with ❤️ by the community | </span>
-          <a
-            href="https://github.com/LaoYutang/l4d2-server-next/blob/master/LICENSE"
-            target="_blank"
-            class="text-blue-500 dark:text-blue-400 hover:underline"
-          >
-            查看许可证
-          </a>
+          <span>Made with ❤️ by the community</span>
         </div>
       </div>
     </a-card>
