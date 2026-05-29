@@ -200,7 +200,6 @@ save_instance_config() {
         printf 'RCON_PASSWORD=%q\n' "$RCON_PASSWORD"
         printf 'TICK=%s\n' "$TICK"
         printf 'VAC=%s\n' "$VAC"
-        printf 'HISTORY_METRICS=%s\n' "$HISTORY_METRICS"
         printf 'STEAM_API_KEY=%q\n' "$STEAM_API_KEY"
         printf 'BIND_MOUNT=%s\n' "${BIND_MOUNT:-false}"
         printf 'BIND_DATA_DIR=%q\n' "${BIND_DATA_DIR:-}"
@@ -323,7 +322,7 @@ generate_compose() {
         printf '%s\n' "services:"
 
         for name in $instances; do
-            local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC HISTORY_METRICS STEAM_API_KEY BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
+            local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC STEAM_API_KEY BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
             # shellcheck source=/dev/null
             source "${INSTANCE_DIR}/${name}.conf"
 
@@ -373,7 +372,6 @@ generate_compose() {
             list_env "L4D2_RCON_PASSWORD" "${RCON_PASSWORD}"
             list_env "L4D2_RCON_URL" "${name}:${GAME_PORT}"
             list_env "L4D2_GAME_PATH" "/left4dead2"
-            list_env "L4D2_HISTORY_METRICS" "${HISTORY_METRICS}"
             list_env "STEAM_API_KEY" "${STEAM_API_KEY}"
             printf '%s\n' "    networks:"
             printf '%s\n' "      - l4d2-network"
@@ -617,9 +615,6 @@ try_import_existing() {
 
         ADMIN_PASSWORD=$(_get_compose_env "$manager_block" "L4D2_MANAGER_PASSWORD")
 
-        HISTORY_METRICS=$(_get_compose_env "$manager_block" "L4D2_HISTORY_METRICS")
-        HISTORY_METRICS="${HISTORY_METRICS:-false}"
-
         STEAM_API_KEY=$(_get_compose_env "$manager_block" "STEAM_API_KEY")
 
         # 面板端口：在 manager 服务块的 ports 中找 HOST_PORT:27020
@@ -727,7 +722,6 @@ quick_setup() {
     esac
 
     VAC="false"
-    HISTORY_METRICS="false"
     STEAM_API_KEY=""
     RCON_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
 
@@ -844,20 +838,13 @@ add_instance() {
         VAC="false"
     fi
 
-    # ── 5. 性能监控 ──
-    if confirm "是否开启历史性能监控 (需持久化数据)" "n"; then
-        HISTORY_METRICS="true"
-    else
-        HISTORY_METRICS="false"
-    fi
-
-    # ── 6. Steam API Key ──
+    # ── 5. Steam API Key ──
     echo ""
     echo -e "  ${DIM}Steam API Key 用于查询玩家游戏时长${NC}"
     echo -e "  ${DIM}获取地址: https://steamcommunity.com/dev/apikey${NC}"
     STEAM_API_KEY=$(read_input "Steam API Key (可选，回车跳过)" "")
 
-    # ── 7. 具名卷 bind 模式 ──
+    # ── 6. 具名卷 bind 模式 ──
     echo ""
     echo -e "  ${YELLOW}⚠  高级选项：Bind 挂载模式${NC}"
     echo -e "  ${DIM}用途：将游戏/插件数据目录挂载到其他数据盘（如 /mnt/data）或多个实例绑定相同目录${NC}"
@@ -875,10 +862,10 @@ add_instance() {
         mkdir -p "$BIND_DATA_DIR" "$BIND_PLUGINS_DIR" 2>/dev/null || true
     fi
 
-    # ── 8. 自动生成 RCON 密码 ──
+    # ── 7. 自动生成 RCON 密码 ──
     RCON_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
 
-    # ── 9. 确认 ──
+    # ── 8. 确认 ──
     print_section "配置确认 [${name}]"
     echo ""
     echo -e "  实例名称:      ${BOLD}${name}${NC}"
@@ -886,7 +873,6 @@ add_instance() {
     echo -e "  管理面板端口:  ${BOLD}${MANAGER_PORT}${NC}"
     echo -e "  Tick 率:       ${BOLD}${TICK}${NC}"
     echo -e "  VAC 验证:      ${BOLD}${VAC}${NC}"
-    echo -e "  历史性能监控:  ${BOLD}${HISTORY_METRICS}${NC}"
     echo -e "  RCON 密码:     ${BOLD}${RCON_PASSWORD}${NC} ${DIM}(自动生成)${NC}"
     if [[ "$BIND_MOUNT" == "true" ]]; then
         echo -e "  Bind 数据目录: ${BOLD}${BIND_DATA_DIR}${NC}"
@@ -1072,13 +1058,11 @@ _edit_manager() {
         echo ""
         echo -e "  ${CYAN}当前配置:${NC}"
         echo -e "    面板端口:      ${BOLD}${MANAGER_PORT}${NC}"
-        echo -e "    历史性能监控:  ${BOLD}${HISTORY_METRICS}${NC}"
         echo -e "    Steam API Key: ${BOLD}${STEAM_API_KEY:-(未设置)}${NC}"
         echo ""
         print_menu_item "1" "修改面板端口"        "当前: ${MANAGER_PORT}"
         print_menu_item "2" "修改管理密码"        "当前已设置"
-        print_menu_item "3" "修改历史性能监控"    "当前: ${HISTORY_METRICS}"
-        print_menu_item "4" "修改 Steam API Key"  "当前: ${STEAM_API_KEY:-(未设置)}"
+        print_menu_item "3" "修改 Steam API Key"  "当前: ${STEAM_API_KEY:-(未设置)}"
         echo ""
         print_menu_item "0" "返回"
         echo ""
@@ -1128,17 +1112,6 @@ _edit_manager() {
                 press_enter ;;
             3)
                 echo ""
-                echo -e "  ${DIM}当前历史性能监控: ${BOLD}${HISTORY_METRICS}${NC}"
-                echo ""
-                if confirm "是否开启历史性能监控" "$([[ "$HISTORY_METRICS" == "true" ]] && echo y || echo n)"; then
-                    HISTORY_METRICS="true"
-                else
-                    HISTORY_METRICS="false"
-                fi
-                print_success "历史性能监控已设为 ${HISTORY_METRICS}"
-                press_enter ;;
-            4)
-                echo ""
                 echo -e "  ${DIM}当前 Steam API Key: ${BOLD}${STEAM_API_KEY:-(未设置)}${NC}"
                 echo -e "  ${DIM}获取地址: https://steamcommunity.com/dev/apikey${NC}"
                 local new_key
@@ -1166,7 +1139,7 @@ edit_instance() {
     target=$(select_instance "选择要修改的实例") || return
 
     # 加载当前配置到局部变量
-    local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC HISTORY_METRICS STEAM_API_KEY
+    local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC STEAM_API_KEY
     # shellcheck source=/dev/null
     source "${INSTANCE_DIR}/${target}.conf"
 
@@ -1177,10 +1150,10 @@ edit_instance() {
         echo ""
         echo -e "  ${CYAN}当前概览:${NC}"
         echo -e "    游戏端口: ${BOLD}${GAME_PORT}${NC}   Tick: ${BOLD}${TICK}${NC}   VAC: ${BOLD}${VAC}${NC}"
-        echo -e "    面板端口: ${BOLD}${MANAGER_PORT}${NC}   监控: ${BOLD}${HISTORY_METRICS}${NC}"
+        echo -e "    面板端口: ${BOLD}${MANAGER_PORT}${NC}"
         echo ""
         print_menu_item "1" "游戏服务器设置"   "端口 / Tick / VAC"
-        print_menu_item "2" "管理面板设置"     "端口 / 密码 / 监控 / Steam Key"
+        print_menu_item "2" "管理面板设置"     "端口 / 密码 / Steam Key"
         echo ""
         print_menu_item "s" "保存并重启实例"
         print_menu_item "0" "放弃并返回"

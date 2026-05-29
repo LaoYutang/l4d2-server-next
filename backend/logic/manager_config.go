@@ -9,9 +9,10 @@ import (
 )
 
 type ManagerConfig struct {
-	EnableSelfService   bool      `json:"enable_self_service"`
-	LastSelfServiceTime time.Time `json:"last_self_service_time"`
-	EnablePlayerStats   bool      `json:"enable_player_stats"`
+	EnableSelfService    bool      `json:"enable_self_service"`
+	LastSelfServiceTime  time.Time `json:"last_self_service_time"`
+	EnablePlayerStats    bool      `json:"enable_player_stats"`
+	EnableMonitorHistory bool      `json:"enable_monitor_history"`
 }
 
 var (
@@ -28,7 +29,9 @@ func LoadManagerConfig() {
 	defer managerConfigMutex.Unlock()
 
 	managerConfig = &ManagerConfig{
-		EnableSelfService: false,
+		EnableSelfService:    false,
+		EnablePlayerStats:    true,
+		EnableMonitorHistory: true,
 	}
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
@@ -77,6 +80,19 @@ func SetPlayerStatsEnable(enable bool) error {
 	managerConfigMutex.Lock()
 	defer managerConfigMutex.Unlock()
 	managerConfig.EnablePlayerStats = enable
+	return saveManagerConfig()
+}
+
+func IsMonitorHistoryEnabled() bool {
+	managerConfigMutex.RLock()
+	defer managerConfigMutex.RUnlock()
+	return managerConfig.EnableMonitorHistory
+}
+
+func SetMonitorHistoryEnable(enable bool) error {
+	managerConfigMutex.Lock()
+	defer managerConfigMutex.Unlock()
+	managerConfig.EnableMonitorHistory = enable
 	return saveManagerConfig()
 }
 

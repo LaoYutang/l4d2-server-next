@@ -2,6 +2,7 @@
   import { ref, onErrorCaptured, onMounted, computed } from 'vue';
   import { api } from '../services/api';
   import { useAuthStore } from '../stores/auth';
+  import { useMonitorStore } from '../stores/monitor';
   import {
     message,
     Card as ACard,
@@ -20,10 +21,12 @@
     CheckOutlined,
     SafetyCertificateOutlined,
     LineChartOutlined,
+    DatabaseOutlined,
   } from '@ant-design/icons-vue';
   import { copyToClipboard } from '../utils/clipboard';
 
   const authStore = useAuthStore();
+  const monitorStore = useMonitorStore();
   const isAdmin = computed(() => authStore.isAdmin);
 
   const expiredHours = ref(1);
@@ -37,6 +40,8 @@
   const settingSelfService = ref(false);
   const enablePlayerStats = ref(false);
   const settingPlayerStats = ref(false);
+  const enableMonitorHistory = ref(false);
+  const settingMonitorHistory = ref(false);
 
   onErrorCaptured((err) => {
     console.error('System.vue Error:', err);
@@ -72,6 +77,17 @@
     }
   };
 
+  const fetchMonitorConfig = async () => {
+    if (!isAdmin.value) return;
+    try {
+      const config = await api.getMonitorConfig();
+      enableMonitorHistory.value = config.history_enabled;
+      monitorStore.setHistoryEnabled(config.history_enabled);
+    } catch (e) {
+      console.error('Failed to fetch monitor config:', e);
+    }
+  };
+
   const toggleSelfService = async (checked: boolean | string | number) => {
     const isChecked = Boolean(checked);
     settingSelfService.value = true;
@@ -100,6 +116,23 @@
       enablePlayerStats.value = !isChecked;
     } finally {
       settingPlayerStats.value = false;
+    }
+  };
+
+  const toggleMonitorHistory = async (checked: boolean | string | number) => {
+    const isChecked = Boolean(checked);
+    settingMonitorHistory.value = true;
+    try {
+      await api.setMonitorHistoryConfig(isChecked);
+      enableMonitorHistory.value = isChecked;
+      monitorStore.setHistoryEnabled(isChecked);
+      message.success(isChecked ? '已开启性能监控历史记录' : '已关闭性能监控历史记录');
+    } catch (e: any) {
+      message.error(`设置失败: ${e.message}`);
+      enableMonitorHistory.value = !isChecked;
+      monitorStore.setHistoryEnabled(!isChecked);
+    } finally {
+      settingMonitorHistory.value = false;
     }
   };
 
@@ -146,6 +179,7 @@
     fetchVersion();
     fetchSelfServiceStatus();
     fetchPlayerStatsConfig();
+    fetchMonitorConfig();
   });
 </script>
 
@@ -238,28 +272,50 @@
       <template #title>
         <span class="flex items-center gap-2 text-lg">
           <line-chart-outlined class="text-emerald-500" />
-          玩家统计设置
+          数据统计设置
         </span>
       </template>
 
-      <div
-        class="flex items-center justify-between bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
-      >
-        <div>
-          <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-            <LineChartOutlined /> 开启玩家在线统计
+      <div class="space-y-3">
+        <div
+          class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
+        >
+          <div>
+            <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+              <LineChartOutlined /> 开启玩家在线统计
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              开启后每10分钟采集一次玩家列表，数据保留30天，服务器离线时会记录离线状态。
+            </div>
           </div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            开启后每10分钟采集一次玩家列表，数据保留30天，服务器离线时会记录离线状态。
-          </div>
+          <a-switch
+            :checked="enablePlayerStats"
+            :loading="settingPlayerStats"
+            @update:checked="togglePlayerStats"
+            checked-children="开"
+            un-checked-children="关"
+          />
         </div>
-        <a-switch
-          :checked="enablePlayerStats"
-          :loading="settingPlayerStats"
-          @update:checked="togglePlayerStats"
-          checked-children="开"
-          un-checked-children="关"
-        />
+
+        <div
+          class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
+        >
+          <div>
+            <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+              <DatabaseOutlined /> 开启性能监控历史记录
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              开启后每秒保存性能采样，历史数据保留3天，用于性能监控页面的历史区间查询。
+            </div>
+          </div>
+          <a-switch
+            :checked="enableMonitorHistory"
+            :loading="settingMonitorHistory"
+            @update:checked="toggleMonitorHistory"
+            checked-children="开"
+            un-checked-children="关"
+          />
+        </div>
       </div>
     </a-card>
 

@@ -213,7 +213,6 @@ docker run -d \
 | **L4D2_RCON_PASSWORD**    | RCON 密码                             | 推荐配置                        |
 | **L4D2_VAC**              | 游戏服是否启用 VAC                    | `false`（默认添加 `-insecure`） |
 | **L4D2_RESTART_BY_RCON**  | 是否通过 RCON 命令重启服务器          | `false` (推荐 `true`)           |
-| **L4D2_HISTORY_METRICS**  | 是否开启历史性能监控 (需持久化数据)   | `false`                         |
 | **STEAM_API_KEY**         | Steam API Key (用于查询玩家时长)      | 可选                            |
 | **REGION_WHITE_LIST**     | GeoIP 区域白名单 (如: 中国)           | 可选 (不填则不拦截)             |
 | **L4D2_MANAGER_PORT**     | 管理器监听端口                        | `27020`                         |

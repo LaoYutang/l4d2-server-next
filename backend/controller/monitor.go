@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/db"
+	"l4d2-manager-next/logic"
 	"l4d2-manager-next/model"
 	"net/http"
 	"os"
@@ -130,7 +131,7 @@ func StartMonitor() {
 		statusMutex.Unlock()
 
 		// 如果启用，写入数据库
-		if db.DB != nil {
+		if db.DB != nil && logic.IsMonitorHistoryEnabled() {
 			metric := model.SystemMetric{
 				Timestamp:    currentStatus.Timestamp,
 				CPUPercent:   toFixed(currentStatus.CPUPercent, 2),
@@ -218,8 +219,37 @@ func GetMonitorStatus(c *gin.Context) {
 
 func GetMonitorConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"history_enabled": db.DB != nil,
+		"history_enabled": logic.IsMonitorHistoryEnabled() && db.DB != nil,
 	})
+}
+
+func SetMonitorConfig(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		c.String(http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	var req struct {
+		Enable bool `json:"enable"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.String(http.StatusBadRequest, "参数错误")
+		return
+	}
+
+	if req.Enable && db.DB == nil {
+		c.String(http.StatusBadRequest, "性能监控历史数据库未初始化")
+		return
+	}
+
+	LogOp(c, req, "设置性能监控历史记录配置")
+	if err := logic.SetMonitorHistoryEnable(req.Enable); err != nil {
+		c.String(http.StatusInternalServerError, "保存配置失败: %v", err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func GetMonitorHistory(c *gin.Context) {
@@ -230,7 +260,7 @@ func GetMonitorHistory(c *gin.Context) {
 		return
 	}
 
-	if db.DB == nil {
+	if db.DB == nil || !logic.IsMonitorHistoryEnabled() {
 		c.String(http.StatusBadRequest, "历史数据记录未启用")
 		return
 	}

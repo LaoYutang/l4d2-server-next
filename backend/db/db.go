@@ -4,7 +4,6 @@ import (
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/model"
 	"log"
-	"os"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -16,11 +15,6 @@ var DB *gorm.DB
 var PlayerStatsDB *gorm.DB
 
 func InitDB() {
-	// 检查环境变量是否开启历史监控
-	if os.Getenv("L4D2_HISTORY_METRICS") != "true" {
-		return
-	}
-
 	var err error
 	// 使用 glebarez/sqlite (纯 Go 驱动)
 	if err = consts.EnsureManagerDataPath(); err != nil {

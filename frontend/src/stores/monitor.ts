@@ -77,19 +77,21 @@ export const useMonitorStore = defineStore('monitor', () => {
     hDiskUsedData.value = [];
   };
 
+  const setHistoryEnabled = (enabled: boolean) => {
+    historyEnabled.value = enabled;
+    if (!enabled && viewMode.value !== 'realtime') {
+      viewMode.value = 'realtime';
+      clearHistoryData();
+    }
+  };
+
   const fetchConfig = async () => {
     try {
-      const cached = sessionStorage.getItem('monitor_history_enabled');
-      if (cached !== null) {
-        historyEnabled.value = cached === 'true';
-        return;
-      }
       const config = await api.getMonitorConfig();
-      historyEnabled.value = config.history_enabled;
-      sessionStorage.setItem('monitor_history_enabled', String(config.history_enabled));
+      setHistoryEnabled(config.history_enabled);
     } catch (e) {
       console.error('Failed to fetch monitor config', e);
-      historyEnabled.value = false;
+      setHistoryEnabled(false);
     }
   };
 
@@ -284,6 +286,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     stopMonitor,
     toggleMonitor,
     fetchConfig,
+    setHistoryEnabled,
     setViewMode,
     refreshHistory,
     fetchCustomHistory,

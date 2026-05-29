@@ -33,14 +33,6 @@ game_port=${game_port:-27015}
 read -r -p "请输入管理面板端口 (默认: 27020): " manager_port
 manager_port=${manager_port:-27020}
 
-# 询问是否开启历史性能监控
-read -r -p "是否开启历史性能监控(需持久化数据)? (Y/n, 默认: n): " enable_history_metrics
-enable_history_metrics=${enable_history_metrics:-n}
-HISTORY_METRICS_VALUE="false"
-if [[ "$enable_history_metrics" =~ ^[Yy]$ ]]; then
-  HISTORY_METRICS_VALUE="true"
-fi
-
 # 询问 Steam API Key
 echo "Steam API Key 用于查询玩家游戏时长，获取地址: https://steamcommunity.com/dev/apikey"
 read -r -p "请输入 Steam API Key (可选，默认为空): " steam_api_key
@@ -106,7 +98,6 @@ services:
       - L4D2_RCON_PASSWORD=$L4D2_RCON_PASSWORD
       - L4D2_RCON_URL=l4d2:$game_port
       - L4D2_GAME_PATH=/left4dead2
-      - L4D2_HISTORY_METRICS=$HISTORY_METRICS_VALUE
       - STEAM_API_KEY=$steam_api_key
     networks:
       - l4d2-network

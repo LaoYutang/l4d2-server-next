@@ -6,6 +6,7 @@ private.key
 /backend/data/
 /data/
 *.exe
+*.exe~
 *.db
 *.db-shm
 *.db-wal

@@ -101,6 +101,7 @@ func main() {
 	router.POST("/self-service/generate", injectKey, controller.GenerateSelfServiceCode)
 	router.POST("/config/self-service", middlewares.Auth(privateKey), controller.SetSelfServiceConfig)
 	router.POST("/config/player-stats", middlewares.Auth(privateKey), controller.SetPlayerStatsConfig)
+	router.POST("/config/monitor-history", middlewares.Auth(privateKey), controller.SetMonitorConfig)
 
 	// Root Level Protected Routes (Misc)
 	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)

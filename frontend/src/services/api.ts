@@ -67,6 +67,10 @@ export interface PlayerStatsConfig {
   last_snapshot?: PlayerStatsSnapshot | null;
 }
 
+export interface MonitorConfig {
+  history_enabled: boolean;
+}
+
 export interface PlayerStatsHourlyItem {
   timestamp: number;
   avg_players: number | null;
@@ -1121,8 +1125,14 @@ class ApiService {
     return response.json();
   }
 
-  async getMonitorConfig() {
+  async getMonitorConfig(): Promise<MonitorConfig> {
     const response = await this.post('/monitor/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setMonitorHistoryConfig(enable: boolean) {
+    const response = await this.postJson('/config/monitor-history', { enable });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
