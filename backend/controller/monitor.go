@@ -208,6 +208,9 @@ func parseNetDev(path string) ([]net.IOCountersStat, error) {
 			})
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 	return ret, nil
 }
 

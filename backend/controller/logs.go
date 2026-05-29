@@ -222,6 +222,10 @@ func StreamSourceModLog(c *gin.Context) {
 	for scanner.Scan() {
 		historyLines = append(historyLines, scanner.Text())
 	}
+	if err := scanner.Err(); err != nil {
+		sendSSELine(c, fmt.Sprintf("读取日志失败: %v", err), flusher)
+		return
+	}
 
 	// Only send last 200 lines to avoid overwhelming the frontend
 	if len(historyLines) > 200 {
@@ -267,6 +271,10 @@ func StreamSourceModLog(c *gin.Context) {
 			for s.Scan() {
 				line := s.Text()
 				sendSSELine(c, decodeLogLine([]byte(line)), flusher)
+			}
+			if err := s.Err(); err != nil {
+				sendSSELine(c, fmt.Sprintf("读取日志失败: %v", err), flusher)
+				continue
 			}
 		case <-c.Request.Context().Done():
 			return

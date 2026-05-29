@@ -564,7 +564,8 @@ func restoreAdminsToFile(admins []BackupAdmin) {
 
 	var sb strings.Builder
 	for _, line := range headerLines {
-		sb.WriteString(line + "\n")
+		sb.WriteString(line)
+		sb.WriteByte('\n')
 	}
 	for _, admin := range admins {
 		if admin.Remark != "" {
