@@ -18,9 +18,11 @@ import (
 func main() {
 	// Initialize DB if enabled
 	db.InitDB()
+	db.InitPlayerStatsDB()
 
 	// Initialize Monitor
 	go controller.StartMonitor()
+	go controller.StartPlayerStatsCollector()
 
 	// Initialize Chunk Upload Cleaner
 	go controller.StartChunkUploadCleaner()
@@ -98,6 +100,7 @@ func main() {
 	router.POST("/self-service/status", controller.GetSelfServiceStatus)
 	router.POST("/self-service/generate", injectKey, controller.GenerateSelfServiceCode)
 	router.POST("/config/self-service", middlewares.Auth(privateKey), controller.SetSelfServiceConfig)
+	router.POST("/config/player-stats", middlewares.Auth(privateKey), controller.SetPlayerStatsConfig)
 
 	// Root Level Protected Routes (Misc)
 	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)
@@ -146,6 +149,14 @@ func main() {
 		monitor.POST("/status", controller.GetMonitorStatus)
 		monitor.POST("/config", controller.GetMonitorConfig)
 		monitor.POST("/history", controller.GetMonitorHistory)
+	}
+
+	playerStats := router.Group("/player-stats", middlewares.Auth(privateKey))
+	{
+		playerStats.POST("/config", controller.GetPlayerStatsConfig)
+		playerStats.POST("/hourly", controller.GetPlayerStatsHourly)
+		playerStats.POST("/players/search", controller.SearchPlayerStatsPlayers)
+		playerStats.POST("/player-days", controller.GetPlayerStatsPlayerDays)
 	}
 
 	// Server Info Group

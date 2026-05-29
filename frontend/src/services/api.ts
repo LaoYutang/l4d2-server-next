@@ -46,6 +46,76 @@ export interface PluginExportProgress {
   message: string;
 }
 
+export interface PlayerStatsSnapshot {
+  id: number;
+  timestamp: number;
+  server_online: boolean;
+  collect_ok: boolean;
+  player_count: number;
+  max_players: number;
+  map: string;
+  hostname: string;
+  difficulty: string;
+  game_mode: string;
+  error_message: string;
+}
+
+export interface PlayerStatsConfig {
+  enabled: boolean;
+  interval_minutes: number;
+  retention_days: number;
+  last_snapshot?: PlayerStatsSnapshot | null;
+}
+
+export interface PlayerStatsHourlyItem {
+  timestamp: number;
+  avg_players: number | null;
+  peak_players: number | null;
+  unique_players: number;
+  offline_samples: number;
+  sample_count: number;
+}
+
+export interface PlayerStatsPlayer {
+  id?: number;
+  snapshot_id?: number;
+  timestamp?: number;
+  steam_id: string;
+  name: string;
+  ip: string;
+  location: string;
+  status?: string;
+  delay?: number;
+  loss?: number;
+  duration?: string;
+  link_rate?: number;
+  last_seen?: number;
+  estimated_minutes?: number;
+}
+
+export interface PlayerStatsDay {
+  date: string;
+  online_minutes: number;
+  samples: number;
+  first_seen: number;
+  last_seen: number;
+}
+
+export interface PlayerStatsAlias {
+  name: string;
+  samples: number;
+  estimated_minutes: number;
+  first_seen: number;
+  last_seen: number;
+}
+
+export interface PlayerStatsPlayerDays {
+  steam_id: string;
+  player: PlayerStatsPlayer;
+  days: PlayerStatsDay[];
+  aliases: PlayerStatsAlias[];
+}
+
 class ApiService {
   private getCredential() {
     const authStore = useAuthStore();
@@ -1003,6 +1073,54 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
+
+  async getPlayerStatsConfig(): Promise<PlayerStatsConfig> {
+    const response = await this.post('/player-stats/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setPlayerStatsConfig(enable: boolean) {
+    const response = await this.postJson('/config/player-stats', { enable });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getPlayerStatsHourly(
+    start: number,
+    end: number,
+    bucket: 'hour' | 'day' = 'hour'
+  ): Promise<PlayerStatsHourlyItem[]> {
+    const response = await this.post('/player-stats/hourly', { start, end, bucket });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async searchPlayerStatsPlayers(
+    keyword: string,
+    start?: number
+  ): Promise<PlayerStatsPlayer[]> {
+    const data: Record<string, any> = { keyword };
+    if (start) data.start = start;
+    const response = await this.post('/player-stats/players/search', data);
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getPlayerStatsPlayerDays(
+    steamId: string,
+    start: number,
+    end: number
+  ): Promise<PlayerStatsPlayerDays> {
+    const response = await this.post('/player-stats/player-days', {
+      steam_id: steamId,
+      start,
+      end,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
   async getMonitorConfig() {
     const response = await this.post('/monitor/config');
     if (!response.ok) throw new Error(await response.text());

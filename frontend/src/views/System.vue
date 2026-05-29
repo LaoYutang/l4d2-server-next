@@ -19,6 +19,7 @@
     CopyOutlined,
     CheckOutlined,
     SafetyCertificateOutlined,
+    LineChartOutlined,
   } from '@ant-design/icons-vue';
   import { copyToClipboard } from '../utils/clipboard';
 
@@ -34,6 +35,8 @@
   const version = ref('');
   const enableSelfService = ref(false);
   const settingSelfService = ref(false);
+  const enablePlayerStats = ref(false);
+  const settingPlayerStats = ref(false);
 
   onErrorCaptured((err) => {
     console.error('System.vue Error:', err);
@@ -59,6 +62,16 @@
     }
   };
 
+  const fetchPlayerStatsConfig = async () => {
+    if (!isAdmin.value) return;
+    try {
+      const config = await api.getPlayerStatsConfig();
+      enablePlayerStats.value = config.enabled;
+    } catch (e) {
+      console.error('Failed to fetch player stats config:', e);
+    }
+  };
+
   const toggleSelfService = async (checked: boolean | string | number) => {
     const isChecked = Boolean(checked);
     settingSelfService.value = true;
@@ -72,6 +85,21 @@
       enableSelfService.value = !isChecked;
     } finally {
       settingSelfService.value = false;
+    }
+  };
+
+  const togglePlayerStats = async (checked: boolean | string | number) => {
+    const isChecked = Boolean(checked);
+    settingPlayerStats.value = true;
+    try {
+      await api.setPlayerStatsConfig(isChecked);
+      enablePlayerStats.value = isChecked;
+      message.success(isChecked ? '已开启玩家在线统计' : '已关闭玩家在线统计');
+    } catch (e: any) {
+      message.error(`设置失败: ${e.message}`);
+      enablePlayerStats.value = !isChecked;
+    } finally {
+      settingPlayerStats.value = false;
     }
   };
 
@@ -117,6 +145,7 @@
   onMounted(() => {
     fetchVersion();
     fetchSelfServiceStatus();
+    fetchPlayerStatsConfig();
   });
 </script>
 
@@ -205,8 +234,37 @@
       </div>
     </a-card>
 
+    <a-card class="shadow-xl" :bordered="false" v-if="isAdmin">
+      <template #title>
+        <span class="flex items-center gap-2 text-lg">
+          <line-chart-outlined class="text-emerald-500" />
+          玩家统计设置
+        </span>
+      </template>
+
+      <div
+        class="flex items-center justify-between bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
+      >
+        <div>
+          <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+            <LineChartOutlined /> 开启玩家在线统计
+          </div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            开启后每10分钟采集一次玩家列表，数据保留30天，服务器离线时会记录离线状态。
+          </div>
+        </div>
+        <a-switch
+          :checked="enablePlayerStats"
+          :loading="settingPlayerStats"
+          @update:checked="togglePlayerStats"
+          checked-children="开"
+          un-checked-children="关"
+        />
+      </div>
+    </a-card>
+
     <!-- System Info Section -->
-    <a-card class="shadow-xl dark:shadow-gray-900/50 dark:bg-gray-800" :bordered="false">
+    <a-card class="shadow-xl dark:shadow-gray-900/50 dark:bg-gray-800 lg:col-span-2" :bordered="false">
       <template #title>
         <span class="flex items-center gap-2 text-lg dark:text-gray-100">
           <info-circle-outlined class="text-blue-500" />
@@ -215,33 +273,35 @@
       </template>
 
       <div class="space-y-6">
-        <div>
-          <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-            <span>⚖️</span> 开源协议
-          </h3>
-          <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
-            本项目基于 Apache License 2.0 开源协议发布<br />
-            欢迎贡献代码和提出建议
-          </p>
-        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
+            <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+              <span>⚖️</span> 开源协议
+            </h3>
+            <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+              本项目基于 Apache License 2.0 开源协议发布<br />
+              欢迎贡献代码和提出建议
+            </p>
+          </div>
 
-        <div>
-          <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-            <span>ℹ️</span> 项目信息
-          </h3>
-          <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
-            L4D2 服务器管理工具<br />
-            版本: {{ version }}<br />
-            作者: LaoYutang<br />
-            GitHub:
-            <a
-              href="https://github.com/LaoYutang/l4d2-server-next"
-              target="_blank"
-              class="text-blue-500 dark:text-blue-400 hover:underline break-all"
-              >https://github.com/LaoYutang/l4d2-server-next</a
-            ><br />
-            © 2026 开源社区贡献
-          </p>
+          <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
+            <h3 class="font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+              <span>ℹ️</span> 项目信息
+            </h3>
+            <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+              L4D2 服务器管理工具<br />
+              版本: {{ version }}<br />
+              作者: LaoYutang<br />
+              GitHub:
+              <a
+                href="https://github.com/LaoYutang/l4d2-server-next"
+                target="_blank"
+                class="text-blue-500 dark:text-blue-400 hover:underline break-all"
+                >https://github.com/LaoYutang/l4d2-server-next</a
+              ><br />
+              © 2026 开源社区贡献
+            </p>
+          </div>
         </div>
 
         <a-divider />

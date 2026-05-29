@@ -13,6 +13,7 @@ var MapListFilePath string
 var ManagerDataPath string
 var PrivateKeyPath string
 var MonitorDBPath string
+var PlayerStatsDBPath string
 var ManagerConfigPath string
 var Version = "Dev"
 
@@ -23,6 +24,7 @@ func init() {
 	}
 	PrivateKeyPath = filepath.Join(ManagerDataPath, "private.key")
 	MonitorDBPath = filepath.Join(ManagerDataPath, "monitor.db")
+	PlayerStatsDBPath = filepath.Join(ManagerDataPath, "player_stats.db")
 	ManagerConfigPath = filepath.Join(ManagerDataPath, "manager_config.json")
 
 	if err := EnsureManagerDataPath(); err != nil {
@@ -61,6 +63,9 @@ func migrateLegacyManagerData() {
 		"monitor.db":          MonitorDBPath,
 		"monitor.db-wal":      filepath.Join(ManagerDataPath, "monitor.db-wal"),
 		"monitor.db-shm":      filepath.Join(ManagerDataPath, "monitor.db-shm"),
+		"player_stats.db":     PlayerStatsDBPath,
+		"player_stats.db-wal": filepath.Join(ManagerDataPath, "player_stats.db-wal"),
+		"player_stats.db-shm": filepath.Join(ManagerDataPath, "player_stats.db-shm"),
 	}
 
 	for legacyPath, targetPath := range legacyFiles {

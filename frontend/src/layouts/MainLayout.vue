@@ -18,6 +18,7 @@
     ToolOutlined,
     SaveOutlined,
     FileTextOutlined,
+    TeamOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -128,6 +129,11 @@
           <span>性能监控</span>
         </a-menu-item>
 
+        <a-menu-item key="/player-stats">
+          <template #icon><TeamOutlined /></template>
+          <span>玩家统计</span>
+        </a-menu-item>
+
         <a-menu-item key="/admins">
           <template #icon><SafetyCertificateOutlined /></template>
           <span>管理员设置</span>
@@ -222,6 +228,10 @@
         <a-menu-item key="/monitor">
           <template #icon><LineChartOutlined /></template>
           性能监控
+        </a-menu-item>
+        <a-menu-item key="/player-stats">
+          <template #icon><TeamOutlined /></template>
+          玩家统计
         </a-menu-item>
         <a-menu-item key="/admins">
           <template #icon><SafetyCertificateOutlined /></template>

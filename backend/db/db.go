@@ -13,6 +13,7 @@ import (
 )
 
 var DB *gorm.DB
+var PlayerStatsDB *gorm.DB
 
 func InitDB() {
 	// 检查环境变量是否开启历史监控
@@ -46,6 +47,30 @@ func InitDB() {
 
 	// 启动自动清理任务
 	go startCleanupTask()
+}
+
+func InitPlayerStatsDB() {
+	var err error
+	if err = consts.EnsureManagerDataPath(); err != nil {
+		log.Printf("Failed to create manager data directory: %v", err)
+		return
+	}
+
+	PlayerStatsDB, err = gorm.Open(sqlite.Open(consts.PlayerStatsDBPath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		log.Printf("Failed to connect to player stats database: %v", err)
+		return
+	}
+
+	PlayerStatsDB.Exec("PRAGMA journal_mode = WAL;")
+
+	err = PlayerStatsDB.AutoMigrate(&model.PlayerStatSnapshot{}, &model.PlayerStatPlayer{})
+	if err != nil {
+		log.Printf("Failed to migrate player stats database: %v", err)
+		PlayerStatsDB = nil
+	}
 }
 
 func startCleanupTask() {

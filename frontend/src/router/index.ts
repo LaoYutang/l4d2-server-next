@@ -9,6 +9,7 @@ const Rcon = () => import('../views/Rcon.vue');
 const System = () => import('../views/System.vue');
 const Plugins = () => import('../views/Plugins.vue');
 const Monitor = () => import('../views/Monitor.vue');
+const PlayerStats = () => import('../views/PlayerStats.vue');
 const Admins = () => import('../views/Admins.vue');
 const ServerInfo = () => import('../views/ServerInfo.vue');
 const ServerConfig = () => import('../views/ServerConfig.vue');
@@ -48,6 +49,11 @@ const router = createRouter({
           path: 'monitor',
           name: 'Monitor',
           component: Monitor,
+        },
+        {
+          path: 'player-stats',
+          name: 'PlayerStats',
+          component: PlayerStats,
         },
         {
           path: 'admins',
