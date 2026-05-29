@@ -70,13 +70,18 @@
           <h3 class="font-bold text-gray-700 dark:text-gray-200 flex items-center gap-2">
             <LineChartOutlined /> {{ chartTitle }}
           </h3>
-          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div class="flex min-h-6 items-center justify-end gap-2">
+            <span
+              v-if="!selectedTrendDay"
+              class="text-xs leading-6 text-gray-500 dark:text-gray-400"
+            >
+              点击柱状图查看小时视图
+            </span>
             <a-button
+              v-else
               size="small"
               @click="clearTrendDay"
-              :disabled="!selectedTrendDay"
-              class="!flex !items-center !justify-center transition-opacity"
-              :class="{ 'invisible pointer-events-none': !selectedTrendDay }"
+              class="!flex !h-6 !items-center !justify-center"
             >
               <template #icon><ArrowLeftOutlined /></template>
               返回
@@ -218,18 +223,18 @@
                     <div class="font-bold text-gray-700 dark:text-gray-200 mb-3">
                       {{ month.title }}
                     </div>
-                    <div class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    <div class="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs text-gray-400 dark:text-gray-500 mb-2">
                       <div v-for="day in weekDays" :key="day">{{ day }}</div>
                     </div>
-                    <div class="grid grid-cols-7 gap-1.5 sm:gap-2">
+                    <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
                       <div
                         v-for="day in month.days"
                         :key="day.key"
-                        class="min-h-[44px] sm:min-h-[72px] md:min-h-[84px] rounded-md border text-[11px] sm:text-xs p-1.5 sm:p-2 transition-colors overflow-hidden"
+                        class="h-11 sm:h-12 rounded-md border text-[11px] sm:text-xs px-1.5 sm:px-2 py-1.5 transition-colors overflow-hidden"
                         :class="calendarDayClass(day)"
                       >
                         <div class="font-medium">{{ day.day }}</div>
-                        <div v-if="day.stat" class="mt-1 leading-tight break-words">
+                        <div v-if="day.stat" class="mt-0.5 leading-tight truncate">
                           {{ formatCalendarMinutes(day.stat.online_minutes) }}
                         </div>
                       </div>
@@ -343,6 +348,25 @@
   const chartTitle = computed(() => {
     if (selectedTrendDay.value) return `${formatDayTitle(selectedTrendDay.value)} 24小时在线人数`;
     return '最近30天每日在线人数';
+  });
+
+  const chartData = computed<PlayerStatsHourlyItem[]>(() => {
+    if (trendBucket.value !== 'hour' || !selectedTrendDay.value) {
+      return hourlyData.value;
+    }
+
+    const dataByHour = new Map(hourlyData.value.map((item) => [item.timestamp, item]));
+    return Array.from({ length: 24 }, (_, hour) => {
+      const timestamp = selectedTrendDay.value! + hour * 3600;
+      return dataByHour.get(timestamp) || {
+        timestamp,
+        avg_players: null,
+        peak_players: null,
+        unique_players: 0,
+        offline_samples: 0,
+        sample_count: 0,
+      };
+    });
   });
 
   const dayStatMap = computed(() => {
@@ -493,7 +517,7 @@
   const formatHour = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     if (trendBucket.value === 'hour') {
-      return `${date.getHours()}:00`;
+      return `${date.getHours()}`;
     }
     return `${date.getMonth() + 1}-${date.getDate()}`;
   };
@@ -532,11 +556,12 @@
       return;
     }
 
-    const labels = hourlyData.value.map((item) => formatHour(item.timestamp));
-    const avgData = hourlyData.value.map((item) =>
+    const displayData = chartData.value;
+    const labels = displayData.map((item) => formatHour(item.timestamp));
+    const avgData = displayData.map((item) =>
       item.avg_players === null ? null : Number(item.avg_players.toFixed(2))
     );
-    const peakData = hourlyData.value.map((item) => item.peak_players);
+    const peakData = displayData.map((item) => item.peak_players);
 
     chart.setOption({
       backgroundColor: 'transparent',
@@ -546,9 +571,11 @@
         formatter: (params: any) => {
           const list = Array.isArray(params) ? params : [params];
           const index = list[0]?.dataIndex ?? 0;
-          const item = hourlyData.value[index];
+          const item = displayData[index];
           if (!item) return '';
-          const avg = item.avg_players === null ? '离线/无在线采样' : item.avg_players;
+          const avg = item.sample_count === 0
+            ? '暂无采样'
+            : item.avg_players === null ? '离线/无在线采样' : item.avg_players;
           const peak = item.peak_players === null ? '-' : item.peak_players;
           return [
             `<strong>${formatHour(item.timestamp)}</strong>`,
@@ -651,7 +678,6 @@
 <style scoped>
   :global(.player-stats-modal .ant-modal) {
     max-width: calc(100vw - 24px);
-    top: 24px;
     padding-bottom: 24px;
   }
 
@@ -689,7 +715,6 @@
 
   @media (max-width: 640px) {
     :global(.player-stats-modal .ant-modal) {
-      top: 12px;
       max-width: calc(100vw - 16px);
       padding-bottom: 12px;
     }
