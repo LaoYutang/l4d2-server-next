@@ -290,6 +290,27 @@ func EnablePlugin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "插件启用成功"})
 }
 
+func EnableAndLoadPlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
+		return
+	}
+	LogOp(c, nil, "启用并立即加载插件:", name)
+
+	if err := logic.EnableAndLoadPlugin(name); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "启用并加载插件失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "插件启用并加载成功"})
+}
+
 func DisablePlugin(c *gin.Context) {
 	role, _ := c.Get("role")
 	if role != "admin" {
@@ -309,6 +330,27 @@ func DisablePlugin(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "插件禁用成功"})
+}
+
+func DisableAndUnloadPlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
+		return
+	}
+	LogOp(c, nil, "禁用并立即卸载插件:", name)
+
+	if err := logic.DisableAndUnloadPlugin(name); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "禁用并卸载插件失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "插件禁用并卸载成功"})
 }
 
 func DeletePlugin(c *gin.Context) {

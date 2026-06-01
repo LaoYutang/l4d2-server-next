@@ -27,6 +27,9 @@
     Modal as AModal,
     Progress as AProgress,
     InputPassword as AInputPassword,
+    Dropdown as ADropdown,
+    Menu as AMenu,
+    MenuItem as AMenuItem,
   } from 'ant-design-vue';
   import {
     UploadOutlined,
@@ -41,6 +44,7 @@
     CheckCircleOutlined,
     LinkOutlined,
     FileTextOutlined,
+    DownOutlined,
   } from '@ant-design/icons-vue';
   import { api, type PluginExportProgress } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
@@ -86,6 +90,7 @@
     status: 'enabled' | 'disabled';
     description?: string;
     source: 'panel' | 'store' | 'upload';
+    has_smx: boolean;
   }
 
   interface StorePlugin {
@@ -562,6 +567,33 @@
     }
   };
 
+  const hotTogglePlugin = (plugin: Plugin) => {
+    const actionText = plugin.status === 'enabled' ? '禁用并立即卸载 smx' : '启用并立即加载 smx';
+
+    AModal.confirm({
+      title: `确定要${actionText}吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        const hide = message.loading(`正在${actionText}...`, 0);
+        try {
+          if (plugin.status === 'enabled') {
+            await api.disableAndUnloadPlugin(plugin.name);
+          } else {
+            await api.enableAndLoadPlugin(plugin.name);
+          }
+          message.success(`插件${actionText}成功`);
+          fetchPlugins();
+        } catch (error: any) {
+          message.error(`${actionText}失败: ` + error.message);
+          fetchPlugins();
+        } finally {
+          hide();
+        }
+      },
+    });
+  };
+
   const deletePlugin = async (plugin: Plugin) => {
     if (plugin.status === 'enabled') {
       message.warning('请先禁用插件');
@@ -949,7 +981,7 @@
       {
         title: '操作',
         key: 'actions',
-        width: 200,
+        width: 260,
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
@@ -971,7 +1003,7 @@
       {
         title: '操作',
         key: 'actions',
-        width: 200,
+        width: 260,
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
@@ -1189,6 +1221,52 @@
 
               <template v-else-if="column.key === 'actions'">
                 <div class="flex gap-2">
+                  <div v-if="authStore.isAdmin" class="inline-flex w-[104px]">
+                    <a-popconfirm
+                      title="确定要禁用这个插件吗？"
+                      ok-text="确定"
+                      cancel-text="取消"
+                      @confirm="togglePlugin(record as Plugin)"
+                    >
+                      <a-button
+                        type="default"
+                        danger
+                        size="small"
+                        class="!flex !items-center !justify-center"
+                        :class="
+                          (record as Plugin).has_smx
+                            ? '!w-[72px] !rounded-r-none'
+                            : '!w-[104px]'
+                        "
+                      >
+                        <template #icon><PoweroffOutlined /></template>
+                        禁用
+                      </a-button>
+                    </a-popconfirm>
+                    <a-dropdown
+                      v-if="(record as Plugin).has_smx"
+                      :trigger="['click']"
+                      placement="bottomRight"
+                      :getPopupContainer="getBody"
+                      :overlayStyle="{ width: '172px' }"
+                    >
+                      <a-button
+                        type="default"
+                        danger
+                        size="small"
+                        class="!flex !w-[32px] !items-center !justify-center !rounded-l-none !border-l-0 !px-0"
+                      >
+                        <template #icon><DownOutlined /></template>
+                      </a-button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item key="unload" @click="hotTogglePlugin(record as Plugin)">
+                            禁用并立即卸载 smx
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
+                  </div>
                   <a-button
                     type="default"
                     size="small"
@@ -1207,23 +1285,6 @@
                     <template #icon><FileTextOutlined /></template>
                     详情
                   </a-button>
-                  <a-popconfirm
-                    v-if="authStore.isAdmin"
-                    title="确定要禁用这个插件吗？"
-                    ok-text="确定"
-                    cancel-text="取消"
-                    @confirm="togglePlugin(record as Plugin)"
-                  >
-                    <a-button
-                      type="default"
-                      danger
-                      size="small"
-                      class="!flex !items-center !justify-center"
-                    >
-                      <template #icon><PoweroffOutlined /></template>
-                      禁用
-                    </a-button>
-                  </a-popconfirm>
                 </div>
               </template>
             </template>
@@ -1360,23 +1421,54 @@
 
               <template v-else-if="column.key === 'actions'">
                 <div class="flex items-center gap-2">
-                  <a-popconfirm
-                    title="确定要启用这个插件吗？"
-                    ok-text="确定"
-                    cancel-text="取消"
-                    @confirm="togglePlugin(record as Plugin)"
-                    :disabled="!authStore.isAdmin"
-                  >
-                    <a-button
-                      type="primary"
-                      size="small"
-                      class="!flex !items-center !justify-center"
+                  <div class="inline-flex w-[104px]">
+                    <a-popconfirm
+                      title="确定要启用这个插件吗？"
+                      ok-text="确定"
+                      cancel-text="取消"
+                      @confirm="togglePlugin(record as Plugin)"
                       :disabled="!authStore.isAdmin"
                     >
-                      <template #icon><PoweroffOutlined /></template>
-                      启用
-                    </a-button>
-                  </a-popconfirm>
+                      <a-button
+                        type="primary"
+                        size="small"
+                        class="!flex !items-center !justify-center"
+                        :class="
+                          (record as Plugin).has_smx
+                            ? '!w-[72px] !rounded-r-none'
+                            : '!w-[104px]'
+                        "
+                        :disabled="!authStore.isAdmin"
+                      >
+                        <template #icon><PoweroffOutlined /></template>
+                        启用
+                      </a-button>
+                    </a-popconfirm>
+                    <a-dropdown
+                      v-if="(record as Plugin).has_smx"
+                      :trigger="['click']"
+                      placement="bottomRight"
+                      :getPopupContainer="getBody"
+                      :overlayStyle="{ width: '172px' }"
+                    >
+                      <a-button
+                        type="primary"
+                        size="small"
+                        class="!flex !w-[32px] !items-center !justify-center !rounded-l-none !border-l !px-0"
+                        style="border-left-color: rgba(255, 255, 255, 0.45)"
+                        :disabled="!authStore.isAdmin"
+                      >
+                        <template #icon><DownOutlined /></template>
+                      </a-button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item key="load" @click="hotTogglePlugin(record as Plugin)">
+                            启用并立即加载 smx
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
+                  </div>
 
                   <a-button
                     type="default"

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -24,6 +25,7 @@ const (
 	ConfigFileName     = "plugins.yaml"
 	PluginsKey         = "enabled_plugins"
 	DownloadTempDir    = ".download_temp"
+	SMXPluginRelDir    = "addons/sourcemod/plugins"
 )
 
 var (
@@ -38,6 +40,7 @@ type Plugin struct {
 	Status      string `json:"status"` // "enabled" or "disabled"
 	Description string `json:"description"`
 	Source      string `json:"source"` // "panel", "store", or "upload"
+	HasSMX      bool   `json:"has_smx"`
 }
 
 type PluginConfig struct {
@@ -131,6 +134,7 @@ func GetPlugins() ([]Plugin, error) {
 			Status:      "enabled",
 			Description: "Source missing", // Default description if not found on disk
 			Source:      source,
+			HasSMX:      pluginHasSMX(p.Name),
 		}
 	}
 
@@ -159,6 +163,7 @@ func GetPlugins() ([]Plugin, error) {
 			Status:      status,
 			Description: "",
 			Source:      source,
+			HasSMX:      pluginHasSMX(name),
 		}
 	}
 
@@ -167,6 +172,55 @@ func GetPlugins() ([]Plugin, error) {
 		plugins = append(plugins, p)
 	}
 	return plugins, nil
+}
+
+func pluginHasSMX(name string) bool {
+	plugins, err := listPluginSMXIDs(name)
+	return err == nil && len(plugins) > 0
+}
+
+func listPluginSMXIDs(name string) ([]string, error) {
+	root := filepath.Join(getStorePath(), name, "left4dead2", filepath.FromSlash(SMXPluginRelDir))
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	var pluginIDs []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			if strings.EqualFold(info.Name(), "disabled") && path != root {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if !strings.EqualFold(filepath.Ext(info.Name()), ".smx") {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+
+		pluginID := filepath.ToSlash(relPath)
+		pluginID = strings.TrimSuffix(pluginID, filepath.Ext(pluginID))
+		pluginIDs = append(pluginIDs, pluginID)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(pluginIDs)
+	return pluginIDs, nil
 }
 
 // Convert zip filename from possible GBK to UTF-8
@@ -623,6 +677,147 @@ func DisablePlugin(name string) error {
 	configViper.Set(PluginsKey, enabledPlugins)
 
 	return configViper.WriteConfig()
+}
+
+func EnableAndLoadPlugin(name string) error {
+	smxPlugins, err := listPluginSMXIDs(name)
+	if err != nil {
+		return fmt.Errorf("failed to scan smx plugins: %v", err)
+	}
+	if len(smxPlugins) == 0 {
+		return fmt.Errorf("plugin %s does not contain smx files", name)
+	}
+
+	if err := EnablePlugin(name); err != nil {
+		return err
+	}
+
+	loadedPlugins := make([]string, 0, len(smxPlugins))
+	for _, pluginID := range smxPlugins {
+		if err := runSourceModPluginCommand("load", pluginID); err != nil {
+			rollbackErr := rollbackLoadedSMXPlugins(loadedPlugins)
+			if disableErr := DisablePlugin(name); disableErr != nil {
+				rollbackErr = appendRollbackError(rollbackErr, fmt.Errorf("disable rollback failed: %v", disableErr))
+			}
+			if rollbackErr != nil {
+				return fmt.Errorf("load smx plugin %s failed: %v; rollback failed: %v", pluginID, err, rollbackErr)
+			}
+			return fmt.Errorf("load smx plugin %s failed: %v", pluginID, err)
+		}
+		loadedPlugins = append(loadedPlugins, pluginID)
+	}
+
+	return nil
+}
+
+func DisableAndUnloadPlugin(name string) error {
+	smxPlugins, err := listPluginSMXIDs(name)
+	if err != nil {
+		return fmt.Errorf("failed to scan smx plugins: %v", err)
+	}
+	if len(smxPlugins) == 0 {
+		return fmt.Errorf("plugin %s does not contain smx files", name)
+	}
+
+	unloadedPlugins := make([]string, 0, len(smxPlugins))
+	for i := len(smxPlugins) - 1; i >= 0; i-- {
+		pluginID := smxPlugins[i]
+		if err := runSourceModPluginCommand("unload", pluginID); err != nil {
+			rollbackErr := rollbackUnloadedSMXPlugins(unloadedPlugins)
+			if rollbackErr != nil {
+				return fmt.Errorf("unload smx plugin %s failed: %v; rollback failed: %v", pluginID, err, rollbackErr)
+			}
+			return fmt.Errorf("unload smx plugin %s failed: %v", pluginID, err)
+		}
+		unloadedPlugins = append(unloadedPlugins, pluginID)
+	}
+
+	if err := DisablePlugin(name); err != nil {
+		rollbackErr := rollbackUnloadedSMXPlugins(unloadedPlugins)
+		if rollbackErr != nil {
+			return fmt.Errorf("disable plugin %s failed: %v; rollback failed: %v", name, err, rollbackErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func runSourceModPluginCommand(action, pluginID string) error {
+	cmd := fmt.Sprintf("sm plugins %s %s", action, quoteSourceModArg(pluginID))
+	res, err := executePluginRconCommand(cmd)
+	if err != nil {
+		return err
+	}
+	if sourceModPluginCommandFailed(res) {
+		return fmt.Errorf("%s", strings.TrimSpace(res))
+	}
+	return nil
+}
+
+func quoteSourceModArg(value string) string {
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
+}
+
+func sourceModPluginCommandFailed(output string) bool {
+	lower := strings.ToLower(strings.TrimSpace(output))
+	if lower == "" {
+		return false
+	}
+
+	failureMarkers := []string{
+		"unknown command",
+		"no such command",
+		"failed",
+		"error",
+		"not found",
+		"invalid",
+		"could not",
+		"unable to",
+		"is not loaded",
+		"no matching plugin",
+	}
+	for _, marker := range failureMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func rollbackLoadedSMXPlugins(pluginIDs []string) error {
+	var errs []string
+	for i := len(pluginIDs) - 1; i >= 0; i-- {
+		if err := runSourceModPluginCommand("unload", pluginIDs[i]); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", pluginIDs[i], err))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s", strings.Join(errs, "; "))
+}
+
+func rollbackUnloadedSMXPlugins(pluginIDs []string) error {
+	var errs []string
+	for i := len(pluginIDs) - 1; i >= 0; i-- {
+		if err := runSourceModPluginCommand("load", pluginIDs[i]); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", pluginIDs[i], err))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s", strings.Join(errs, "; "))
+}
+
+func appendRollbackError(existing error, next error) error {
+	if existing == nil {
+		return next
+	}
+	return fmt.Errorf("%v; %v", existing, next)
 }
 
 func DeletePlugin(name string) error {
