@@ -153,3 +153,50 @@ func TestGetPlayerStatsHourlyAggregatesOfflineAndUniquePlayers(t *testing.T) {
 		t.Fatalf("sample_count = %d, want 3", got.SampleCount)
 	}
 }
+
+func TestSearchPlayerStatsPlayersOrdersByEstimatedMinutes(t *testing.T) {
+	setupPlayerStatsTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	start := time.Now().Add(-time.Hour).Unix()
+	players := []model.PlayerStatPlayer{
+		{Timestamp: start + 10, SteamID: "STEAM_1:0:1", Name: "Long Player"},
+		{Timestamp: start + 20, SteamID: "STEAM_1:0:1", Name: "Long Player"},
+		{Timestamp: start + 50, SteamID: "STEAM_1:0:2", Name: "Recent Player"},
+	}
+	if err := db.PlayerStatsDB.Create(&players).Error; err != nil {
+		t.Fatalf("create players: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("start", strconv.FormatInt(start, 10))
+	req := httptest.NewRequest(http.MethodPost, "/player-stats/players/search", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+	c.Set("role", "admin")
+
+	SearchPlayerStatsPlayers(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	var results []struct {
+		SteamID          string `json:"steam_id"`
+		EstimatedMinutes int64  `json:"estimated_minutes"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(results))
+	}
+	if results[0].SteamID != "STEAM_1:0:1" {
+		t.Fatalf("first steam_id = %s, want STEAM_1:0:1", results[0].SteamID)
+	}
+	if results[0].EstimatedMinutes != 2*playerStatsIntervalMinutes {
+		t.Fatalf("estimated_minutes = %d, want %d", results[0].EstimatedMinutes, 2*playerStatsIntervalMinutes)
+	}
+}

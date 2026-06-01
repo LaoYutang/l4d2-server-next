@@ -442,7 +442,7 @@ func SearchPlayerStatsPlayers(c *gin.Context) {
 	if len(matchedSteamIDs) > 0 {
 		query = query.Where("steam_id IN ?", matchedSteamIDs)
 	}
-	err := query.Group("steam_id").Order("last_seen DESC").Limit(50).Scan(&candidates).Error
+	err := query.Group("steam_id").Order("samples DESC").Order("last_seen DESC").Limit(50).Scan(&candidates).Error
 	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "搜索玩家失败: %v", err)
 		return
