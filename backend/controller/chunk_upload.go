@@ -19,7 +19,10 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
-const uploadTempDir = "upload_temp"
+const (
+	uploadTempDir      = "upload_temp"
+	maxUploadChunkSize = 6 << 20
+)
 
 func getUploadTempPath(uploadId string) string {
 	return filepath.Join(consts.AddonsBasePath, uploadTempDir, uploadId)
@@ -115,19 +118,13 @@ func UploadChunk(c *gin.Context) {
 		fileSize, _ := strconv.ParseInt(metaLines[1], 10, 64)
 		totalChunks, _ := strconv.Atoi(metaLines[2])
 		if fileSize > 0 && totalChunks > 0 {
-			// 允许单个分片比平均值大 1MB 余量，最大 6MB
-			avgChunkSize := fileSize / int64(totalChunks)
-			maxChunkSize := avgChunkSize + 1<<20
-			if maxChunkSize > 6<<20 {
-				maxChunkSize = 6 << 20
-			}
 			chunkFile, err := c.FormFile("chunk")
 			if err != nil {
 				FailWithError(c, http.StatusBadRequest, "分片文件读取失败: %v", err)
 				return
 			}
-			if chunkFile.Size > maxChunkSize {
-				FailWithError(c, http.StatusBadRequest, "分片大小超过限制 (%d > %d)", chunkFile.Size, maxChunkSize)
+			if chunkFile.Size > maxUploadChunkSize {
+				FailWithError(c, http.StatusBadRequest, "分片大小超过限制 (%d > %d)", chunkFile.Size, maxUploadChunkSize)
 				return
 			}
 			chunkPath := filepath.Join(tempPath, strconv.Itoa(chunkIndex))
