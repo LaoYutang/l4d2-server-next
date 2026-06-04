@@ -95,6 +95,7 @@ export interface PlayerStatsPlayer {
   link_rate?: number;
   last_seen?: number;
   estimated_minutes?: number;
+  rank?: number;
 }
 
 export interface PlayerStatsDay {

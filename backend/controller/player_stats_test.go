@@ -200,3 +200,54 @@ func TestSearchPlayerStatsPlayersOrdersByEstimatedMinutes(t *testing.T) {
 		t.Fatalf("estimated_minutes = %d, want %d", results[0].EstimatedMinutes, 2*playerStatsIntervalMinutes)
 	}
 }
+
+func TestSearchPlayerStatsPlayersReturnsGlobalRankForKeywordMatches(t *testing.T) {
+	setupPlayerStatsTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	start := time.Now().Add(-time.Hour).Unix()
+	players := []model.PlayerStatPlayer{
+		{Timestamp: start + 10, SteamID: "STEAM_1:0:1", Name: "Top Player"},
+		{Timestamp: start + 20, SteamID: "STEAM_1:0:1", Name: "Top Player"},
+		{Timestamp: start + 30, SteamID: "STEAM_1:0:1", Name: "Top Player"},
+		{Timestamp: start + 40, SteamID: "STEAM_1:0:2", Name: "Needle Player"},
+		{Timestamp: start + 50, SteamID: "STEAM_1:0:2", Name: "Needle Player"},
+		{Timestamp: start + 60, SteamID: "STEAM_1:0:3", Name: "Low Player"},
+	}
+	if err := db.PlayerStatsDB.Create(&players).Error; err != nil {
+		t.Fatalf("create players: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("keyword", "Needle")
+	form.Set("start", strconv.FormatInt(start, 10))
+	req := httptest.NewRequest(http.MethodPost, "/player-stats/players/search", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+	c.Set("role", "admin")
+
+	SearchPlayerStatsPlayers(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	var results []struct {
+		SteamID string `json:"steam_id"`
+		Rank    int    `json:"rank"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].SteamID != "STEAM_1:0:2" {
+		t.Fatalf("steam_id = %s, want STEAM_1:0:2", results[0].SteamID)
+	}
+	if results[0].Rank != 2 {
+		t.Fatalf("rank = %d, want 2", results[0].Rank)
+	}
+}

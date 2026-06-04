@@ -133,10 +133,15 @@
           :pagination="{ pageSize: 10 }"
           row-key="steam_id"
           :loading="searchLoading"
-          :scroll="{ x: 760 }"
+          :scroll="{ x: 840 }"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'player'">
+            <template v-if="column.key === 'rank'">
+              <span class="font-mono text-sm text-gray-600 dark:text-gray-300">
+                {{ record.rank ? `#${record.rank}` : '-' }}
+              </span>
+            </template>
+            <template v-else-if="column.key === 'player'">
               <div>
                 <div class="font-medium text-gray-800 dark:text-gray-100">
                   {{ record.name || 'Unknown' }}
@@ -305,6 +310,7 @@
   let chart: echarts.ECharts | null = null;
 
   const playerColumns = [
+    { title: '排名', key: 'rank', width: 80 },
     { title: '玩家', key: 'player' },
     { title: '地区', key: 'location' },
     { title: '最近出现', key: 'last_seen' },

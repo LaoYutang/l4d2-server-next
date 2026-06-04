@@ -415,11 +415,13 @@ func SearchPlayerStatsPlayers(c *gin.Context) {
 		SteamID  string `gorm:"column:steam_id"`
 		Samples  int64  `gorm:"column:samples"`
 		LastSeen int64  `gorm:"column:last_seen"`
+		Rank     int
 	}
 	var candidates []Candidate
 
-	var matchedSteamIDs []string
+	matchedSteamIDSet := map[string]struct{}{}
 	if keyword != "" {
+		var matchedSteamIDs []string
 		like := "%" + keyword + "%"
 		if err := db.PlayerStatsDB.Model(&model.PlayerStatPlayer{}).
 			Distinct("steam_id").
@@ -434,15 +436,19 @@ func SearchPlayerStatsPlayers(c *gin.Context) {
 			c.JSON(http.StatusOK, []gin.H{})
 			return
 		}
+		for _, steamID := range matchedSteamIDs {
+			matchedSteamIDSet[steamID] = struct{}{}
+		}
 	}
 
-	query := db.PlayerStatsDB.Model(&model.PlayerStatPlayer{}).
+	err := db.PlayerStatsDB.Model(&model.PlayerStatPlayer{}).
 		Select("steam_id, COUNT(*) AS samples, MAX(timestamp) AS last_seen").
-		Where("timestamp >= ? AND steam_id <> ''", start)
-	if len(matchedSteamIDs) > 0 {
-		query = query.Where("steam_id IN ?", matchedSteamIDs)
-	}
-	err := query.Group("steam_id").Order("samples DESC").Order("last_seen DESC").Limit(50).Scan(&candidates).Error
+		Where("timestamp >= ? AND steam_id <> ''", start).
+		Group("steam_id").
+		Order("samples DESC").
+		Order("last_seen DESC").
+		Order("steam_id ASC").
+		Scan(&candidates).Error
 	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "搜索玩家失败: %v", err)
 		return
@@ -455,9 +461,17 @@ func SearchPlayerStatsPlayers(c *gin.Context) {
 		IP               string `json:"ip"`
 		LastSeen         int64  `json:"last_seen"`
 		EstimatedMinutes int64  `json:"estimated_minutes"`
+		Rank             int    `json:"rank"`
 	}
 	results := make([]PlayerResult, 0, len(candidates))
-	for _, candidate := range candidates {
+	for i, candidate := range candidates {
+		candidate.Rank = i + 1
+		if keyword != "" {
+			if _, ok := matchedSteamIDSet[candidate.SteamID]; !ok {
+				continue
+			}
+		}
+
 		var latest model.PlayerStatPlayer
 		err := db.PlayerStatsDB.Where("steam_id = ? AND timestamp >= ?", candidate.SteamID, start).
 			Order("timestamp DESC").
@@ -473,7 +487,11 @@ func SearchPlayerStatsPlayers(c *gin.Context) {
 			IP:               latest.IP,
 			LastSeen:         candidate.LastSeen,
 			EstimatedMinutes: candidate.Samples * playerStatsIntervalMinutes,
+			Rank:             candidate.Rank,
 		})
+		if len(results) >= 50 {
+			break
+		}
 	}
 
 	c.JSON(http.StatusOK, results)
