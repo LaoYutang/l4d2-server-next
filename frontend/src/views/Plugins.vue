@@ -91,6 +91,7 @@
     description?: string;
     source: 'panel' | 'store' | 'upload';
     has_smx: boolean;
+    has_config: boolean;
   }
 
   interface StorePlugin {
@@ -947,6 +948,10 @@
   };
 
   const openConfig = async (plugin: Plugin) => {
+    if (!plugin.has_config) {
+      message.info('该插件暂无可配置项');
+      return;
+    }
     currentConfigPlugin.value = plugin.name;
     configModalVisible.value = true;
   };
@@ -1267,15 +1272,23 @@
                       </template>
                     </a-dropdown>
                   </div>
-                  <a-button
-                    type="default"
-                    size="small"
-                    class="!flex !items-center !justify-center"
-                    @click="openConfig(record as Plugin)"
+                  <a-tooltip
+                    :title="(record as Plugin).has_config ? '' : '暂无可配置项'"
+                    :getPopupContainer="getBody"
                   >
-                    <template #icon><SettingOutlined /></template>
-                    配置
-                  </a-button>
+                    <span class="inline-flex">
+                      <a-button
+                        type="default"
+                        size="small"
+                        class="!flex !items-center !justify-center"
+                        :disabled="!(record as Plugin).has_config"
+                        @click="openConfig(record as Plugin)"
+                      >
+                        <template #icon><SettingOutlined /></template>
+                        配置
+                      </a-button>
+                    </span>
+                  </a-tooltip>
                   <a-button
                     type="default"
                     size="small"

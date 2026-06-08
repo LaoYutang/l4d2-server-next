@@ -40,6 +40,50 @@ func TestGetPluginsHasSMX(t *testing.T) {
 	}
 }
 
+func TestGetPluginsHasConfigUsesSameCandidatesAsPluginConfigs(t *testing.T) {
+	storePath, gamePath := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PackageCfg", "left4dead2", "cfg", "sourcemod", "package.cfg"), "package_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(gamePath, "cfg", "sourcemod", "package.cfg"), "package_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(storePath, "SameNameSMX", "left4dead2", "addons", "sourcemod", "plugins", "same_name.smx"), "smx")
+	writeTestFile(t, filepath.Join(gamePath, "cfg", "sourcemod", "same_name.cfg"), "same_name_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(storePath, "PrefixSwapSMX", "left4dead2", "addons", "sourcemod", "plugins", "l4d2_swap.smx"), "smx")
+	writeTestFile(t, filepath.Join(gamePath, "cfg", "sourcemod", "l4d_swap.cfg"), "l4d_swap_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(storePath, "NoCandidate", "left4dead2", "cfg", "server.cfg"), "cfg")
+	writeTestFile(t, filepath.Join(storePath, "MissingServerCfg", "left4dead2", "cfg", "sourcemod", "missing.cfg"), "missing_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(storePath, "NoCvars", "left4dead2", "cfg", "sourcemod", "empty.cfg"), "empty_enabled \"1\"\n")
+	writeTestFile(t, filepath.Join(gamePath, "cfg", "sourcemod", "empty.cfg"), "// no cvars\n")
+
+	plugins, err := GetPlugins()
+	if err != nil {
+		t.Fatalf("GetPlugins() error = %v", err)
+	}
+
+	byName := make(map[string]Plugin)
+	for _, plugin := range plugins {
+		byName[plugin.Name] = plugin
+	}
+
+	want := map[string]bool{
+		"PackageCfg":       true,
+		"SameNameSMX":      true,
+		"PrefixSwapSMX":    true,
+		"NoCandidate":      false,
+		"MissingServerCfg": false,
+		"NoCvars":          false,
+	}
+	for name, expected := range want {
+		plugin, ok := byName[name]
+		if !ok {
+			t.Fatalf("%s plugin is missing", name)
+		}
+		if got := plugin.HasConfig; got != expected {
+			t.Fatalf("%s HasConfig = %v, want %v", name, got, expected)
+		}
+	}
+}
+
 func TestListPluginSMXIDsSortedAndExcludesDisabled(t *testing.T) {
 	storePath, _ := setupPluginTestPaths(t)
 

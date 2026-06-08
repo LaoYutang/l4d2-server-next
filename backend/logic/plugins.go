@@ -41,6 +41,7 @@ type Plugin struct {
 	Description string `json:"description"`
 	Source      string `json:"source"` // "panel", "store", or "upload"
 	HasSMX      bool   `json:"has_smx"`
+	HasConfig   bool   `json:"has_config"`
 }
 
 type PluginConfig struct {
@@ -135,6 +136,7 @@ func GetPlugins() ([]Plugin, error) {
 			Description: "Source missing", // Default description if not found on disk
 			Source:      source,
 			HasSMX:      pluginHasSMX(p.Name),
+			HasConfig:   pluginHasConfig(p.Name),
 		}
 	}
 
@@ -164,6 +166,7 @@ func GetPlugins() ([]Plugin, error) {
 			Description: "",
 			Source:      source,
 			HasSMX:      pluginHasSMX(name),
+			HasConfig:   pluginHasConfig(name),
 		}
 	}
 

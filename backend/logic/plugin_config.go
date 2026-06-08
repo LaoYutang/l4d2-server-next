@@ -8,19 +8,14 @@ import (
 	"strings"
 )
 
-func GetPluginConfigs(pluginName string) ([]PluginConfigFile, error) {
-	// 1. Check if plugin is enabled (optional, but good for validation)
-	// We can skip this and just look for files if we assume the UI only calls this for enabled plugins.
-	// But let's check the store path to find what SMX files belong to this plugin.
+type pluginConfigPathPair struct {
+	PluginDir string
+	ConfigDir string
+}
 
+func pluginConfigPathPairs(pluginName string) []pluginConfigPathPair {
 	storePath := getStorePath()
-
-	type PathPair struct {
-		PluginDir string
-		ConfigDir string
-	}
-
-	pathPairs := []PathPair{
+	return []pluginConfigPathPair{
 		{
 			PluginDir: filepath.Join(storePath, pluginName, "left4dead2", "addons", "sourcemod", "plugins"),
 			ConfigDir: filepath.Join(storePath, pluginName, "left4dead2", "cfg", "sourcemod"),
@@ -30,11 +25,12 @@ func GetPluginConfigs(pluginName string) ([]PluginConfigFile, error) {
 			ConfigDir: filepath.Join(storePath, pluginName, "cfg", "sourcemod"),
 		},
 	}
+}
 
-	configs := make([]PluginConfigFile, 0, 2)
+func getPluginConfigCandidates(pluginName string) map[string]bool {
 	candidateConfigs := make(map[string]bool)
 
-	for _, paths := range pathPairs {
+	for _, paths := range pluginConfigPathPairs(pluginName) {
 		if entries, err := os.ReadDir(paths.PluginDir); err == nil {
 			for _, entry := range entries {
 				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".smx") {
@@ -59,20 +55,38 @@ func GetPluginConfigs(pluginName string) ([]PluginConfigFile, error) {
 		}
 	}
 
-	for cfgName := range candidateConfigs {
-		serverCfgPath := filepath.Join(consts.GamePath, "cfg", "sourcemod", cfgName)
+	return candidateConfigs
+}
 
-		var cvars []CvarConfig
-		var err error
+func readServerPluginConfigCvars(cfgName string) []CvarConfig {
+	serverCfgPath := filepath.Join(consts.GamePath, "cfg", "sourcemod", cfgName)
+	if _, errStat := os.Stat(serverCfgPath); errStat != nil {
+		return nil
+	}
 
-		if _, errStat := os.Stat(serverCfgPath); errStat == nil {
-			cvars, err = ParseSourceModConfig(serverCfgPath)
-			if err != nil {
-				fmt.Printf("Failed to parse server config %s: %v\n", serverCfgPath, err)
-			}
+	cvars, err := ParseSourceModConfig(serverCfgPath)
+	if err != nil {
+		fmt.Printf("Failed to parse server config %s: %v\n", serverCfgPath, err)
+		return nil
+	}
+	return cvars
+}
+
+func pluginHasConfig(pluginName string) bool {
+	for cfgName := range getPluginConfigCandidates(pluginName) {
+		if len(readServerPluginConfigCvars(cfgName)) > 0 {
+			return true
 		}
+	}
+	return false
+}
 
-		if len(cvars) > 0 {
+func GetPluginConfigs(pluginName string) ([]PluginConfigFile, error) {
+	configs := make([]PluginConfigFile, 0, 2)
+	candidateConfigs := getPluginConfigCandidates(pluginName)
+
+	for cfgName := range candidateConfigs {
+		if cvars := readServerPluginConfigCvars(cfgName); len(cvars) > 0 {
 			configs = append(configs, PluginConfigFile{
 				FileName: cfgName,
 				Cvars:    cvars,
