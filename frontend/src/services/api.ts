@@ -36,6 +36,23 @@ export interface DownloadLinkParseResult {
   items: ParsedDownloadItem[];
 }
 
+export interface MapMissionChapter {
+  Code: string;
+  Title: string;
+  Modes: string[];
+}
+
+export interface MapMissionCampaign {
+  Title: string;
+  Chapters: MapMissionChapter[];
+  VpkName: string;
+}
+
+export interface MapMissionDetail {
+  name: string;
+  campaigns: MapMissionCampaign[];
+}
+
 export type PluginExportStatus = 'pending' | 'compressing' | 'completed' | 'failed' | 'cancelled';
 
 export interface PluginExportProgress {
@@ -531,6 +548,12 @@ class ApiService {
         const size = parts[1] || 'unknown';
         return { name, size, info: line };
       });
+  }
+
+  async getMapMissionDetail(mapName: string): Promise<MapMissionDetail> {
+    const response = await this.post('/maps/detail', { map: mapName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async getRconMapList() {

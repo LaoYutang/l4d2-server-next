@@ -1,7 +1,12 @@
 <script setup lang="ts">
   import { ref, computed, onMounted, onUnmounted, h, watch, reactive } from 'vue';
   defineOptions({ name: 'Maps' });
-  import { api, type DownloadLinkParseResult, type ParsedDownloadItem } from '../services/api';
+  import {
+    api,
+    type DownloadLinkParseResult,
+    type MapMissionCampaign,
+    type ParsedDownloadItem,
+  } from '../services/api';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -28,6 +33,14 @@
   const renamingMap = ref(false);
   const renameOldName = ref('');
   const renameNewName = ref('');
+  const detailVisible = ref(false);
+  const detailLoading = ref(false);
+  const detailMapName = ref('');
+  const detailCampaigns = ref<MapMissionCampaign[]>([]);
+  const detailCampaignTitle = computed(() =>
+    detailCampaigns.value.map((campaign) => campaign.Title || '未命名战役').join(' / ')
+  );
+  const detailModalTitle = computed(() => `地图详情 - ${detailCampaignTitle.value || detailMapName.value}`);
 
   // Upload
   const fileList = ref<any[]>([]);
@@ -276,6 +289,23 @@
     renameOldName.value = name;
     renameNewName.value = name;
     renameVisible.value = true;
+  };
+
+  const openMapDetail = async (name: string) => {
+    detailMapName.value = name;
+    detailCampaigns.value = [];
+    detailVisible.value = true;
+    detailLoading.value = true;
+    try {
+      const detail = await api.getMapMissionDetail(name);
+      detailMapName.value = detail.name || name;
+      detailCampaigns.value = detail.campaigns || [];
+    } catch (e: any) {
+      message.error('获取地图详情失败: ' + e.message);
+      detailVisible.value = false;
+    } finally {
+      detailLoading.value = false;
+    }
   };
 
   const submitRenameMap = async () => {
@@ -528,7 +558,13 @@
   const mapColumns = [
     { title: '地图名称', dataIndex: 'name', key: 'name' },
     { title: '大小', dataIndex: 'size', key: 'size', width: 120 },
-    { title: '操作', key: 'action', width: 180, align: 'right' as const },
+    { title: '操作', key: 'action', width: 250, align: 'right' as const },
+  ];
+
+  const mapDetailChapterColumns = [
+    { title: '章节名', dataIndex: 'Title', key: 'title', width: 180 },
+    { title: '地图代码', dataIndex: 'Code', key: 'code', width: 150 },
+    { title: '模式', key: 'modes', width: 360 },
   ];
 
   const taskColumns = [
@@ -670,7 +706,7 @@
             @change="handleTableChange"
             rowKey="name"
             :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
-            :scroll="{ x: 760 }"
+            :scroll="{ x: 840 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -688,6 +724,17 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
+                  <a-button
+                    size="small"
+                    type="text"
+                    :disabled="record.size === 'unknown'"
+                    @click="openMapDetail(record.name)"
+                    class="!flex !items-center !justify-center"
+                    title="详情"
+                  >
+                    <template #icon><file-text-outlined /></template>
+                    <span class="hidden sm:inline">详情</span>
+                  </a-button>
                   <a-button
                     v-if="record.size !== 'unknown'"
                     size="small"
@@ -733,6 +780,108 @@
             />
             <div class="text-xs text-gray-400 dark:text-gray-500">
               保存时会自动清理特殊字符，未填写 .vpk 时会自动补齐。
+            </div>
+          </div>
+        </a-modal>
+
+        <a-modal
+          v-model:open="detailVisible"
+          :title="detailModalTitle"
+          :footer="null"
+          width="820px"
+          wrap-class-name="map-detail-modal"
+        >
+          <div v-if="detailLoading" class="py-10 text-center text-gray-400">加载中...</div>
+          <a-empty
+            v-else-if="detailCampaigns.length === 0"
+            description="未解析到战役信息"
+          />
+          <div v-else class="space-y-5">
+            <div
+              class="rounded-lg border border-gray-200 bg-gray-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/30"
+            >
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div
+                  class="flex min-w-0 items-start gap-3"
+                >
+                  <div
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
+                  >
+                    <file-text-outlined />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-xs font-medium text-gray-500 dark:text-gray-400">战役名</div>
+                    <div class="mt-1 break-words text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      {{ detailCampaignTitle }}
+                    </div>
+                  </div>
+                </div>
+                <div class="min-w-0 sm:max-w-[45%] sm:text-right">
+                  <div class="text-xs font-medium text-gray-500 dark:text-gray-400">VPK 文件</div>
+                  <div
+                    class="mt-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200"
+                    :title="detailMapName"
+                  >
+                    {{ detailMapName }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-for="campaign in detailCampaigns"
+              :key="`${campaign.VpkName || detailMapName}-${campaign.Title}`"
+              class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900/40"
+            >
+              <div
+                v-if="detailCampaigns.length > 1"
+                class="border-b border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40"
+              >
+                <div class="break-words text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {{ campaign.Title || '未命名战役' }}
+                </div>
+                <div class="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">
+                  {{ campaign.VpkName || detailMapName }}
+                </div>
+              </div>
+
+              <a-table
+                class="map-detail-chapter-table"
+                :columns="mapDetailChapterColumns"
+                :data-source="campaign.Chapters || []"
+                :pagination="false"
+                :row-key="(chapter) => chapter.Code || chapter.Title"
+                size="small"
+                table-layout="fixed"
+                :scroll="{ x: 690 }"
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'title'">
+                    <span class="block truncate pr-3" :title="record.Title || '-'">
+                      {{ record.Title || '-' }}
+                    </span>
+                  </template>
+                  <template v-else-if="column.key === 'code'">
+                    <code
+                      class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-slate-800 dark:text-gray-200"
+                      >{{ record.Code || '-' }}</code
+                    >
+                  </template>
+                  <template v-else-if="column.key === 'modes'">
+                    <div v-if="record.Modes?.length" class="flex min-w-[260px] flex-wrap gap-1">
+                      <a-tag
+                        v-for="mode in record.Modes"
+                        :key="mode"
+                        color="default"
+                        class="mr-0 map-detail-mode-tag"
+                      >
+                        {{ mode }}
+                      </a-tag>
+                    </div>
+                    <span v-else class="text-gray-400">-</span>
+                  </template>
+                </template>
+              </a-table>
             </div>
           </div>
         </a-modal>
@@ -1082,6 +1231,73 @@
 </template>
 
 <style scoped>
+  :global(.map-detail-modal .ant-modal-body) {
+    padding-top: 14px;
+  }
+
+  :global(.dark .map-detail-modal) {
+    --ant-color-split: #334155;
+    --ant-color-border-secondary: #334155;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table) {
+    border-radius: 0;
+    background: transparent;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table-thead > tr > th) {
+    background: transparent;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-bottom: 0 !important;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table-thead),
+  :deep(.map-detail-chapter-table .ant-table-thead > tr) {
+    border-bottom: 0 !important;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table-thead > tr > th::before) {
+    display: none !important;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table-tbody > tr > td) {
+    padding: 10px 16px;
+    border-bottom-color: #f1f5f9;
+  }
+
+  :deep(.map-detail-chapter-table .ant-table-tbody > tr:last-child > td) {
+    border-bottom: 0;
+  }
+
+  :deep(.map-detail-mode-tag) {
+    line-height: 20px;
+    border-radius: 5px;
+  }
+
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead > tr > th) {
+    color: #cbd5e1;
+    border-bottom: 0 !important;
+  }
+
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead),
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead > tr) {
+    border-bottom: 0 !important;
+  }
+
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-tbody > tr > td) {
+    border-bottom: 1px solid #1e293b !important;
+  }
+
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-header),
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-container),
+  :global(.dark) :deep(.map-detail-chapter-table .ant-table-content),
+  :global(.dark) :deep(.map-detail-chapter-table table) {
+    border-color: #334155 !important;
+  }
+
   /* Dark mode overrides for Upload Dragger */
   :global(.dark) :deep(.ant-upload.ant-upload-drag) {
     background-color: #1f2937 !important;

@@ -1,9 +1,13 @@
 package logic
 
 import (
+	"fmt"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/pkg/vpkmission"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 type Campaign = vpkmission.Campaign
@@ -34,4 +38,33 @@ func GetChapterList() []*Campaign {
 	}
 
 	return result
+}
+
+func GetMapMissionDetail(mapName string) ([]*Campaign, error) {
+	mapName = strings.TrimSpace(mapName)
+	if mapName == "" ||
+		strings.Contains(mapName, "\x00") ||
+		strings.Contains(mapName, "/") ||
+		strings.Contains(mapName, "\\") ||
+		filepath.IsAbs(mapName) ||
+		filepath.Base(mapName) != mapName {
+		return nil, fmt.Errorf("invalid map filename")
+	}
+	if !strings.EqualFold(filepath.Ext(mapName), ".vpk") {
+		return nil, fmt.Errorf("invalid map filename: only .vpk files are supported")
+	}
+
+	vpkPath := filepath.Join(consts.AddonsBasePath, mapName)
+	info, err := os.Stat(vpkPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("map file %s does not exist", mapName)
+		}
+		return nil, fmt.Errorf("stat map file %s: %w", mapName, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("map file %s is a directory", mapName)
+	}
+
+	return vpkmission.ParseVPK(vpkPath)
 }
