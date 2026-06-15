@@ -30,6 +30,7 @@ func main() {
 	// Clean leftover plugin download temp directories from previous runs
 	go logic.CleanDownloadTemp()
 	go logic.CleanPluginExportTemp()
+	go logic.CleanVPKTrimTemp()
 
 	router := gin.Default()
 
@@ -102,6 +103,8 @@ func main() {
 	router.POST("/config/self-service", middlewares.Auth(privateKey), controller.SetSelfServiceConfig)
 	router.POST("/config/player-stats", middlewares.Auth(privateKey), controller.SetPlayerStatsConfig)
 	router.POST("/config/monitor-history", middlewares.Auth(privateKey), controller.SetMonitorConfig)
+	router.POST("/vpk-trim/config", middlewares.Auth(privateKey), controller.GetVPKTrimConfig)
+	router.POST("/config/vpk-trim", middlewares.Auth(privateKey), controller.SetVPKTrimConfig)
 
 	// Root Level Protected Routes (Misc)
 	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)

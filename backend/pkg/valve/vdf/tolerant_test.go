@@ -52,3 +52,33 @@ func TestReadTolerantAcceptsUnquotedKeysValuesCommentsAndMissingBraces(t *testin
 		t.Fatalf("versus DisplayName = %+v, want Alpha Versus", versusName)
 	}
 }
+
+func TestReadTolerantClosesLineBrokenQuotedValue(t *testing.T) {
+	root, err := ReadTolerant(strings.NewReader(`"mission"
+{
+	"modes"
+	{
+		"coop"
+		{
+			"1"
+			{
+				"Map" "zc1_m5"
+				"DisplayName" "东门桥/Bridge
+				"Image" "maps/z5"
+			}
+		}
+	}
+}`))
+	if err != nil {
+		t.Fatalf("ReadTolerant() error = %v", err)
+	}
+
+	displayName := root.FindKey("modes/coop/1/DisplayName")
+	if displayName == nil || displayName.Value != "东门桥/Bridge" {
+		t.Fatalf("DisplayName = %+v, want repaired value", displayName)
+	}
+	image := root.FindKey("modes/coop/1/Image")
+	if image == nil || image.Value != "maps/z5" {
+		t.Fatalf("Image = %+v, want maps/z5", image)
+	}
+}

@@ -1,0 +1,70 @@
+package controller
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
+)
+
+func TestFinalizeVpkFileFallsBackToOriginalWhenTrimUnsupported(t *testing.T) {
+	oldAddonsBasePath := consts.AddonsBasePath
+	oldMapListFilePath := consts.MapListFilePath
+	oldManagerDataPath := consts.ManagerDataPath
+	oldManagerConfigPath := consts.ManagerConfigPath
+
+	root := t.TempDir()
+	addonsPath := filepath.Join(root, "addons")
+	if err := os.MkdirAll(addonsPath, 0755); err != nil {
+		t.Fatalf("create addons dir: %v", err)
+	}
+
+	consts.AddonsBasePath = addonsPath
+	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
+	consts.ManagerDataPath = filepath.Join(root, "data")
+	consts.ManagerConfigPath = filepath.Join(consts.ManagerDataPath, "manager_config.json")
+
+	if err := logic.SetVPKTrimEnable(true); err != nil {
+		t.Fatalf("enable vpk trim: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = logic.SetVPKTrimEnable(false)
+		consts.AddonsBasePath = oldAddonsBasePath
+		consts.MapListFilePath = oldMapListFilePath
+		consts.ManagerDataPath = oldManagerDataPath
+		consts.ManagerConfigPath = oldManagerConfigPath
+	})
+
+	sourcePath := filepath.Join(root, "incoming.vpk")
+	sourceContent := []byte("not a supported vpk layout")
+	if err := os.WriteFile(sourcePath, sourceContent, 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	if err := finalizeVpkFile(sourcePath, "unsupported.vpk"); err != nil {
+		t.Fatalf("finalizeVpkFile() error = %v", err)
+	}
+
+	destPath := filepath.Join(addonsPath, "unsupported.vpk")
+	destContent, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("read dest: %v", err)
+	}
+	if string(destContent) != string(sourceContent) {
+		t.Fatalf("dest content = %q, want original content", destContent)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("source file still exists or stat failed: %v", err)
+	}
+
+	mapList, err := os.ReadFile(consts.MapListFilePath)
+	if err != nil {
+		t.Fatalf("read maplist: %v", err)
+	}
+	if !strings.Contains(string(mapList), "unsupported.vpk\n") {
+		t.Fatalf("maplist = %q, want unsupported.vpk entry", mapList)
+	}
+}

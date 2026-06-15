@@ -271,10 +271,10 @@ func UploadMerge(c *gin.Context) {
 	var files []string
 	var processErr error
 
-	vpkReg := regexp.MustCompile(`\.(vpk|zip|rar|7z)$`)
-	zipReg := regexp.MustCompile(`\.zip$`)
-	rarReg := regexp.MustCompile(`\.rar$`)
-	sevenZipReg := regexp.MustCompile(`\.7z$`)
+	vpkReg := regexp.MustCompile(`(?i)\.(vpk|zip|rar|7z)$`)
+	zipReg := regexp.MustCompile(`(?i)\.zip$`)
+	rarReg := regexp.MustCompile(`(?i)\.rar$`)
+	sevenZipReg := regexp.MustCompile(`(?i)\.7z$`)
 
 	if !vpkReg.MatchString(cleanFilename) {
 		os.RemoveAll(tempPath)

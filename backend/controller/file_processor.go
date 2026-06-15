@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/axgle/mahonia"
 	"github.com/bodgit/sevenzip"
+	"github.com/google/uuid"
 	"github.com/nwaples/rardecode"
 )
 
@@ -43,6 +45,10 @@ func extractFile(f *zip.File, destPath string) error {
 	}
 	defer rc.Close()
 
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return err
+	}
+
 	outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 	if err != nil {
 		return err
@@ -66,6 +72,87 @@ func recordMap(filename string) error {
 
 	if _, err := list.WriteString(filename + "\n"); err != nil {
 		return errors.New("写入地图记录失败")
+	}
+	return nil
+}
+
+func createVPKProcessingTempFile(cleanName string) (string, func(), error) {
+	tempRoot := filepath.Join(consts.AddonsBasePath, logic.VPKTrimTempDirName)
+	if err := os.MkdirAll(tempRoot, 0755); err != nil {
+		return "", nil, fmt.Errorf("创建VPK处理临时目录失败: %w", err)
+	}
+
+	tempDir, err := os.MkdirTemp(tempRoot, "incoming-")
+	if err != nil {
+		return "", nil, fmt.Errorf("创建VPK处理任务目录失败: %w", err)
+	}
+
+	cleanup := func() {
+		os.RemoveAll(tempDir)
+	}
+	return filepath.Join(tempDir, cleanName), cleanup, nil
+}
+
+func finalizeVpkFile(sourcePath, cleanName string) error {
+	if err := checkMapExists(cleanName); err != nil {
+		return err
+	}
+
+	destPath := filepath.Join(consts.AddonsBasePath, cleanName)
+	if _, err := os.Stat(destPath); err == nil {
+		return errors.New("地图 " + cleanName + " 已经存在")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("检查地图文件失败: %w", err)
+	}
+
+	saveSourcePath := sourcePath
+	var trimCleanup func()
+	if logic.IsVPKTrimEnabled() {
+		trimmedPath, cleanup, err := logic.TrimVPKForServer(sourcePath)
+		if err != nil {
+			if !logic.IsVPKTrimUnsupported(err) {
+				return fmt.Errorf("精简VPK失败: %w", err)
+			}
+		} else {
+			saveSourcePath = trimmedPath
+			trimCleanup = cleanup
+			defer trimCleanup()
+		}
+	}
+
+	tempDestPath := filepath.Join(consts.AddonsBasePath, "."+uuid.NewString()+"."+cleanName+".tmp")
+	_ = os.Remove(tempDestPath)
+	if err := moveFile(saveSourcePath, tempDestPath); err != nil {
+		_ = os.Remove(tempDestPath)
+		return fmt.Errorf("保存地图临时文件失败: %w", err)
+	}
+
+	saved := false
+	defer func() {
+		if !saved {
+			os.Remove(tempDestPath)
+		}
+	}()
+
+	if err := os.Rename(tempDestPath, destPath); err != nil {
+		return fmt.Errorf("保存地图失败: %w", err)
+	}
+	saved = true
+
+	recorded := false
+	defer func() {
+		if !recorded {
+			os.Remove(destPath)
+		}
+	}()
+
+	if err := recordMap(cleanName); err != nil {
+		return fmt.Errorf("记录地图失败: %w", err)
+	}
+	recorded = true
+
+	if saveSourcePath != sourcePath {
+		_ = os.Remove(sourcePath)
 	}
 	return nil
 }
@@ -138,10 +225,10 @@ func ProcessFile(filePath string) ([]string, error) {
 	fileName := filepath.Base(filePath)
 
 	// 检查文件类型
-	vpkReg := regexp.MustCompile(`\.vpk$`)
-	zipReg := regexp.MustCompile(`\.zip$`)
-	rarReg := regexp.MustCompile(`\.rar$`)
-	sevenZipReg := regexp.MustCompile(`\.7z$`)
+	vpkReg := regexp.MustCompile(`(?i)\.vpk$`)
+	zipReg := regexp.MustCompile(`(?i)\.zip$`)
+	rarReg := regexp.MustCompile(`(?i)\.rar$`)
+	sevenZipReg := regexp.MustCompile(`(?i)\.7z$`)
 
 	if !vpkReg.MatchString(fileName) && !zipReg.MatchString(fileName) && !rarReg.MatchString(fileName) && !sevenZipReg.MatchString(fileName) {
 		return nil, errors.New("不支持的文件类型，只支持vpk, zip, rar, 7z文件")
@@ -179,7 +266,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	}
 	defer reader.Close()
 
-	vpkReg := regexp.MustCompile(`\.vpk$`)
+	vpkReg := regexp.MustCompile(`(?i)\.vpk$`)
 	var extractedFiles []string
 
 	// 解压vpk文件
@@ -192,29 +279,28 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 			// 清理文件名
 			cleanName := sanitizeFilename(filepath.Base(name))
 
-			// 检查文件是否已存在
-			if err := checkMapExists(cleanName); err != nil {
+			tempPath, cleanup, err := createVPKProcessingTempFile(cleanName)
+			if err != nil {
 				return nil, err
 			}
 
-			// 解压文件到目标目录
-			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
-			if err := extractFile(f, destPath); err != nil {
+			if err := extractFile(f, tempPath); err != nil {
+				cleanup()
 				return nil, fmt.Errorf("解压文件失败: %v", err)
 			}
+
+			if err := finalizeVpkFile(tempPath, cleanName); err != nil {
+				cleanup()
+				return nil, err
+			}
+			cleanup()
+
 			extractedFiles = append(extractedFiles, cleanName)
 		}
 	}
 
 	if len(extractedFiles) == 0 {
 		return nil, errors.New("zip文件中未找到vpk文件")
-	}
-
-	// 记录所有解压的vpk文件
-	for _, fileName := range extractedFiles {
-		if err := recordMap(fileName); err != nil {
-			return nil, fmt.Errorf("记录地图失败: %v", err)
-		}
 	}
 
 	return extractedFiles, nil
@@ -234,7 +320,7 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 		return nil, fmt.Errorf("创建rar读取器失败: %v", err)
 	}
 
-	vpkReg := regexp.MustCompile(`\.vpk$`)
+	vpkReg := regexp.MustCompile(`(?i)\.vpk$`)
 	var extractedFiles []string
 
 	for {
@@ -254,23 +340,21 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 			// 清理文件名
 			cleanName := sanitizeFilename(filepath.Base(header.Name))
 
-			// 检查文件是否已存在
-			if err := checkMapExists(cleanName); err != nil {
+			tempPath, cleanup, err := createVPKProcessingTempFile(cleanName)
+			if err != nil {
 				return nil, err
 			}
 
-			// 解压文件到目标目录
-			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
-			outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-			if err != nil {
-				return nil, fmt.Errorf("创建目标文件失败: %v", err)
-			}
-
-			if _, err := io.Copy(outFile, rr); err != nil {
-				outFile.Close()
+			if err := writeReaderToFile(rr, tempPath, 0666); err != nil {
+				cleanup()
 				return nil, fmt.Errorf("写入文件失败: %v", err)
 			}
-			outFile.Close()
+
+			if err := finalizeVpkFile(tempPath, cleanName); err != nil {
+				cleanup()
+				return nil, err
+			}
+			cleanup()
 
 			extractedFiles = append(extractedFiles, cleanName)
 		}
@@ -278,13 +362,6 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 
 	if len(extractedFiles) == 0 {
 		return nil, errors.New("rar文件中未找到vpk文件")
-	}
-
-	// 记录所有解压的vpk文件
-	for _, fileName := range extractedFiles {
-		if err := recordMap(fileName); err != nil {
-			return nil, fmt.Errorf("记录地图失败: %v", err)
-		}
 	}
 
 	return extractedFiles, nil
@@ -298,7 +375,7 @@ func Process7zFile(sevenZipPath string) ([]string, error) {
 	}
 	defer r.Close()
 
-	vpkReg := regexp.MustCompile(`\.vpk$`)
+	vpkReg := regexp.MustCompile(`(?i)\.vpk$`)
 	var extractedFiles []string
 
 	for _, f := range r.File {
@@ -306,31 +383,29 @@ func Process7zFile(sevenZipPath string) ([]string, error) {
 			// 清理文件名
 			cleanName := sanitizeFilename(filepath.Base(f.Name))
 
-			// 检查文件是否已存在
-			if err := checkMapExists(cleanName); err != nil {
-				return nil, err
-			}
-
-			// 解压文件到目标目录
-			destPath := filepath.Join(consts.AddonsBasePath, cleanName)
-
 			rc, err := f.Open()
 			if err != nil {
 				return nil, fmt.Errorf("打开7z内部文件失败: %v", err)
 			}
 
-			outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+			tempPath, cleanup, err := createVPKProcessingTempFile(cleanName)
 			if err != nil {
 				rc.Close()
-				return nil, fmt.Errorf("创建目标文件失败: %v", err)
+				return nil, err
 			}
 
-			_, err = io.Copy(outFile, rc)
-			outFile.Close()
-			rc.Close()
-			if err != nil {
+			if err := writeReaderToFile(rc, tempPath, 0666); err != nil {
+				cleanup()
+				rc.Close()
 				return nil, fmt.Errorf("写入文件失败: %v", err)
 			}
+			rc.Close()
+
+			if err := finalizeVpkFile(tempPath, cleanName); err != nil {
+				cleanup()
+				return nil, err
+			}
+			cleanup()
 
 			extractedFiles = append(extractedFiles, cleanName)
 		}
@@ -338,13 +413,6 @@ func Process7zFile(sevenZipPath string) ([]string, error) {
 
 	if len(extractedFiles) == 0 {
 		return nil, errors.New("7z文件中未找到vpk文件")
-	}
-
-	// 记录所有解压的vpk文件
-	for _, fileName := range extractedFiles {
-		if err := recordMap(fileName); err != nil {
-			return nil, fmt.Errorf("记录地图失败: %v", err)
-		}
 	}
 
 	return extractedFiles, nil
@@ -359,28 +427,41 @@ func ProcessVpkFile(vpkPath string) ([]string, error) {
 	fileName = strings.TrimPrefix(fileName, "merged_")
 	cleanName := sanitizeFilename(fileName)
 
-	// 检查文件是否已存在
-	if err := checkMapExists(cleanName); err != nil {
+	if err := finalizeVpkFile(vpkPath, cleanName); err != nil {
 		return nil, err
 	}
 
-	// 移动文件到目标目录
-	destPath := filepath.Join(consts.AddonsBasePath, cleanName)
-	if err := os.Rename(vpkPath, destPath); err != nil {
-		// 如果重命名失败，尝试复制
-		if err := copyFile(vpkPath, destPath); err != nil {
-			return nil, fmt.Errorf("移动文件失败: %v", err)
-		}
-	}
-
-	// 记录地图
-	if err := recordMap(cleanName); err != nil {
-		// 如果记录失败，删除已复制的文件
-		os.Remove(destPath)
-		return nil, fmt.Errorf("记录地图失败: %v", err)
-	}
-
 	return []string{cleanName}, nil
+}
+
+func writeReaderToFile(reader io.Reader, dest string, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, reader)
+	return err
+}
+
+func moveFile(src, dest string) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	}
+
+	if err := copyFile(src, dest); err != nil {
+		return err
+	}
+	return os.Remove(src)
 }
 
 // copyFile 复制文件的工具函数

@@ -29,10 +29,10 @@ func Upload(c *gin.Context) {
 		return
 	}
 
-	vpkReg := regexp.MustCompile(`\.(vpk|zip|rar|7z)$`)
-	zipReg := regexp.MustCompile(`\.zip$`)
-	rarReg := regexp.MustCompile(`\.rar$`)
-	sevenZipReg := regexp.MustCompile(`\.7z$`)
+	vpkReg := regexp.MustCompile(`(?i)\.(vpk|zip|rar|7z)$`)
+	zipReg := regexp.MustCompile(`(?i)\.zip$`)
+	rarReg := regexp.MustCompile(`(?i)\.rar$`)
+	sevenZipReg := regexp.MustCompile(`(?i)\.7z$`)
 
 	if !vpkReg.Match([]byte(file.Filename)) {
 		FailWithError(c, http.StatusBadRequest, "错误的文件类型，只支持vpk, zip, rar, 7z文件")

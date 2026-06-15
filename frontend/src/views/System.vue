@@ -12,6 +12,7 @@
     Input as AInput,
     Divider as ADivider,
     Switch as ASwitch,
+    Tag as ATag,
   } from 'ant-design-vue';
   import {
     KeyOutlined,
@@ -22,6 +23,7 @@
     SafetyCertificateOutlined,
     LineChartOutlined,
     DatabaseOutlined,
+    CloudUploadOutlined,
   } from '@ant-design/icons-vue';
   import { copyToClipboard } from '../utils/clipboard';
 
@@ -42,6 +44,8 @@
   const settingPlayerStats = ref(false);
   const enableMonitorHistory = ref(false);
   const settingMonitorHistory = ref(false);
+  const enableVpkTrim = ref(false);
+  const settingVpkTrim = ref(false);
 
   onErrorCaptured((err) => {
     console.error('System.vue Error:', err);
@@ -85,6 +89,16 @@
       monitorStore.setHistoryEnabled(config.history_enabled);
     } catch (e) {
       console.error('Failed to fetch monitor config:', e);
+    }
+  };
+
+  const fetchVpkTrimConfig = async () => {
+    if (!isAdmin.value) return;
+    try {
+      const config = await api.getVpkTrimConfig();
+      enableVpkTrim.value = config.enabled;
+    } catch (e) {
+      console.error('Failed to fetch VPK trim config:', e);
     }
   };
 
@@ -136,6 +150,21 @@
     }
   };
 
+  const toggleVpkTrim = async (checked: boolean | string | number) => {
+    const isChecked = Boolean(checked);
+    settingVpkTrim.value = true;
+    try {
+      await api.setVpkTrimConfig(isChecked);
+      enableVpkTrim.value = isChecked;
+      message.success(isChecked ? '已开启地图自动精简' : '已关闭地图自动精简');
+    } catch (e: any) {
+      message.error(`设置失败: ${e.message}`);
+      enableVpkTrim.value = !isChecked;
+    } finally {
+      settingVpkTrim.value = false;
+    }
+  };
+
   const generateCode = async () => {
     generating.value = true;
     generatedCode.value = '';
@@ -180,6 +209,7 @@
     fetchSelfServiceStatus();
     fetchPlayerStatsConfig();
     fetchMonitorConfig();
+    fetchVpkTrimConfig();
   });
 </script>
 
@@ -316,6 +346,36 @@
             un-checked-children="关"
           />
         </div>
+      </div>
+    </a-card>
+
+    <a-card class="shadow-xl" :bordered="false" v-if="isAdmin">
+      <template #title>
+        <span class="flex items-center gap-2 text-lg">
+          <cloud-upload-outlined class="text-orange-500" />
+          地图资源设置
+        </span>
+      </template>
+
+      <div
+        class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg"
+      >
+        <div>
+          <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex flex-wrap items-center gap-2">
+            <CloudUploadOutlined /> <span>启用地图自动精简</span>
+            <a-tag color="warning" class="!m-0">Beta</a-tag>
+          </div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            仅精简启用后上传和下载的地图资源，可以极大程度减轻服务器存储压力。精简后的地图仅适合服务端使用，不适合客户端本地使用。
+          </div>
+        </div>
+        <a-switch
+          :checked="enableVpkTrim"
+          :loading="settingVpkTrim"
+          @update:checked="toggleVpkTrim"
+          checked-children="开"
+          un-checked-children="关"
+        />
       </div>
     </a-card>
 

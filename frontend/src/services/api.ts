@@ -88,6 +88,10 @@ export interface MonitorConfig {
   history_enabled: boolean;
 }
 
+export interface VpkTrimConfig {
+  enabled: boolean;
+}
+
 export interface PlayerStatsHourlyItem {
   timestamp: number;
   avg_players: number | null;
@@ -1167,6 +1171,18 @@ class ApiService {
 
   async setMonitorHistoryConfig(enable: boolean) {
     const response = await this.postJson('/config/monitor-history', { enable });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getVpkTrimConfig(): Promise<VpkTrimConfig> {
+    const response = await this.post('/vpk-trim/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setVpkTrimConfig(enable: boolean) {
+    const response = await this.postJson('/config/vpk-trim', { enable });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

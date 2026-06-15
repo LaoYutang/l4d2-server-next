@@ -13,6 +13,7 @@ type ManagerConfig struct {
 	LastSelfServiceTime  time.Time `json:"last_self_service_time"`
 	EnablePlayerStats    bool      `json:"enable_player_stats"`
 	EnableMonitorHistory bool      `json:"enable_monitor_history"`
+	EnableVPKTrim        bool      `json:"enable_vpk_trim"`
 }
 
 var (
@@ -32,6 +33,7 @@ func LoadManagerConfig() {
 		EnableSelfService:    false,
 		EnablePlayerStats:    true,
 		EnableMonitorHistory: true,
+		EnableVPKTrim:        false,
 	}
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
@@ -93,6 +95,19 @@ func SetMonitorHistoryEnable(enable bool) error {
 	managerConfigMutex.Lock()
 	defer managerConfigMutex.Unlock()
 	managerConfig.EnableMonitorHistory = enable
+	return saveManagerConfig()
+}
+
+func IsVPKTrimEnabled() bool {
+	managerConfigMutex.RLock()
+	defer managerConfigMutex.RUnlock()
+	return managerConfig.EnableVPKTrim
+}
+
+func SetVPKTrimEnable(enable bool) error {
+	managerConfigMutex.Lock()
+	defer managerConfigMutex.Unlock()
+	managerConfig.EnableVPKTrim = enable
 	return saveManagerConfig()
 }
 

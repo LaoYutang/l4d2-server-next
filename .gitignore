@@ -5,6 +5,7 @@ private.key
 /backend/manager_config.json
 /backend/data/
 /data/
+/.gocache/
 *.exe
 *.exe~
 *.db
