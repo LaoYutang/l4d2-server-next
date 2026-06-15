@@ -21,6 +21,7 @@
     SearchOutlined,
     DownloadOutlined,
     EditOutlined,
+    CompressOutlined,
   } from '@ant-design/icons-vue';
 
   const activeTab = ref('local');
@@ -29,6 +30,7 @@
   const loading = ref(false);
   const searchQuery = ref('');
   const selectedRowKeys = ref<string[]>([]);
+  const trimmingMaps = ref<Record<string, boolean>>({});
   const renameVisible = ref(false);
   const renamingMap = ref(false);
   const renameOldName = ref('');
@@ -280,6 +282,31 @@
           loadMaps();
         } catch (e: any) {
           message.error('删除失败: ' + e.message);
+        }
+      },
+    });
+  };
+
+  const trimMap = async (name: string) => {
+    Modal.confirm({
+      title: `确定要精简地图 ${name} 吗？`,
+      icon: () => h(ExclamationCircleOutlined),
+      content: '精简成功后会替换当前VPK文件。精简后的地图仅适合服务端使用，不适合客户端本地使用。',
+      okText: '精简',
+      onOk: async () => {
+        trimmingMaps.value = { ...trimmingMaps.value, [name]: true };
+        try {
+          const result = await api.trimMap(name);
+          if (result.trimmed) {
+            message.success(result.message || `精简成功，节省 ${result.saved_size_label}`);
+          } else {
+            message.info(result.message || '当前地图无需精简');
+          }
+          loadMaps();
+        } catch (e: any) {
+          message.error('精简失败: ' + e.message);
+        } finally {
+          trimmingMaps.value = { ...trimmingMaps.value, [name]: false };
         }
       },
     });
@@ -558,7 +585,7 @@
   const mapColumns = [
     { title: '地图名称', dataIndex: 'name', key: 'name' },
     { title: '大小', dataIndex: 'size', key: 'size', width: 120 },
-    { title: '操作', key: 'action', width: 250, align: 'right' as const },
+    { title: '操作', key: 'action', width: 330, align: 'right' as const },
   ];
 
   const mapDetailChapterColumns = [
@@ -706,7 +733,7 @@
             @change="handleTableChange"
             rowKey="name"
             :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
-            :scroll="{ x: 840 }"
+            :scroll="{ x: 940 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -745,6 +772,19 @@
                   >
                     <template #icon><edit-outlined /></template>
                     <span class="hidden sm:inline">重命名</span>
+                  </a-button>
+                  <a-button
+                    v-if="record.size !== 'unknown'"
+                    size="small"
+                    type="text"
+                    :loading="trimmingMaps[record.name]"
+                    :disabled="trimmingMaps[record.name]"
+                    @click="trimMap(record.name)"
+                    class="!flex !items-center !justify-center"
+                    title="精简"
+                  >
+                    <template #icon><compress-outlined /></template>
+                    <span class="hidden sm:inline">精简</span>
                   </a-button>
                   <a-button
                     size="small"

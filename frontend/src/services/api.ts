@@ -92,6 +92,17 @@ export interface VpkTrimConfig {
   enabled: boolean;
 }
 
+export interface MapTrimResult {
+  trimmed: boolean;
+  message: string;
+  original_size: number;
+  trimmed_size: number;
+  saved_size: number;
+  original_size_label: string;
+  trimmed_size_label: string;
+  saved_size_label: string;
+}
+
 export interface PlayerStatsHourlyItem {
   timestamp: number;
   avg_players: number | null;
@@ -556,6 +567,12 @@ class ApiService {
 
   async getMapMissionDetail(mapName: string): Promise<MapMissionDetail> {
     const response = await this.post('/maps/detail', { map: mapName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async trimMap(mapName: string): Promise<MapTrimResult> {
+    const response = await this.post('/maps/trim', { map: mapName });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
