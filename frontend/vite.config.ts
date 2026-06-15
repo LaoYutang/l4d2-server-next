@@ -22,5 +22,12 @@ export default defineConfig({
     outDir: '../backend/static',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1024,
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/app-[hash].js',
+        chunkFileNames: 'assets/chunk-[hash].js',
+        assetFileNames: 'assets/asset-[hash][extname]',
+      },
+    },
   },
 });

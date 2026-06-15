@@ -5,6 +5,7 @@
     api,
     type DownloadLinkParseResult,
     type MapMissionCampaign,
+    type MapSummaryItem,
     type ParsedDownloadItem,
   } from '../services/api';
   import { message, Modal } from 'ant-design-vue';
@@ -26,6 +27,8 @@
 
   const activeTab = ref('local');
   const maps = ref<Array<{ name: string; size: string; info: string }>>([]);
+  const mapSummaries = ref<Record<string, MapSummaryItem>>({});
+  const mapSummaryLoading = ref<Record<string, boolean>>({});
   const downloadTasks = ref<Array<any>>([]);
   const loading = ref(false);
   const searchQuery = ref('');
@@ -79,7 +82,14 @@
   const filteredMaps = computed(() => {
     if (!searchQuery.value) return maps.value;
     const q = searchQuery.value.toLowerCase();
-    return maps.value.filter((m) => m.name.toLowerCase().includes(q));
+    return maps.value.filter((m) => {
+      if (m.name.toLowerCase().includes(q)) return true;
+
+      const summary = mapSummaries.value[m.name];
+      if (!summary) return false;
+      if (summary.title?.toLowerCase().includes(q)) return true;
+      return summary.campaigns?.some((campaign) => campaign.toLowerCase().includes(q));
+    });
   });
 
   const getMapSizeColor = (sizeStr: string) => {
@@ -658,6 +668,68 @@
     paginationConfig.pageSize = pag.pageSize;
   };
 
+  const currentPageMaps = computed(() => {
+    const current = paginationConfig.current || 1;
+    const pageSize = paginationConfig.pageSize || 10;
+    const start = (current - 1) * pageSize;
+    return filteredMaps.value.slice(start, start + pageSize);
+  });
+
+  const currentPageMapNames = computed(() => currentPageMaps.value.map((map) => map.name));
+  const currentPageMapNamesKey = computed(() => currentPageMapNames.value.join('\0'));
+
+  const loadMapSummaries = async (names: string[]) => {
+    const uniqueNames = Array.from(new Set(names.filter(Boolean)));
+
+    if (uniqueNames.length === 0) {
+      return;
+    }
+
+    const loadingPatch = uniqueNames.reduce<Record<string, boolean>>((acc, name) => {
+      acc[name] = true;
+      return acc;
+    }, {});
+    mapSummaryLoading.value = { ...mapSummaryLoading.value, ...loadingPatch };
+
+    try {
+      const items = await api.getMapSummaries(uniqueNames);
+      mapSummaries.value = { ...mapSummaries.value, ...items };
+    } catch (e) {
+      console.error('Failed to load map summaries', e);
+    } finally {
+      const nextLoading = { ...mapSummaryLoading.value };
+      uniqueNames.forEach((name) => {
+        nextLoading[name] = false;
+      });
+      mapSummaryLoading.value = nextLoading;
+    }
+  };
+
+  const loadCurrentPageMapSummaries = () => loadMapSummaries(currentPageMapNames.value);
+
+  const loadSearchMapSummaries = () => {
+    if (!searchQuery.value.trim()) return;
+    loadMapSummaries(maps.value.map((map) => map.name));
+  };
+
+  const getMapSummaryTitle = (name: string) => mapSummaries.value[name]?.title || '';
+  const getMapSummaryChapterCount = (name: string) => mapSummaries.value[name]?.chapter_count || 0;
+  const getMapSummaryError = (name: string) => mapSummaries.value[name]?.error || '';
+  const isMapSummaryLoading = (name: string) => !!mapSummaryLoading.value[name];
+
+  watch(searchQuery, () => {
+    paginationConfig.current = 1;
+    loadSearchMapSummaries();
+  });
+
+  watch(maps, () => {
+    loadSearchMapSummaries();
+  });
+
+  watch(currentPageMapNamesKey, () => {
+    loadCurrentPageMapSummaries();
+  });
+
   const taskPaginationConfig = reactive<TablePaginationConfig>({
     current: 1,
     pageSize: 10,
@@ -737,11 +809,38 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="flex items-center gap-2 min-w-[160px]">
-                  <file-text-outlined class="text-lg text-gray-400 dark:text-gray-500 shrink-0" />
-                  <span class="font-medium break-all text-sm dark:text-gray-200">{{
-                    record.name
-                  }}</span>
+                <div class="flex items-start gap-2 min-w-[180px]">
+                  <file-text-outlined
+                    class="mt-0.5 text-lg text-gray-400 dark:text-gray-500 shrink-0"
+                  />
+                  <div class="min-w-0 flex flex-col gap-0.5">
+                    <span class="font-medium break-all text-sm dark:text-gray-200">{{
+                      record.name
+                    }}</span>
+                    <span
+                      v-if="isMapSummaryLoading(record.name)"
+                      class="text-xs text-gray-400 dark:text-gray-500"
+                    >
+                      读取中...
+                    </span>
+                    <span
+                      v-else-if="getMapSummaryTitle(record.name)"
+                      class="text-xs text-gray-500 dark:text-gray-400 truncate"
+                      :title="getMapSummaryTitle(record.name)"
+                    >
+                      {{ getMapSummaryTitle(record.name) }}
+                      <template v-if="getMapSummaryChapterCount(record.name) > 0">
+                        · {{ getMapSummaryChapterCount(record.name) }} 章节
+                      </template>
+                    </span>
+                    <span
+                      v-else-if="getMapSummaryError(record.name)"
+                      class="text-xs text-gray-400 dark:text-gray-500"
+                      :title="getMapSummaryError(record.name)"
+                    >
+                      未识别
+                    </span>
+                  </div>
                 </div>
               </template>
               <template v-else-if="column.key === 'size'">

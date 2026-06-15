@@ -53,6 +53,17 @@ export interface MapMissionDetail {
   campaigns: MapMissionCampaign[];
 }
 
+export interface MapSummaryItem {
+  title: string;
+  campaigns: string[];
+  chapter_count: number;
+  error: string;
+}
+
+export interface MapSummaryResponse {
+  items: Record<string, MapSummaryItem>;
+}
+
 export type PluginExportStatus = 'pending' | 'compressing' | 'completed' | 'failed' | 'cancelled';
 
 export interface PluginExportProgress {
@@ -569,6 +580,15 @@ class ApiService {
     const response = await this.post('/maps/detail', { map: mapName });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
+  }
+
+  async getMapSummaries(mapNames: string[]): Promise<Record<string, MapSummaryItem>> {
+    if (mapNames.length === 0) return {};
+
+    const response = await this.postJson('/maps/summary', { maps: mapNames });
+    if (!response.ok) throw new Error(await response.text());
+    const data: MapSummaryResponse = await response.json();
+    return data.items || {};
   }
 
   async trimMap(mapName: string): Promise<MapTrimResult> {

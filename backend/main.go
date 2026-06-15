@@ -117,6 +117,7 @@ func main() {
 	router.POST("/clear", middlewares.Auth(privateKey), controller.Clear)
 	router.POST("/list", middlewares.Auth(privateKey), controller.List)
 	router.POST("/maps/detail", middlewares.Auth(privateKey), controller.GetMapMissionDetail)
+	router.POST("/maps/summary", middlewares.Auth(privateKey), controller.GetMapSummaries)
 	router.POST("/maps/trim", middlewares.Auth(privateKey), controller.TrimMap)
 	router.POST("/remove", middlewares.Auth(privateKey), controller.Remove)
 	router.POST("/rename", middlewares.Auth(privateKey), controller.RenameMap)
