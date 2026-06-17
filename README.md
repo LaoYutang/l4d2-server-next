@@ -6,27 +6,8 @@
 
 ## 文档
 
-完整使用文档已经迁移到 VitePress：
+[https://l4d2-manage-docs.laoyutang.cn/](https://l4d2-manage-docs.laoyutang.cn/)
 
-- [快速开始](docs/guide/quick-start.md)
-- [Linux 部署](docs/guide/linux.md)
-- [Windows 部署](docs/guide/windows.md)
-- [配置项说明](docs/guide/configuration.md)
-- [功能指南](docs/features/dashboard.md)
-- [运维手册](docs/operations/plugin-package.md)
-
-本地启动文档站：
-
-```sh
-npm --prefix docs install
-npm --prefix docs run docs:dev
-```
-
-构建静态文档：
-
-```sh
-npm --prefix docs run docs:build
-```
 
 ## 快速部署
 
@@ -66,29 +47,3 @@ http://服务器IP:27020
   <img src="https://images.laoyutang.cn/2026/06/5a9cc014b0552f975dd39b2b1844d221.png" alt="地图管理" width="45%" />
   <img src="https://images.laoyutang.cn/2026/06/2868050dbad60124dcb313a23d422685.png" alt="性能监控" width="45%" />
 </div>
-
-## 开发检查
-
-后端：
-
-```sh
-gofmt -w backend
-cd backend && go build .
-```
-
-前端：
-
-```sh
-cd frontend
-npm install
-npm run build
-```
-
-Docker 镜像：
-
-```sh
-docker build -f manifest/docker/manager.Dockerfile -t l4d2-manager-next:local .
-docker build -f manifest/docker/l4d2.Dockerfile -t l4d2-pure:local .
-```
-
-更多构建和发布说明见 [构建与开发](docs/development/build.md)。
