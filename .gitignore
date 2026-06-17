@@ -19,3 +19,6 @@ __debug_*
 .codex
 .omo
 .codegraph
+node_modules/
+/docs/.vitepress/cache/
+/docs/.vitepress/dist/

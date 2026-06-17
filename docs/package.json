@@ -1,0 +1,13 @@
+{
+  "name": "l4d2-server-next-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress --host 0.0.0.0",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview --host 0.0.0.0"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
