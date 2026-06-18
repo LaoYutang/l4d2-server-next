@@ -2,11 +2,16 @@ package logic
 
 import (
 	"encoding/json"
+	"fmt"
 	"l4d2-manager-next/consts"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
+
+const DefaultMapHotReloadCommand = "update_addon_paths; mission_reload"
 
 type ManagerConfig struct {
 	EnableSelfService    bool      `json:"enable_self_service"`
@@ -14,6 +19,7 @@ type ManagerConfig struct {
 	EnablePlayerStats    bool      `json:"enable_player_stats"`
 	EnableMonitorHistory bool      `json:"enable_monitor_history"`
 	EnableVPKTrim        bool      `json:"enable_vpk_trim"`
+	MapHotReloadCommand  string    `json:"map_hot_reload_command"`
 }
 
 var (
@@ -34,6 +40,7 @@ func LoadManagerConfig() {
 		EnablePlayerStats:    true,
 		EnableMonitorHistory: true,
 		EnableVPKTrim:        false,
+		MapHotReloadCommand:  DefaultMapHotReloadCommand,
 	}
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
@@ -109,6 +116,45 @@ func SetVPKTrimEnable(enable bool) error {
 	defer managerConfigMutex.Unlock()
 	managerConfig.EnableVPKTrim = enable
 	return saveManagerConfig()
+}
+
+func GetMapHotReloadCommand() string {
+	managerConfigMutex.RLock()
+	defer managerConfigMutex.RUnlock()
+	if strings.TrimSpace(managerConfig.MapHotReloadCommand) == "" {
+		return DefaultMapHotReloadCommand
+	}
+	return managerConfig.MapHotReloadCommand
+}
+
+func IsMapHotReloadCommandDefault() bool {
+	return GetMapHotReloadCommand() == DefaultMapHotReloadCommand
+}
+
+func NormalizeMapHotReloadCommand(command string) (string, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return DefaultMapHotReloadCommand, nil
+	}
+	if utf8.RuneCountInString(command) > 512 {
+		return "", fmt.Errorf("热重载命令不能超过 512 个字符")
+	}
+	if strings.ContainsAny(command, "\r\n\x00") {
+		return "", fmt.Errorf("热重载命令不能包含换行或空字符")
+	}
+	return command, nil
+}
+
+func SetMapHotReloadCommand(command string) (string, error) {
+	normalized, err := NormalizeMapHotReloadCommand(command)
+	if err != nil {
+		return "", err
+	}
+
+	managerConfigMutex.Lock()
+	defer managerConfigMutex.Unlock()
+	managerConfig.MapHotReloadCommand = normalized
+	return normalized, saveManagerConfig()
 }
 
 func UpdateLastSelfServiceTime() error {

@@ -103,6 +103,20 @@ export interface VpkTrimConfig {
   enabled: boolean;
 }
 
+export interface MapHotReloadConfig {
+  command: string;
+  default_command: string;
+}
+
+export interface MapHotReloadResult {
+  status: string;
+  message: string;
+}
+
+export interface MapHotReloadStatus {
+  using_default: boolean;
+}
+
 export interface MapTrimResult {
   trimmed: boolean;
   message: string;
@@ -593,6 +607,30 @@ class ApiService {
 
   async trimMap(mapName: string): Promise<MapTrimResult> {
     const response = await this.post('/maps/trim', { map: mapName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async hotReloadMaps(): Promise<MapHotReloadResult> {
+    const response = await this.post('/maps/hot-reload');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getMapHotReloadStatus(): Promise<MapHotReloadStatus> {
+    const response = await this.post('/maps/hot-reload/status');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getMapHotReloadConfig(): Promise<MapHotReloadConfig> {
+    const response = await this.post('/maps/hot-reload/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setMapHotReloadConfig(command: string): Promise<{ status: string; command: string }> {
+    const response = await this.postJson('/maps/hot-reload/config/update', { command });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

@@ -8,6 +8,7 @@
     type MapSummaryItem,
     type ParsedDownloadItem,
   } from '../services/api';
+  import { useAuthStore } from '../stores/auth';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -23,8 +24,11 @@
     DownloadOutlined,
     EditOutlined,
     CompressOutlined,
+    SettingOutlined,
   } from '@ant-design/icons-vue';
 
+  const authStore = useAuthStore();
+  const isAdmin = computed(() => authStore.isAdmin);
   const activeTab = ref('local');
   const maps = ref<Array<{ name: string; size: string; info: string }>>([]);
   const mapSummaries = ref<Record<string, MapSummaryItem>>({});
@@ -42,10 +46,18 @@
   const detailLoading = ref(false);
   const detailMapName = ref('');
   const detailCampaigns = ref<MapMissionCampaign[]>([]);
+  const hotReloading = ref(false);
+  const hotReloadConfigVisible = ref(false);
+  const hotReloadConfigLoading = ref(false);
+  const hotReloadConfigSaving = ref(false);
+  const hotReloadCommand = ref('');
+  const defaultHotReloadCommand = ref('update_addon_paths; mission_reload');
   const detailCampaignTitle = computed(() =>
     detailCampaigns.value.map((campaign) => campaign.Title || '未命名战役').join(' / ')
   );
-  const detailModalTitle = computed(() => `地图详情 - ${detailCampaignTitle.value || detailMapName.value}`);
+  const detailModalTitle = computed(
+    () => `地图详情 - ${detailCampaignTitle.value || detailMapName.value}`
+  );
 
   // Upload
   const fileList = ref<any[]>([]);
@@ -386,6 +398,85 @@
     });
   };
 
+  const executeHotReloadMaps = async () => {
+    hotReloading.value = true;
+    try {
+      const result = await api.hotReloadMaps();
+      message.success(result.message || '地图热重载指令已发送');
+    } catch (e: any) {
+      message.error('热重载失败: ' + e.message);
+    } finally {
+      hotReloading.value = false;
+    }
+  };
+
+  const confirmHotReloadMaps = async () => {
+    hotReloading.value = true;
+    let usingDefault = false;
+    try {
+      const status = await api.getMapHotReloadStatus();
+      usingDefault = status.using_default;
+    } catch (e: any) {
+      message.error('获取热重载状态失败: ' + e.message);
+      hotReloading.value = false;
+      return;
+    }
+    hotReloading.value = false;
+
+    const content = [
+      h('p', '热重载会重新加载地图资源。如果地图过多，会占用 CPU 并影响正在游玩的游戏。'),
+    ];
+    if (usingDefault) {
+      content.push(
+        h(
+          'p',
+          '当前使用默认指令，仅会更新游戏服务器的地图，投票插件的地图缓存不会被刷新。如需同时刷新投票插件缓存，请自定义地图插件的更新指令。'
+        )
+      );
+    }
+
+    Modal.confirm({
+      title: '确认热重载地图？',
+      icon: () => h(ExclamationCircleOutlined),
+      content: h('div', { class: 'space-y-2' }, content),
+      okText: '确认热重载',
+      cancelText: '取消',
+      onOk: executeHotReloadMaps,
+    });
+  };
+
+  const openHotReloadConfig = async () => {
+    if (!isAdmin.value) return;
+
+    hotReloadConfigVisible.value = true;
+    hotReloadConfigLoading.value = true;
+    try {
+      const config = await api.getMapHotReloadConfig();
+      defaultHotReloadCommand.value = config.default_command;
+      hotReloadCommand.value = config.command === config.default_command ? '' : config.command;
+    } catch (e: any) {
+      message.error('获取热重载配置失败: ' + e.message);
+      hotReloadConfigVisible.value = false;
+    } finally {
+      hotReloadConfigLoading.value = false;
+    }
+  };
+
+  const submitHotReloadConfig = async () => {
+    hotReloadConfigSaving.value = true;
+    try {
+      const result = await api.setMapHotReloadConfig(hotReloadCommand.value);
+      hotReloadCommand.value =
+        result.command === defaultHotReloadCommand.value ? '' : result.command;
+      message.success('热重载指令已保存');
+      hotReloadConfigVisible.value = false;
+    } catch (e: any) {
+      message.error('保存热重载配置失败: ' + e.message);
+    } finally {
+      hotReloadConfigSaving.value = false;
+    }
+  };
+
   // Download Tasks Logic
   const loadDownloadTasks = async () => {
     try {
@@ -491,7 +582,10 @@
     linkParseVisible.value = true;
   };
 
-  const addParsedDownload = async (item: ParsedDownloadItem | Record<string, any>, refresh = true) => {
+  const addParsedDownload = async (
+    item: ParsedDownloadItem | Record<string, any>,
+    refresh = true
+  ) => {
     if (!item.supported) {
       message.error(item.disabled_reason || '该文件类型暂不支持加入地图下载任务');
       return false;
@@ -785,6 +879,24 @@
                 <template #icon><reload-outlined /></template>
                 刷新
               </a-button>
+              <a-button-group class="!flex">
+                <a-button
+                  @click="confirmHotReloadMaps"
+                  :loading="hotReloading"
+                  class="!flex !items-center !justify-center"
+                >
+                  <template #icon><reload-outlined /></template>
+                  热重载地图
+                </a-button>
+                <a-button
+                  v-if="isAdmin"
+                  @click="openHotReloadConfig"
+                  class="!flex !items-center !justify-center"
+                  title="设置热重载指令"
+                >
+                  <template #icon><setting-outlined /></template>
+                </a-button>
+              </a-button-group>
               <a-button
                 danger
                 @click="confirmClearMaps"
@@ -924,6 +1036,24 @@
         </a-modal>
 
         <a-modal
+          v-model:open="hotReloadConfigVisible"
+          title="热重载地图设置"
+          ok-text="保存"
+          cancel-text="取消"
+          :confirmLoading="hotReloadConfigSaving"
+          @ok="submitHotReloadConfig"
+        >
+          <div class="space-y-3">
+            <a-input
+              v-model:value="hotReloadCommand"
+              :disabled="hotReloadConfigLoading"
+              :placeholder="defaultHotReloadCommand"
+              @pressEnter="submitHotReloadConfig"
+            />
+          </div>
+        </a-modal>
+
+        <a-modal
           v-model:open="detailVisible"
           :title="detailModalTitle"
           :footer="null"
@@ -931,18 +1061,13 @@
           wrap-class-name="map-detail-modal"
         >
           <div v-if="detailLoading" class="py-10 text-center text-gray-400">加载中...</div>
-          <a-empty
-            v-else-if="detailCampaigns.length === 0"
-            description="未解析到战役信息"
-          />
+          <a-empty v-else-if="detailCampaigns.length === 0" description="未解析到战役信息" />
           <div v-else class="space-y-5">
             <div
               class="rounded-lg border border-gray-200 bg-gray-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/30"
             >
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div
-                  class="flex min-w-0 items-start gap-3"
-                >
+                <div class="flex min-w-0 items-start gap-3">
                   <div
                     class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
                   >
@@ -950,7 +1075,9 @@
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-medium text-gray-500 dark:text-gray-400">战役名</div>
-                    <div class="mt-1 break-words text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <div
+                      class="mt-1 break-words text-lg font-semibold text-gray-900 dark:text-gray-100"
+                    >
                       {{ detailCampaignTitle }}
                     </div>
                   </div>
@@ -1098,12 +1225,18 @@
                 </a-space>
               </div>
               <a-progress
-                v-if="file.status === 'uploading' || file.status === 'done' || file.status === 'error'"
+                v-if="
+                  file.status === 'uploading' || file.status === 'done' || file.status === 'error'
+                "
                 :percent="Number((uploadPercents[file.name] || file.percent || 0).toFixed(1))"
                 size="small"
                 :show-info="false"
                 :status="
-                  file.status === 'error' ? 'exception' : file.status === 'done' ? 'success' : 'active'
+                  file.status === 'error'
+                    ? 'exception'
+                    : file.status === 'done'
+                      ? 'success'
+                      : 'active'
                 "
               />
             </div>
@@ -1124,10 +1257,7 @@
                 <template #icon><plus-outlined /></template>
                 添加任务
               </a-button>
-              <a-button
-                @click="openLinkParseModal"
-                class="!flex !items-center !justify-center"
-              >
+              <a-button @click="openLinkParseModal" class="!flex !items-center !justify-center">
                 <template #icon><search-outlined /></template>
                 解析链接
               </a-button>
@@ -1268,12 +1398,7 @@
           />
         </a-modal>
 
-        <a-modal
-          v-model:open="linkParseVisible"
-          title="解析链接"
-          width="920px"
-          :footer="null"
-        >
+        <a-modal v-model:open="linkParseVisible" title="解析链接" width="920px" :footer="null">
           <div class="space-y-4">
             <a-input-search
               v-model:value="linkUrl"
