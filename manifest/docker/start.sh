@@ -22,12 +22,21 @@ else
 fi
 
 # 获取环境变量中的RCON密码，写入到server.cfg
+# 使用 sed 替换已有行，若行不存在则追加
 if [ -n "${L4D2_RCON_PASSWORD}" ]; then
     echo "设置RCON密码..."
-    sed -i "s/^rcon_password .*/rcon_password \"${L4D2_RCON_PASSWORD}\"/" /l4d2/left4dead2/cfg/server.cfg
+    if grep -q "^rcon_password" /l4d2/left4dead2/cfg/server.cfg 2>/dev/null; then
+        sed -i "s/^rcon_password .*/rcon_password \"${L4D2_RCON_PASSWORD}\"/" /l4d2/left4dead2/cfg/server.cfg
+    else
+        echo "rcon_password \"${L4D2_RCON_PASSWORD}\"" >> /l4d2/left4dead2/cfg/server.cfg
+    fi
 else
     echo "警告：未设置RCON密码，使用默认密码"
-    sed -i "s/^rcon_password .*/rcon_password \"laoyutangnb!\"/" /l4d2/left4dead2/cfg/server.cfg
+    if grep -q "^rcon_password" /l4d2/left4dead2/cfg/server.cfg 2>/dev/null; then
+        sed -i "s/^rcon_password .*/rcon_password \"laoyutangnb!\"/" /l4d2/left4dead2/cfg/server.cfg
+    else
+        echo "rcon_password \"laoyutangnb!\"" >> /l4d2/left4dead2/cfg/server.cfg
+    fi
 fi
 
 # 设置服务器端口，环境变量L4D2_PORT
