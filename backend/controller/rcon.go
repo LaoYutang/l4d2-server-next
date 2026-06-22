@@ -41,7 +41,7 @@ func ChangeMap(c *gin.Context) {
 func GetStatus(c *gin.Context) {
 	conn, err := getRconConnection()
 	if err != nil {
-		FailWithError(c, http.StatusInternalServerError, "服务器连接失败，可能服务器重启中或未启动")
+		FailWithError(c, http.StatusInternalServerError, "服务器连接失败: %v", err)
 		return
 	}
 	defer conn.Close()
