@@ -87,6 +87,20 @@ docker compose up -d
 
 Docker 29.3+ 默认 seccomp 配置会影响 32 位 `srcds_linux`，因此上面的游戏服容器保留了 `security_opt: seccomp:unconfined`。如果你确定使用的是更早版本 Docker，可以按实际情况移除。
 
+## 更新游戏服务端
+
+Docker 部署可以直接在游戏服容器中使用 SteamCMD 更新服务端文件：
+
+```sh
+docker exec l4d2 bash -lc 'cd /root/steamcmd && ./steamcmd.sh +@sSteamCmdForcePlatformType linux +force_install_dir /l4d2 +login anonymous +app_update 222860 validate +quit'
+```
+
+如果你的游戏服容器名不是 `l4d2`，请把命令中的 `l4d2` 替换为实际容器名。更新完成后建议重启游戏服容器：
+
+```sh
+docker restart l4d2
+```
+
 ## 防火墙和安全组
 
 公网服务器需要同时检查系统防火墙和云厂商安全组。以默认建议端口为例：
