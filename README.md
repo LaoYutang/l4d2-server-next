@@ -1,5 +1,10 @@
 # l4d2-server-next
 
+[![Release](https://img.shields.io/github/v/release/LaoYutang/l4d2-server-next?label=release)](https://github.com/LaoYutang/l4d2-server-next/releases)
+[![Manager image size](https://img.shields.io/docker/image-size/laoyutang/l4d2-manager-next/latest?label=manager%20image)](https://hub.docker.com/r/laoyutang/l4d2-manager-next)
+[![L4D2 image size](https://img.shields.io/docker/image-size/laoyutang/l4d2-pure/latest?label=L4D2%20image)](https://hub.docker.com/r/laoyutang/l4d2-pure)
+[![License](https://img.shields.io/github/license/LaoYutang/l4d2-server-next?label=license)](LICENSE)
+
 新一代 Left 4 Dead 2 服务器与 Web 管理后台。
 
 项目提供 Linux Docker 镜像、Windows 原生管理器、内置 SourceMod/Metamod 插件资源和完整 Web 面板，覆盖地图管理、插件管理、服务器状态、玩家统计、性能监控、RCON 控制台、日志、备份恢复和授权码访问等日常运维场景。
