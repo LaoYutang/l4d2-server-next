@@ -6,6 +6,9 @@ export default defineConfig({
   description: 'Left 4 Dead 2 服务器与 Web 管理后台使用文档',
   cleanUrls: true,
   lastUpdated: true,
+  sitemap: {
+    hostname: 'https://l4d2-manage-docs.laoyutang.cn'
+  },
   head: [['meta', { name: 'theme-color', content: '#2563eb' }]],
   themeConfig: {
     logo: '/logo.png',
