@@ -82,3 +82,36 @@ func TestReadTolerantClosesLineBrokenQuotedValue(t *testing.T) {
 		t.Fatalf("Image = %+v, want maps/z5", image)
 	}
 }
+
+func TestReadTolerantRemovesTrailingExtraCloseBraces(t *testing.T) {
+	root, err := ReadTolerant(strings.NewReader(`"mission"
+{
+	"DisplayTitle" "Extra } Campaign"
+	// A brace in a comment must not affect balancing: }
+}
+} // extra close brace
+}`))
+	if err != nil {
+		t.Fatalf("ReadTolerant() error = %v", err)
+	}
+
+	if root.Key != "mission" {
+		t.Fatalf("root.Key = %q, want mission", root.Key)
+	}
+	title := root.FindKey("DisplayTitle")
+	if title == nil || title.Value != "Extra } Campaign" {
+		t.Fatalf("DisplayTitle = %+v, want repaired campaign title", title)
+	}
+}
+
+func TestReadTolerantRejectsExtraCloseBraceBeforeMoreContent(t *testing.T) {
+	_, err := ReadTolerant(strings.NewReader(`"mission"
+{
+	"DisplayTitle" "Invalid Campaign"
+}
+}
+"unexpected" "value"`))
+	if err == nil {
+		t.Fatal("ReadTolerant() error = nil, want non-trailing close brace error")
+	}
+}

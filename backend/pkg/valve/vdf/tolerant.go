@@ -9,8 +9,8 @@ import (
 )
 
 // ReadTolerant parses Valve KeyValues while accepting common mission-file
-// mistakes such as missing trailing close braces. The regular ReadFrom method
-// remains strict and unchanged for callers that need exact VDF validation.
+// mistakes such as missing or extra trailing close braces. The regular ReadFrom
+// method remains strict and unchanged for callers that need exact VDF validation.
 func ReadTolerant(r io.Reader) (*KeyValues, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -19,10 +19,20 @@ func ReadTolerant(r io.Reader) (*KeyValues, error) {
 
 	var kv KeyValues
 	text := string(data)
-	if _, err := kv.ReadFrom(strings.NewReader(text)); err == nil {
+	_, parseErr := kv.ReadFrom(strings.NewReader(text))
+	if parseErr == nil {
 		return &kv, nil
-	} else if !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, err
+	}
+
+	if repaired, changed := removeTrailingExtraCloseBraces(text); changed {
+		kv = KeyValues{}
+		if _, err := kv.ReadFrom(strings.NewReader(repaired)); err == nil {
+			return &kv, nil
+		}
+	}
+
+	if !errors.Is(parseErr, io.ErrUnexpectedEOF) {
+		return nil, parseErr
 	}
 
 	candidates := []string{text}
@@ -49,6 +59,63 @@ func ReadTolerant(r io.Reader) (*KeyValues, error) {
 	}
 
 	return nil, io.ErrUnexpectedEOF
+}
+
+// removeTrailingExtraCloseBraces drops surplus close-brace tokens only when the
+// remainder of the file contains no data other than close braces and comments.
+func removeTrailingExtraCloseBraces(text string) (string, bool) {
+	reader := bufio.NewReader(strings.NewReader(text))
+	var repaired strings.Builder
+	repaired.Grow(len(text))
+
+	depth := 0
+	sawOpenBrace := false
+	foundExtraClose := false
+
+	for {
+		raw, token, err := ReadToken(reader)
+		if raw != "" {
+			if foundExtraClose {
+				switch token {
+				case TokenSpace, TokenComment:
+					repaired.WriteString(raw)
+				case TokenCloseBrace:
+					// Drop trailing extra close braces.
+				default:
+					return text, false
+				}
+			} else {
+				switch token {
+				case TokenOpenBrace:
+					sawOpenBrace = true
+					depth++
+					repaired.WriteString(raw)
+				case TokenCloseBrace:
+					if depth == 0 {
+						foundExtraClose = true
+					} else {
+						depth--
+						repaired.WriteString(raw)
+					}
+				default:
+					repaired.WriteString(raw)
+				}
+			}
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return text, false
+		}
+	}
+
+	if !sawOpenBrace || depth != 0 || !foundExtraClose {
+		return text, false
+	}
+
+	return repaired.String(), true
 }
 
 func missingCloseBraceCount(text string) int {

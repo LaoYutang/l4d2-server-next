@@ -102,6 +102,37 @@ func TestParseMissionToleratesMissingFinalCloseBrace(t *testing.T) {
 	assertChapter(t, campaign.Chapters[0], "bad_m1", "Bad One", []string{"coop"})
 }
 
+func TestParseMissionToleratesExtraFinalCloseBraces(t *testing.T) {
+	campaign, err := ParseMission(strings.NewReader(`"mission"
+{
+	"DisplayTitle" "Extra Braces Campaign"
+	"modes"
+	{
+		"coop"
+		{
+			"1"
+			{
+				"Map" "extra_m1"
+				"DisplayName" "Extra One"
+			}
+		}
+	}
+}
+}
+}`))
+	if err != nil {
+		t.Fatalf("ParseMission() error = %v", err)
+	}
+
+	if campaign.Title != "Extra Braces Campaign" {
+		t.Fatalf("Title = %q, want %q", campaign.Title, "Extra Braces Campaign")
+	}
+	if len(campaign.Chapters) != 1 {
+		t.Fatalf("len(Chapters) = %d, want 1: %+v", len(campaign.Chapters), campaign.Chapters)
+	}
+	assertChapter(t, campaign.Chapters[0], "extra_m1", "Extra One", []string{"coop"})
+}
+
 func TestParseMissionToleratesUnquotedMissionKeysAndValues(t *testing.T) {
 	campaign, err := ParseMission(strings.NewReader(`mission
 {
