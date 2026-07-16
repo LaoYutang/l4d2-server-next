@@ -122,6 +122,44 @@ func (dt *downloadTask) Cancel() {
 	}
 }
 
+func (dt *downloadTask) markStarted() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	dt.status = DOWNLOAD_STATUS_IN_PROGRESS
+	dt.startTime = time.Now()
+	dt.lastUpdate = dt.startTime
+}
+
+func (dt *downloadTask) markFailed(message string) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	dt.message = message
+	dt.status = DOWNLOAD_STATUS_FAILED
+	dt.lastUpdate = time.Now()
+}
+
+func (dt *downloadTask) updateProgress(downloaded, totalSize int64) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	dt.downloadedBytes = downloaded
+	if totalSize > 0 {
+		dt.progress = float64(downloaded) / float64(totalSize) * 100.0
+	}
+	dt.lastUpdate = time.Now()
+}
+
+func (dt *downloadTask) markCompleted() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	dt.progress = 100.0
+	dt.status = DOWNLOAD_STATUS_COMPLETED
+	dt.lastUpdate = time.Now()
+}
+
 // 定期更新下载速度
 func (dt *downloadTask) updateSpeedPeriodically() {
 	defer func() {
@@ -150,17 +188,14 @@ func (dt *downloadTask) updateSpeedPeriodically() {
 func (dt *downloadTask) download() {
 	select {
 	case <-dt.cancel:
-		dt.message = "下载已取消"
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed("下载已取消")
 		return
 	case dt.semaphore <- struct{}{}:
 	}
 
 	defer func() { <-dt.semaphore }() // 释放信号量
 
-	dt.status = DOWNLOAD_STATUS_IN_PROGRESS
-	dt.startTime = time.Now()
-	dt.lastUpdate = time.Now()
+	dt.markStarted()
 
 	// 启动速度计算协程
 	go dt.updateSpeedPeriodically()
@@ -168,8 +203,7 @@ func (dt *downloadTask) download() {
 	// 发送HTTP请求
 	req, err := http.NewRequest(http.MethodGet, dt.url, nil)
 	if err != nil {
-		dt.message = fmt.Sprintf("创建下载请求失败: %v", err)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("创建下载请求失败: %v", err))
 		return
 	}
 	req.Header.Set("User-Agent", defaultDownloadUserAgent())
@@ -179,16 +213,14 @@ func (dt *downloadTask) download() {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		dt.message = fmt.Sprintf("下载失败: %v", err)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("下载失败: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
-		dt.message = fmt.Sprintf("HTTP错误: %d", resp.StatusCode)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("HTTP错误: %d", resp.StatusCode))
 		return
 	}
 
@@ -209,15 +241,14 @@ func (dt *downloadTask) download() {
 	filePath := filepath.Join(consts.AddonsBasePath, "temp", fileName)
 	err = os.MkdirAll(filepath.Dir(filePath), 0755)
 	if err != nil {
-		dt.message = fmt.Sprintf("创建目录失败: %v", err)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("创建目录失败: %v", err))
 		return
 	}
 
 	file, err := os.Create(filePath)
 	if err != nil {
 		fmt.Printf("创建文件失败: %v\n", err)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("创建文件失败: %v", err))
 		return
 	}
 	defer func() {
@@ -241,8 +272,7 @@ func (dt *downloadTask) download() {
 		// 检查是否收到取消信号
 		select {
 		case <-dt.cancel:
-			dt.message = "下载已取消"
-			dt.status = DOWNLOAD_STATUS_FAILED
+			dt.markFailed("下载已取消")
 			return
 		default:
 		}
@@ -253,23 +283,12 @@ func (dt *downloadTask) download() {
 			_, writeErr := file.Write(buffer[:n])
 			if writeErr != nil {
 				fmt.Printf("写入文件失败: %v\n", writeErr)
-				dt.status = DOWNLOAD_STATUS_FAILED
+				dt.markFailed(fmt.Sprintf("写入文件失败: %v", writeErr))
 				return
 			}
 
 			downloaded += int64(n)
-
-			// 线程安全地更新下载字节数
-			dt.mu.Lock()
-			dt.downloadedBytes = downloaded
-			dt.mu.Unlock()
-
-			// 更新进度
-			if totalSize > 0 {
-				dt.progress = float64(downloaded) / float64(totalSize) * 100.0
-			}
-
-			dt.lastUpdate = time.Now()
+			dt.updateProgress(downloaded, totalSize)
 		}
 
 		if err == io.EOF {
@@ -277,13 +296,10 @@ func (dt *downloadTask) download() {
 		}
 		if err != nil {
 			fmt.Printf("读取数据失败: %v\n", err)
-			dt.status = DOWNLOAD_STATUS_FAILED
+			dt.markFailed(fmt.Sprintf("读取数据失败: %v", err))
 			return
 		}
 	}
-
-	dt.progress = 100.0
-	dt.status = DOWNLOAD_STATUS_COMPLETED
 
 	// 停止速度更新定时器
 	if dt.speedUpdateTimer != nil {
@@ -320,10 +336,11 @@ func (dt *downloadTask) download() {
 
 	// 下载完成后处理文件
 	if _, err := ProcessFile(filePath); err != nil {
-		dt.message = fmt.Sprintf("文件处理失败: %v", err)
-		dt.status = DOWNLOAD_STATUS_FAILED
+		dt.markFailed(fmt.Sprintf("文件处理失败: %v", err))
 		return
 	}
+
+	dt.markCompleted()
 }
 
 // 确定文件名
@@ -356,16 +373,22 @@ func (dt *downloadTask) determineFileName(resp *http.Response) string {
 
 // 获取下载状态
 func (dt *downloadTask) GetStatus() DOWNLOAD_STATUS {
+	dt.mu.RLock()
+	defer dt.mu.RUnlock()
 	return dt.status
 }
 
 // 获取下载进度 (0-100)
 func (dt *downloadTask) GetProgress() float64 {
+	dt.mu.RLock()
+	defer dt.mu.RUnlock()
 	return dt.progress
 }
 
 // 获取错误消息
 func (dt *downloadTask) GetMessage() string {
+	dt.mu.RLock()
+	defer dt.mu.RUnlock()
 	return dt.message
 }
 
@@ -442,6 +465,7 @@ func splitURLString(urlString string) []string {
 type downloader struct {
 	tasks     []*downloadTask
 	semaphore chan struct{} // 控制最大并发下载数的信号量
+	mu        sync.RWMutex
 }
 
 func NewDownloader() *downloader {
@@ -461,12 +485,18 @@ func (d *downloader) AddTaskWithFilename(url string, filename string) {
 
 func (d *downloader) AddTaskWithFilenameAndReferer(url string, filename string, referer string) {
 	task := NewDownloadTaskWithFilenameAndReferer(url, filename, referer, d.semaphore)
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.tasks = append(d.tasks, task)
 }
 
 func (d *downloader) GetTasksInfo() []map[string]any {
-	tasksInfo := make([]map[string]any, 0)
-	for _, task := range d.tasks {
+	d.mu.RLock()
+	tasks := append([]*downloadTask(nil), d.tasks...)
+	d.mu.RUnlock()
+
+	tasksInfo := make([]map[string]any, 0, len(tasks))
+	for _, task := range tasks {
 		tasksInfo = append(tasksInfo, map[string]any{
 			"url":            task.url,
 			"status":         task.GetStatus(),
@@ -480,6 +510,51 @@ func (d *downloader) GetTasksInfo() []map[string]any {
 		})
 	}
 	return tasksInfo
+}
+
+func (d *downloader) CancelTask(index int) bool {
+	d.mu.RLock()
+	if index < 0 || index >= len(d.tasks) {
+		d.mu.RUnlock()
+		return false
+	}
+	task := d.tasks[index]
+	d.mu.RUnlock()
+
+	task.Cancel()
+	return true
+}
+
+func (d *downloader) ClearFinishedTasks() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tasks := make([]*downloadTask, 0, len(d.tasks))
+	for _, task := range d.tasks {
+		status := task.GetStatus()
+		if status == DOWNLOAD_STATUS_IN_PROGRESS || status == DOWNLOAD_STATUS_PENDING {
+			tasks = append(tasks, task)
+		}
+	}
+	d.tasks = tasks
+}
+
+func (d *downloader) RestartTask(index int) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if index < 0 || index >= len(d.tasks) {
+		return false
+	}
+
+	originalTask := d.tasks[index]
+	taskURL := originalTask.url
+	taskFilename := originalTask.preferredFilename
+	taskReferer := originalTask.referer
+
+	originalTask.Cancel()
+	d.tasks[index] = NewDownloadTaskWithFilenameAndReferer(taskURL, taskFilename, taskReferer, d.semaphore)
+	return true
 }
 
 var Downloader *downloader
@@ -598,25 +673,17 @@ func CancelDownloadTask(c *gin.Context) {
 		return
 	}
 
-	if index < 0 || index >= len(Downloader.tasks) {
+	if !Downloader.CancelTask(index) {
 		FailWithError(c, http.StatusBadRequest, "任务索引超出范围")
 		return
 	}
 
-	// 取消指定索引的下载任务
-	Downloader.tasks[index].Cancel()
 	c.String(http.StatusOK, "下载任务已取消")
 }
 
 func ClearTasks(c *gin.Context) {
 	LogOp(c, nil, "清理已完成/失败下载任务")
-	tasks := make([]*downloadTask, 0)
-	for _, task := range Downloader.tasks {
-		if task.GetStatus() == DOWNLOAD_STATUS_IN_PROGRESS || task.GetStatus() == DOWNLOAD_STATUS_PENDING {
-			tasks = append(tasks, task)
-		}
-	}
-	Downloader.tasks = tasks
+	Downloader.ClearFinishedTasks()
 	c.String(http.StatusOK, "下载任务已清空")
 }
 
@@ -639,25 +706,10 @@ func RestartDownloadTask(c *gin.Context) {
 		return
 	}
 
-	if index < 0 || index >= len(Downloader.tasks) {
+	if !Downloader.RestartTask(index) {
 		FailWithError(c, http.StatusBadRequest, "任务索引超出范围")
 		return
 	}
-
-	// 获取原任务的URL
-	originalTask := Downloader.tasks[index]
-	taskURL := originalTask.url
-	taskFilename := originalTask.preferredFilename
-	taskReferer := originalTask.referer
-
-	// 取消原任务
-	originalTask.Cancel()
-
-	// 创建新的下载任务
-	newTask := NewDownloadTaskWithFilenameAndReferer(taskURL, taskFilename, taskReferer, Downloader.semaphore)
-
-	// 替换原任务
-	Downloader.tasks[index] = newTask
 
 	c.String(http.StatusOK, "下载任务已重新开始")
 }

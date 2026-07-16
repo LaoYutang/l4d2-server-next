@@ -549,39 +549,40 @@ func EnablePlugin(name string) error {
 	var firstErr error
 	var errOnce sync.Once
 
-	err = filepath.Walk(pluginDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	walkErr := filepath.Walk(pluginDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if info.IsDir() {
 			return nil
 		}
 
-		relPath, err := filepath.Rel(pluginDir, path)
-		if err != nil {
-			return err
+		relPath, relErr := filepath.Rel(pluginDir, path)
+		if relErr != nil {
+			return relErr
 		}
 
 		destPath := filepath.Join(gamePath, relPath)
 
 		wg.Add(1)
-		err = pool.Submit(func() {
+		submitErr := pool.Submit(func() {
 			defer wg.Done()
 
 			// Create dir (mkdirAll is thread safe enough for OS usually, or we can ignore errors if it exists)
-			if err = os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				errOnce.Do(func() { firstErr = err })
+			if mkdirErr := os.MkdirAll(filepath.Dir(destPath), 0755); mkdirErr != nil {
+				errOnce.Do(func() { firstErr = mkdirErr })
 				return
 			}
 
 			// Copy file
-			if err = copyFile(path, destPath); err != nil {
-				errOnce.Do(func() { firstErr = err })
+			if copyErr := copyFile(path, destPath); copyErr != nil {
+				errOnce.Do(func() { firstErr = copyErr })
 				return
 			}
 
 			// Update config safely
 			configLock.Lock()
+			defer configLock.Unlock()
 			for i := range enabledPlugins {
 				if enabledPlugins[i].Name == name {
 					enabledPlugins[i].Files = append(enabledPlugins[i].Files, relPath)
@@ -600,18 +601,21 @@ func EnablePlugin(name string) error {
 			if !alreadyRef {
 				fileRefs[normPath] = append(fileRefs[normPath], name)
 			}
-			configLock.Unlock()
 		})
 
-		if err != nil {
+		if submitErr != nil {
 			wg.Done() // Decrement if submit fails
-			return err
+			return submitErr
 		}
 
 		return nil
 	})
 
 	wg.Wait()
+
+	if walkErr != nil {
+		return walkErr
+	}
 
 	if firstErr != nil {
 		return firstErr
