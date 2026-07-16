@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Modal as AModal, Spin as ASpin, Empty as AEmpty } from 'ant-design-vue';
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api } from '../services/api';
 
@@ -49,10 +50,64 @@ const fetchReadme = async () => {
   }
 };
 
-const renderedHtml = () => {
+const renderedHtml = computed(() => {
   if (!content.value) return '';
-  return marked(content.value, { breaks: true }) as string;
-};
+
+  const html = marked(content.value, { breaks: true }) as string;
+
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'p',
+      'br',
+      'hr',
+      'blockquote',
+      'pre',
+      'code',
+      'strong',
+      'em',
+      'del',
+      's',
+      'sub',
+      'sup',
+      'ul',
+      'ol',
+      'li',
+      'table',
+      'thead',
+      'tbody',
+      'tfoot',
+      'tr',
+      'th',
+      'td',
+      'a',
+      'img',
+      'details',
+      'summary',
+      'kbd',
+    ],
+    ALLOWED_ATTR: [
+      'href',
+      'src',
+      'alt',
+      'title',
+      'loading',
+      'align',
+      'start',
+      'colspan',
+      'rowspan',
+      'open',
+    ],
+    ALLOW_DATA_ATTR: false,
+    ALLOW_ARIA_ATTR: false,
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+  });
+});
 
 watch(
   () => props.open,
@@ -93,7 +148,7 @@ const handleCancel = () => {
       </a-empty>
     </div>
 
-    <div v-else class="markdown-body" v-html="renderedHtml()" />
+    <div v-else class="markdown-body" v-html="renderedHtml" />
   </a-modal>
 </template>
 

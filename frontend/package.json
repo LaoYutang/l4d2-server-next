@@ -12,6 +12,7 @@
     "@ant-design/icons-vue": "^7.0.1",
     "@tailwindcss/vite": "^4.1.18",
     "ant-design-vue": "^4.2.6",
+    "dompurify": "3.4.12",
     "echarts": "^6.0.0",
     "marked": "^18.0.3",
     "pinia": "^3.0.4",
