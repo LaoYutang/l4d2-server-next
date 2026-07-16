@@ -2,25 +2,35 @@ package controller
 
 import (
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 func Remove(c *gin.Context) {
-	mapName := c.PostForm("map")
+	mapName, err := logic.NormalizeMapVPKName(c.PostForm("map"))
+	if err != nil {
+		FailWithError(c, http.StatusBadRequest, "地图名称无效")
+		return
+	}
 	LogOp(c, nil, "删除地图文件:", mapName)
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	mapPath := filepath.Join(consts.AddonsBasePath, c.PostForm("map"))
-	err := os.Remove(mapPath)
+	root, err := os.OpenRoot(consts.AddonsBasePath)
+	if err != nil {
+		FailWithError(c, http.StatusInternalServerError, "打开地图目录失败: %v", err)
+		return
+	}
+	defer root.Close()
+
+	err = root.Remove(mapName)
 	if err != nil && !os.IsNotExist(err) {
-		FailWithError(c, http.StatusBadRequest, "删除地图文件失败: %v", err)
+		FailWithError(c, http.StatusInternalServerError, "删除地图文件失败: %v", err)
 		return
 	}
 
@@ -28,13 +38,13 @@ func Remove(c *gin.Context) {
 	mapListPath := consts.MapListFilePath
 	mapListBytes, err := os.ReadFile(mapListPath)
 	if err != nil {
-		FailWithError(c, http.StatusBadRequest, "删除时maplist.txt不存在: %v", err)
+		FailWithError(c, http.StatusInternalServerError, "删除时读取maplist.txt失败: %v", err)
 		return
 	}
 	mapList := strings.Split(string(mapListBytes), "\n")
 	newMapList := make([]string, 0, 20)
 	for _, m := range mapList {
-		if m == c.PostForm("map") {
+		if m == mapName {
 			continue
 		}
 		newMapList = append(newMapList, m)
@@ -42,7 +52,7 @@ func Remove(c *gin.Context) {
 	newMapListBytes := []byte(strings.Join(newMapList, "\n"))
 	err = os.WriteFile(mapListPath, newMapListBytes, 0644)
 	if err != nil {
-		FailWithError(c, http.StatusBadRequest, "删除时写入文件失败: %v", err)
+		FailWithError(c, http.StatusInternalServerError, "删除时写入文件失败: %v", err)
 		return
 	}
 

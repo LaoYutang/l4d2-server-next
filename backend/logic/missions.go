@@ -61,7 +61,7 @@ func GetChapterList() []*Campaign {
 }
 
 func GetMapMissionDetail(mapName string) ([]*Campaign, error) {
-	mapName, err := normalizeMapVPKName(mapName)
+	mapName, err := NormalizeMapVPKName(mapName)
 	if err != nil {
 		return nil, fmt.Errorf("invalid map filename")
 	}
@@ -106,7 +106,7 @@ func GetMapSummaries(mapNames []string) map[string]MapSummary {
 			continue
 		}
 
-		normalizedName, err := normalizeMapVPKName(mapName)
+		normalizedName, err := NormalizeMapVPKName(mapName)
 		if err != nil {
 			result[mapName] = MapSummary{Error: "地图名称无效"}
 			continue
@@ -221,7 +221,7 @@ func readAllowedMapNames() (map[string]bool, error) {
 	return allowed, nil
 }
 
-func normalizeMapVPKName(mapName string) (string, error) {
+func NormalizeMapVPKName(mapName string) (string, error) {
 	mapName = strings.TrimSpace(mapName)
 	if mapName == "" ||
 		strings.Contains(mapName, "\x00") ||

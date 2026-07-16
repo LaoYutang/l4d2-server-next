@@ -28,6 +28,31 @@ func getUploadTempPath(uploadId string) string {
 	return filepath.Join(consts.AddonsBasePath, uploadTempDir, uploadId)
 }
 
+func validateUploadId(uploadId string) error {
+	parsed, err := uuid.Parse(uploadId)
+	if err != nil ||
+		parsed.String() != uploadId ||
+		parsed.Version() != uuid.Version(4) ||
+		parsed.Variant() != uuid.RFC4122 {
+		return fmt.Errorf("uploadId 参数无效")
+	}
+	return nil
+}
+
+func removeUploadTempDir(uploadId string) error {
+	if err := validateUploadId(uploadId); err != nil {
+		return err
+	}
+
+	root, err := os.OpenRoot(consts.AddonsBasePath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	return root.RemoveAll(filepath.Join(uploadTempDir, uploadId))
+}
+
 // UploadInit 初始化分片上传
 func UploadInit(c *gin.Context) {
 	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
@@ -75,7 +100,7 @@ func UploadInit(c *gin.Context) {
 	metaPath := filepath.Join(tempPath, ".meta")
 	metaContent := fmt.Sprintf("%s\n%d\n%d\n", filename, fileSize, totalChunks)
 	if err := os.WriteFile(metaPath, []byte(metaContent), 0644); err != nil {
-		os.RemoveAll(tempPath)
+		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusInternalServerError, "保存元信息失败: %v", err)
 		return
 	}
@@ -91,6 +116,10 @@ func UploadChunk(c *gin.Context) {
 
 	if uploadId == "" || chunkIndexStr == "" {
 		FailWithError(c, http.StatusBadRequest, "缺少必要参数")
+		return
+	}
+	if err := validateUploadId(uploadId); err != nil {
+		FailWithError(c, http.StatusBadRequest, "%v", err)
 		return
 	}
 
@@ -154,6 +183,10 @@ func UploadStatus(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "缺少 uploadId 参数")
 		return
 	}
+	if err := validateUploadId(uploadId); err != nil {
+		FailWithError(c, http.StatusBadRequest, "%v", err)
+		return
+	}
 
 	tempPath := getUploadTempPath(uploadId)
 	entries, err := os.ReadDir(tempPath)
@@ -191,6 +224,10 @@ func UploadMerge(c *gin.Context) {
 
 	if uploadId == "" || filename == "" {
 		FailWithError(c, http.StatusBadRequest, "缺少必要参数")
+		return
+	}
+	if err := validateUploadId(uploadId); err != nil {
+		FailWithError(c, http.StatusBadRequest, "%v", err)
 		return
 	}
 
@@ -256,13 +293,13 @@ func UploadMerge(c *gin.Context) {
 	// 校验合并后的文件大小
 	mergedInfo, err := os.Stat(mergedPath)
 	if err != nil {
-		os.RemoveAll(tempPath)
+		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusInternalServerError, "读取合并文件信息失败: %v", err)
 		return
 	}
 	expectedSize, _ := strconv.ParseInt(metaLines[1], 10, 64)
 	if expectedSize > 0 && mergedInfo.Size() != expectedSize {
-		os.RemoveAll(tempPath)
+		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusInternalServerError, "合并文件大小不匹配 (期望 %d, 实际 %d)", expectedSize, mergedInfo.Size())
 		return
 	}
@@ -277,7 +314,7 @@ func UploadMerge(c *gin.Context) {
 	sevenZipReg := regexp.MustCompile(`(?i)\.7z$`)
 
 	if !vpkReg.MatchString(cleanFilename) {
-		os.RemoveAll(tempPath)
+		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusBadRequest, "错误的文件类型，只支持vpk, zip, rar, 7z文件")
 		return
 	}
@@ -295,13 +332,16 @@ func UploadMerge(c *gin.Context) {
 	}
 
 	if processErr != nil {
-		os.RemoveAll(tempPath)
+		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusInternalServerError, "处理文件失败: %v", processErr)
 		return
 	}
 
 	// 清理临时目录
-	os.RemoveAll(tempPath)
+	if err := removeUploadTempDir(uploadId); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "清理临时文件失败: %v", err)
+		return
+	}
 
 	LogOp(c, nil, "分片上传合并完成:", filename, "保存文件:", fmt.Sprintf("%v", files))
 	c.String(http.StatusOK, "上传成功！")
@@ -315,9 +355,12 @@ func UploadCancel(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "缺少 uploadId 参数")
 		return
 	}
+	if err := validateUploadId(uploadId); err != nil {
+		FailWithError(c, http.StatusBadRequest, "%v", err)
+		return
+	}
 
-	tempPath := getUploadTempPath(uploadId)
-	if err := os.RemoveAll(tempPath); err != nil {
+	if err := removeUploadTempDir(uploadId); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "清理临时文件失败: %v", err)
 		return
 	}
@@ -343,6 +386,11 @@ func cleanStaleUploads() {
 	if err != nil {
 		return
 	}
+	root, err := os.OpenRoot(consts.AddonsBasePath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
 
 	now := time.Now()
 	for _, entry := range entries {
@@ -353,11 +401,11 @@ func cleanStaleUploads() {
 		info, err := os.Stat(metaPath)
 		if err != nil {
 			// 没有 .meta 文件的目录也清理掉
-			os.RemoveAll(filepath.Join(basePath, entry.Name()))
+			_ = root.RemoveAll(filepath.Join(uploadTempDir, entry.Name()))
 			continue
 		}
 		if now.Sub(info.ModTime()) > 6*time.Hour {
-			os.RemoveAll(filepath.Join(basePath, entry.Name()))
+			_ = root.RemoveAll(filepath.Join(uploadTempDir, entry.Name()))
 		}
 	}
 }
