@@ -105,7 +105,13 @@ func UploadInit(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, nil, "初始化分片上传:", filename, "大小:", fileSize, "分片数:", totalChunks, "uploadId:", uploadId)
+	defer LogOp(c, fmt.Sprintf(
+		"初始化分片上传: %s，大小: %d，分片数: %d，uploadId: %s",
+		filename,
+		fileSize,
+		totalChunks,
+		uploadId,
+	))()
 	c.JSON(http.StatusOK, gin.H{"uploadId": uploadId})
 }
 
@@ -343,7 +349,7 @@ func UploadMerge(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, nil, "分片上传合并完成:", filename, "保存文件:", fmt.Sprintf("%v", files))
+	defer LogOp(c, fmt.Sprintf("分片上传合并完成: %s，文件数: %d", filename, len(files)))()
 	c.String(http.StatusOK, "上传成功！")
 	runtime.GC()
 }

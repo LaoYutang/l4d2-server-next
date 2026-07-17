@@ -26,7 +26,7 @@ type mapTrimResponse struct {
 
 func TrimMap(c *gin.Context) {
 	mapName := cleanExistingMapName(c.PostForm("map"))
-	LogOp(c, nil, "手动精简地图文件:", mapName)
+	defer LogOp(c, "手动精简地图文件: "+mapName)()
 
 	if mapName == "" {
 		FailWithError(c, http.StatusBadRequest, "地图名称不能为空")

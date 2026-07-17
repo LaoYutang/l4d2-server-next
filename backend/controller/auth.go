@@ -15,9 +15,9 @@ func Auth(c *gin.Context) {
 	// 中间件已经验证密码
 	role, _ := c.Get("role")
 	if roleStr, ok := role.(string); ok {
-		LogOp(c, nil, "用户登录成功", "角色:", roleStr)
+		defer LogOp(c, "用户登录成功，角色: "+roleStr)()
 	} else {
-		LogOp(c, nil, "用户登录成功", "角色: unknown")
+		defer LogOp(c, "用户登录成功，角色: guest")()
 	}
 
 	c.JSON(200, gin.H{
@@ -28,7 +28,7 @@ func Auth(c *gin.Context) {
 
 func GetTempAuthCode(c *gin.Context) {
 	expiredStr := c.PostForm("expired")
-	LogOp(c, nil, "获取临时授权码", "过期时间:", expiredStr)
+	defer LogOp(c, "获取临时授权码，过期时间: "+expiredStr)()
 
 	privateKey, exist := c.Get("privateKey")
 	if !exist {
@@ -78,7 +78,7 @@ func GetSelfServiceStatus(c *gin.Context) {
 }
 
 func GenerateSelfServiceCode(c *gin.Context) {
-	LogOp(c, nil, "申请自助授权码")
+	defer LogOp(c, "申请自助授权码")()
 	config := logic.GetSelfServiceConfig()
 
 	if !config.EnableSelfService {
@@ -150,7 +150,11 @@ func SetSelfServiceConfig(c *gin.Context) {
 		FailWithError(c, 400, "参数错误")
 		return
 	}
-	LogOp(c, req, "设置自助授权配置")
+	detail := "关闭自助授权配置"
+	if req.Enable {
+		detail = "开启自助授权配置"
+	}
+	defer LogOp(c, detail)()
 
 	if err := logic.SetSelfServiceEnable(req.Enable); err != nil {
 		FailWithError(c, 500, "保存配置失败: %v", err)

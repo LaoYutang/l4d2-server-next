@@ -29,7 +29,7 @@ func CreateBackup(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
 		return
 	}
-	LogOp(c, nil, "创建插件备份:", name)
+	defer LogOp(c, "创建插件备份: "+name)()
 
 	if err := logic.CreateBackup(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "创建备份失败: %v", err)
@@ -50,7 +50,7 @@ func RestoreBackup(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
 		return
 	}
-	LogOp(c, nil, "还原插件备份:", name)
+	defer LogOp(c, "还原插件备份: "+name)()
 
 	result, err := logic.RestoreBackup(name)
 	if err != nil {
@@ -82,7 +82,7 @@ func RenameBackup(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
 		return
 	}
-	LogOp(c, req, "重命名插件备份")
+	defer LogOp(c, fmt.Sprintf("重命名插件备份: %s -> %s", req.OldName, req.NewName))()
 
 	if err := logic.RenameBackup(req.OldName, req.NewName); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "重命名备份失败: %v", err)
@@ -103,7 +103,7 @@ func DeleteBackup(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
 		return
 	}
-	LogOp(c, nil, "删除插件备份:", name)
+	defer LogOp(c, "删除插件备份: "+name)()
 
 	if err := logic.DeleteBackup(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "删除备份失败: %v", err)
@@ -213,7 +213,7 @@ func ImportBackup(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "请选择文件")
 		return
 	}
-	LogOp(c, nil, "导入备份文件:", file.Filename)
+	defer LogOp(c, "导入备份文件: "+file.Filename)()
 
 	f, err := file.Open()
 	if err != nil {

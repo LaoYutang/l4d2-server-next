@@ -19,6 +19,8 @@ func main() {
 	// Initialize DB if enabled
 	db.InitDB()
 	db.InitPlayerStatsDB()
+	db.InitAuditDB()
+	logic.StartAuditWriter()
 
 	// Initialize Monitor
 	go controller.StartMonitor()
@@ -237,6 +239,12 @@ func main() {
 		logs.POST("/list", controller.ListSourceModLogs)
 	}
 	router.GET("/logs/stream", middlewares.Auth(privateKey), controller.StreamSourceModLog)
+
+	// Audit Group
+	audit := router.Group("/audit", middlewares.Auth(privateKey))
+	{
+		audit.POST("/list", controller.ListAuditLogs)
+	}
 
 	// Static files fallback: serve from ./static for unmatched routes (SPA)
 	router.NoRoute(gin.WrapH(http.FileServer(http.Dir("./static"))))

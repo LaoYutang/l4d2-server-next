@@ -44,7 +44,7 @@ func UploadPlugin(c *gin.Context) {
 	for _, header := range files {
 		filenames = append(filenames, header.Filename)
 	}
-	LogOp(c, nil, "上传插件:", strings.Join(filenames, ", "))
+	defer LogOp(c, "上传插件: "+strings.Join(filenames, ", "))()
 
 	var errs []string
 	for _, header := range files {
@@ -78,7 +78,7 @@ func StartExportAllPlugins(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, nil, "导出所有插件")
+	defer LogOp(c, "导出所有插件")()
 
 	progress, err := logic.StartPluginExportTask()
 	if err != nil {
@@ -159,7 +159,7 @@ func CancelExportAllPlugins(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "取消插件导出")
+	defer LogOp(c, "取消插件导出: "+req.TaskID)()
 
 	progress, err := logic.CancelPluginExportTask(req.TaskID)
 	if err != nil {
@@ -216,7 +216,7 @@ func DownloadStorePlugin(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "从商店下载插件:", req.Name)
+	defer LogOp(c, "从商店下载插件: "+req.Name)()
 
 	progress, err := logic.StartStorePluginDownload(req.Name, req.ProxyUrl, req.GithubToken, req.Repo)
 	if err != nil {
@@ -258,7 +258,7 @@ func CancelStoreDownload(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "取消商店插件下载:", req.Name)
+	defer LogOp(c, "取消商店插件下载: "+req.Name)()
 
 	progress, err := logic.CancelStorePluginDownload(req.Name, req.Repo)
 	if err != nil {
@@ -281,7 +281,7 @@ func EnablePlugin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
 		return
 	}
-	LogOp(c, nil, "启用插件:", name)
+	defer LogOp(c, "启用插件: "+name)()
 
 	if err := logic.EnablePlugin(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "启用插件失败: %v", err)
@@ -302,7 +302,7 @@ func EnableAndLoadPlugin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
 		return
 	}
-	LogOp(c, nil, "启用并立即加载插件:", name)
+	defer LogOp(c, "启用并立即加载插件: "+name)()
 
 	if err := logic.EnableAndLoadPlugin(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "启用并加载插件失败: %v", err)
@@ -323,7 +323,7 @@ func DisablePlugin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
 		return
 	}
-	LogOp(c, nil, "禁用插件:", name)
+	defer LogOp(c, "禁用插件: "+name)()
 
 	if err := logic.DisablePlugin(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "禁用插件失败: %v", err)
@@ -344,7 +344,7 @@ func DisableAndUnloadPlugin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
 		return
 	}
-	LogOp(c, nil, "禁用并立即卸载插件:", name)
+	defer LogOp(c, "禁用并立即卸载插件: "+name)()
 
 	if err := logic.DisableAndUnloadPlugin(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "禁用并卸载插件失败: %v", err)
@@ -365,7 +365,7 @@ func DeletePlugin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
 		return
 	}
-	LogOp(c, nil, "删除插件:", name)
+	defer LogOp(c, "删除插件: "+name)()
 
 	if err := logic.DeletePlugin(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "删除插件失败: %v", err)
@@ -390,7 +390,7 @@ func EnablePlugins(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "无效的请求格式")
 		return
 	}
-	LogOp(c, req, "批量启用插件")
+	defer LogOp(c, "批量启用插件: "+strings.Join(req.Names, ", "))()
 
 	if len(req.Names) == 0 {
 		FailWithError(c, http.StatusBadRequest, "插件列表不能为空")
@@ -416,7 +416,7 @@ func DisablePlugins(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "无效的请求格式")
 		return
 	}
-	LogOp(c, req, "批量禁用插件")
+	defer LogOp(c, "批量禁用插件: "+strings.Join(req.Names, ", "))()
 
 	if len(req.Names) == 0 {
 		FailWithError(c, http.StatusBadRequest, "插件列表不能为空")
@@ -451,7 +451,7 @@ func ApplyPreset(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "预设名称不能为空")
 		return
 	}
-	LogOp(c, nil, "应用插件预设:", name)
+	defer LogOp(c, "应用插件预设: "+name)()
 
 	if err := logic.ApplyPreset(name); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "%v", err)

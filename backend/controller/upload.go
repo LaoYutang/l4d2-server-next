@@ -51,7 +51,7 @@ func Upload(c *gin.Context) {
 			FailWithError(c, http.StatusInternalServerError, "解压Zip失败: %v", err)
 			return
 		}
-		LogOp(c, nil, "上传文件:", file.Filename, "解压文件:", fmt.Sprintf("%v", files))
+		defer LogOp(c, fmt.Sprintf("上传文件: %s，解压文件数: %d", file.Filename, len(files)))()
 		c.String(http.StatusOK, "上传并解压成功！")
 		runtime.GC()
 		return
@@ -64,7 +64,7 @@ func Upload(c *gin.Context) {
 			FailWithError(c, http.StatusInternalServerError, "解压Rar失败: %v", err)
 			return
 		}
-		LogOp(c, nil, "上传文件:", file.Filename, "解压文件:", fmt.Sprintf("%v", files))
+		defer LogOp(c, fmt.Sprintf("上传文件: %s，解压文件数: %d", file.Filename, len(files)))()
 		c.String(http.StatusOK, "上传并解压成功！")
 		runtime.GC()
 		return
@@ -77,7 +77,7 @@ func Upload(c *gin.Context) {
 			FailWithError(c, http.StatusInternalServerError, "解压7z失败: %v", err)
 			return
 		}
-		LogOp(c, nil, "上传文件:", file.Filename, "解压文件:", fmt.Sprintf("%v", files))
+		defer LogOp(c, fmt.Sprintf("上传文件: %s，解压文件数: %d", file.Filename, len(files)))()
 		c.String(http.StatusOK, "上传并解压成功！")
 		runtime.GC()
 		return
@@ -107,7 +107,7 @@ func Upload(c *gin.Context) {
 		FailWithError(c, http.StatusInternalServerError, "处理文件失败: %v", err)
 		return
 	}
-	LogOp(c, nil, "上传文件:", file.Filename, "保存文件:", fmt.Sprintf("%v", files))
+	defer LogOp(c, fmt.Sprintf("上传文件: %s，保存文件数: %d", file.Filename, len(files)))()
 
 	c.String(http.StatusOK, "上传成功！")
 	runtime.GC()

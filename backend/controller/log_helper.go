@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"l4d2-manager-next/logic"
+	"l4d2-manager-next/model"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -9,34 +11,67 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// LogOp prints an operation log.
-// Format: [OPT] Time | IP | Role | Path | Params Extra
-func LogOp(c *gin.Context, params any, extra ...any) {
+const maxAuditDetailLength = 2000
+
+var enqueueAuditLog = logic.EnqueueAuditLog
+
+// LogOp captures an operation and returns a deferred finalizer. The finalizer
+// prints the operation immediately and enqueues the database write without
+// waiting for SQLite.
+// Format: [OPT] Time | Role | IP | Path | SUCCESS/FAILED | Detail
+func LogOp(c *gin.Context, detail string) func() {
+	startedAt := time.Now()
 	ip := c.ClientIP()
 	path := c.Request.URL.Path
-	now := time.Now().Format("2006/01/02 - 15:04:05")
 
 	roleVal, exists := c.Get("role")
-	role := "Unknown"
+	role := "guest"
 	if exists {
-		if r, ok := roleVal.(string); ok {
+		if r, ok := roleVal.(string); ok && (r == "admin" || r == "guest") {
 			role = r
 		}
 	}
 
-	var contentParts []string
+	detail = sanitizeAuditDetail(detail)
+	return func() {
+		panicValue := recover()
+		success := panicValue == nil && c.Writer.Status() >= 200 && c.Writer.Status() < 300
+		result := "FAILED"
+		if success {
+			result = "SUCCESS"
+		}
 
-	if params != nil {
-		contentParts = append(contentParts, fmt.Sprintf("%+v", params))
+		fmt.Printf(
+			"[OPT] %s | %s | %s | %s | %s | %s\n",
+			startedAt.Format("2006/01/02 - 15:04:05"),
+			role,
+			ip,
+			path,
+			result,
+			detail,
+		)
+		enqueueAuditLog(model.AuditLog{
+			Time:    startedAt.Unix(),
+			Role:    role,
+			IP:      ip,
+			Path:    path,
+			Success: success,
+			Detail:  detail,
+		})
+
+		if panicValue != nil {
+			panic(panicValue)
+		}
 	}
+}
 
-	for _, e := range extra {
-		contentParts = append(contentParts, fmt.Sprintf("%+v", e))
+func sanitizeAuditDetail(detail string) string {
+	detail = strings.Join(strings.Fields(detail), " ")
+	runes := []rune(detail)
+	if len(runes) > maxAuditDetailLength {
+		return string(runes[:maxAuditDetailLength]) + "…"
 	}
-
-	content := strings.Join(contentParts, " ")
-
-	fmt.Printf("[OPT] %s | %s | %s | %s | %s\n", now, ip, role, path, content)
+	return detail
 }
 
 // LogError prints an error log.

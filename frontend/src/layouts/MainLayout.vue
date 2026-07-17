@@ -19,6 +19,7 @@
     SaveOutlined,
     FileTextOutlined,
     TeamOutlined,
+    AuditOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -164,6 +165,11 @@
           <span>日志查看</span>
         </a-menu-item>
 
+        <a-menu-item v-if="authStore.isAdmin" key="/audit">
+          <template #icon><AuditOutlined /></template>
+          <span>操作审计</span>
+        </a-menu-item>
+
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -260,6 +266,10 @@
         <a-menu-item key="/logs">
           <template #icon><FileTextOutlined /></template>
           日志查看
+        </a-menu-item>
+        <a-menu-item v-if="authStore.isAdmin" key="/audit">
+          <template #icon><AuditOutlined /></template>
+          操作审计
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>

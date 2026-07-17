@@ -11,7 +11,7 @@ import (
 )
 
 func Clear(c *gin.Context) {
-	LogOp(c, nil, "清空所有地图文件")
+	defer LogOp(c, "清空所有地图文件")()
 	mutex.Lock()
 	defer mutex.Unlock()
 

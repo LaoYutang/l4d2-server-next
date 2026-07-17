@@ -14,7 +14,7 @@ import (
 func RenameMap(c *gin.Context) {
 	oldName := cleanExistingMapName(c.PostForm("oldName"))
 	newNameInput := strings.TrimSpace(c.PostForm("newName"))
-	LogOp(c, nil, "重命名地图文件:", oldName, "->", newNameInput)
+	defer LogOp(c, "重命名地图文件: "+oldName+" -> "+newNameInput)()
 
 	if oldName == "" {
 		FailWithError(c, http.StatusBadRequest, "原地图名称不能为空")

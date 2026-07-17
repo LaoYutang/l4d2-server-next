@@ -90,7 +90,7 @@ func UpdateServerInfo(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "请求参数错误: %v", err)
 		return
 	}
-	LogOp(c, req, "更新服务器信息")
+	defer LogOp(c, "更新服务器信息")()
 
 	hostnamePath := filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt")
 	motdPath := filepath.Join(consts.GamePath, "motd.txt")

@@ -51,7 +51,7 @@ func AddAdmin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "无效的请求格式")
 		return
 	}
-	LogOp(c, req, "添加管理员")
+	defer LogOp(c, "添加管理员: "+req.SteamID)()
 
 	if req.SteamID == "" {
 		FailWithError(c, http.StatusBadRequest, "SteamID 不能为空")
@@ -87,7 +87,7 @@ func DeleteAdmin(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "无效的请求格式")
 		return
 	}
-	LogOp(c, req, "删除管理员")
+	defer LogOp(c, "删除管理员: "+req.SteamID)()
 
 	if req.SteamID == "" {
 		FailWithError(c, http.StatusBadRequest, "SteamID 不能为空")

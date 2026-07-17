@@ -582,7 +582,7 @@ func ParseDownloadLink(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "解析下载链接")
+	defer LogOp(c, "解析下载链接")()
 
 	result, err := logic.ParseDownloadLink(req.URL)
 	if err != nil {
@@ -611,7 +611,7 @@ func ParseWorkshopDownloadLink(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "解析工坊链接")
+	defer LogOp(c, "解析工坊链接")()
 
 	result, err := logic.ParseWorkshopDownloadLink(req.URL)
 	if err != nil {
@@ -642,7 +642,11 @@ func AddDownloadTask(c *gin.Context) {
 	}
 	filename := c.PostForm("filename")
 	referer := c.PostForm("referer")
-	LogOp(c, nil, "添加下载任务:", url, filename, referer)
+	detail := "添加下载任务"
+	if filename != "" {
+		detail += ": " + filename
+	}
+	defer LogOp(c, detail)()
 
 	// 识别切分多个http连接
 	urls := splitURLString(url)
@@ -660,7 +664,7 @@ func AddDownloadTask(c *gin.Context) {
 
 func CancelDownloadTask(c *gin.Context) {
 	indexStr := c.PostForm("index")
-	LogOp(c, nil, "取消下载任务索引:", indexStr)
+	defer LogOp(c, "取消下载任务索引: "+indexStr)()
 
 	if indexStr == "" {
 		FailWithError(c, http.StatusBadRequest, "任务索引不能为空")
@@ -682,7 +686,7 @@ func CancelDownloadTask(c *gin.Context) {
 }
 
 func ClearTasks(c *gin.Context) {
-	LogOp(c, nil, "清理已完成/失败下载任务")
+	defer LogOp(c, "清理已完成/失败下载任务")()
 	Downloader.ClearFinishedTasks()
 	c.String(http.StatusOK, "下载任务已清空")
 }
@@ -693,7 +697,7 @@ func GetDownloadTasksInfo(c *gin.Context) {
 
 func RestartDownloadTask(c *gin.Context) {
 	indexStr := c.PostForm("index")
-	LogOp(c, nil, "重启下载任务索引:", indexStr)
+	defer LogOp(c, "重启下载任务索引: "+indexStr)()
 
 	if indexStr == "" {
 		FailWithError(c, http.StatusBadRequest, "任务索引不能为空")

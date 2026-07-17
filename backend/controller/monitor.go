@@ -246,7 +246,11 @@ func SetMonitorConfig(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "设置性能监控历史记录配置")
+	detail := "关闭性能监控历史记录"
+	if req.Enable {
+		detail = "开启性能监控历史记录"
+	}
+	defer LogOp(c, detail)()
 	if err := logic.SetMonitorHistoryEnable(req.Enable); err != nil {
 		c.String(http.StatusInternalServerError, "保存配置失败: %v", err)
 		return

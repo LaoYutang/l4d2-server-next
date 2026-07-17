@@ -13,6 +13,7 @@ import (
 
 var DB *gorm.DB
 var PlayerStatsDB *gorm.DB
+var AuditDB *gorm.DB
 
 func InitDB() {
 	var err error
@@ -64,6 +65,31 @@ func InitPlayerStatsDB() {
 	if err != nil {
 		log.Printf("Failed to migrate player stats database: %v", err)
 		PlayerStatsDB = nil
+	}
+}
+
+func InitAuditDB() {
+	var err error
+	if err = consts.EnsureManagerDataPath(); err != nil {
+		log.Printf("Failed to create manager data directory: %v", err)
+		return
+	}
+
+	AuditDB, err = gorm.Open(sqlite.Open(consts.AuditDBPath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		log.Printf("Failed to connect to audit database: %v", err)
+		AuditDB = nil
+		return
+	}
+
+	AuditDB.Exec("PRAGMA journal_mode = WAL;")
+	AuditDB.Exec("PRAGMA busy_timeout = 5000;")
+
+	if err = AuditDB.AutoMigrate(&model.AuditLog{}); err != nil {
+		log.Printf("Failed to migrate audit database: %v", err)
+		AuditDB = nil
 	}
 }
 

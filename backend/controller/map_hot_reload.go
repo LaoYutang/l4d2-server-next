@@ -8,8 +8,7 @@ import (
 )
 
 func HotReloadMaps(c *gin.Context) {
-	command := logic.GetMapHotReloadCommand()
-	LogOp(c, nil, "热重载地图:", command)
+	defer LogOp(c, "热重载地图")()
 
 	if _, err := logic.ExecuteMapHotReloadCommand(); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "地图热重载失败: %v", err)
@@ -62,7 +61,7 @@ func SetMapHotReloadConfig(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "设置地图热重载命令")
+	defer LogOp(c, "设置地图热重载命令")()
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
 		"command": command,

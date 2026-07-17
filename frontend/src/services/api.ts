@@ -4,6 +4,34 @@ export interface LogStream {
   close: () => void;
 }
 
+export interface AuditLogItem {
+  time: number;
+  role: 'admin' | 'guest';
+  ip: string;
+  path: string;
+  success: boolean;
+  detail: string;
+}
+
+export interface AuditListParams {
+  page: number;
+  page_size: number;
+  start_time: number;
+  end_time: number;
+  role: '' | 'admin' | 'guest';
+  ip: string;
+  path: string;
+  success: boolean | null;
+  keyword: string;
+}
+
+export interface AuditListResponse {
+  items: AuditLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface WorkshopDownloadItem {
   publishedfileid: string;
   title: string;
@@ -1077,6 +1105,12 @@ class ApiService {
 
   async getSourceModLogs() {
     const response = await this.post('/logs/list');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getAuditLogs(params: AuditListParams): Promise<AuditListResponse> {
+    const response = await this.postJson('/audit/list', params);
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

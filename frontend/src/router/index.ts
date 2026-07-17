@@ -14,6 +14,7 @@ const ServerInfo = () => import('../views/ServerInfo.vue');
 const ServerConfig = () => import('../views/ServerConfig.vue');
 const Backup = () => import('../views/Backup.vue');
 const Logs = () => import('../views/Logs.vue');
+const Audit = () => import('../views/Audit.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -89,6 +90,12 @@ const router = createRouter({
           name: 'Logs',
           component: Logs,
         },
+        {
+          path: 'audit',
+          name: 'Audit',
+          component: Audit,
+          meta: { requiresAdmin: true },
+        },
       ],
     },
   ],
@@ -105,6 +112,8 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login');
   } else if (to.path === '/login' && authStore.isAuthenticated) {
+    next('/');
+  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     next('/');
   } else {
     next();

@@ -28,7 +28,11 @@ func SetVPKTrimConfig(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "设置地图自动精简配置")
+	detail := "关闭地图自动精简"
+	if req.Enable {
+		detail = "开启地图自动精简"
+	}
+	defer LogOp(c, detail)()
 	if err := logic.SetVPKTrimEnable(req.Enable); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "保存配置失败: %v", err)
 		return

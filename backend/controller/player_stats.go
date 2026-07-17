@@ -220,7 +220,11 @@ func SetPlayerStatsConfig(c *gin.Context) {
 		return
 	}
 
-	LogOp(c, req, "设置玩家在线统计配置")
+	detail := "关闭玩家在线统计"
+	if req.Enable {
+		detail = "开启玩家在线统计"
+	}
+	defer LogOp(c, detail)()
 	if err := logic.SetPlayerStatsEnable(req.Enable); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "保存配置失败: %v", err)
 		return

@@ -11,7 +11,7 @@ import (
 )
 
 func Restart(c *gin.Context) {
-	LogOp(c, nil, "执行重启操作")
+	defer LogOp(c, "执行重启操作")()
 	// 使用RCON重启
 	if os.Getenv("L4D2_RESTART_BY_RCON") == "true" {
 		if err := restartByRcon(); err != nil {

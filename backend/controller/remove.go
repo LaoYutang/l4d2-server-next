@@ -16,7 +16,7 @@ func Remove(c *gin.Context) {
 		FailWithError(c, http.StatusBadRequest, "地图名称无效")
 		return
 	}
-	LogOp(c, nil, "删除地图文件:", mapName)
+	defer LogOp(c, "删除地图文件: "+mapName)()
 
 	mutex.Lock()
 	defer mutex.Unlock()
