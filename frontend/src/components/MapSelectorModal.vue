@@ -1,8 +1,9 @@
 <script setup lang="ts">
-  import { ref, computed, watch } from 'vue';
+  import { ref, computed, watch, h } from 'vue';
   import { api } from '../services/api';
   import { officialMaps } from '../data/officialMaps';
-  import { message } from 'ant-design-vue';
+  import { message, Modal } from 'ant-design-vue';
+  import { ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 
   const props = defineProps<{
     open: boolean;
@@ -14,6 +15,7 @@
   }>();
 
   const loading = ref(false);
+  const hotReloading = ref(false);
   const changingMapCode = ref('');
   const searchText = ref('');
   const showOfficial = ref(true);
@@ -111,6 +113,53 @@
     }
   };
 
+  const executeHotReloadMaps = async () => {
+    hotReloading.value = true;
+    try {
+      const result = await api.hotReloadMaps();
+      message.success(result.message || '地图热重载指令已发送');
+    } catch (e: any) {
+      message.error('热重载失败: ' + e.message);
+    } finally {
+      hotReloading.value = false;
+    }
+  };
+
+  const confirmHotReloadMaps = async () => {
+    hotReloading.value = true;
+    let usingDefault = false;
+    try {
+      const status = await api.getMapHotReloadStatus();
+      usingDefault = status.using_default;
+    } catch (e: any) {
+      message.error('获取热重载状态失败: ' + e.message);
+      hotReloading.value = false;
+      return;
+    }
+    hotReloading.value = false;
+
+    const content = [
+      h('p', '热重载会重新加载地图资源。如果地图过多，会占用 CPU 并影响正在游玩的游戏。'),
+    ];
+    if (usingDefault) {
+      content.push(
+        h(
+          'p',
+          '当前使用默认指令，仅会更新游戏服务器的地图，投票插件的地图缓存不会被刷新。如需同时刷新投票插件缓存，请自定义地图插件的更新指令。'
+        )
+      );
+    }
+
+    Modal.confirm({
+      title: '确认热重载地图？',
+      icon: () => h(ExclamationCircleOutlined),
+      content: h('div', { class: 'space-y-2' }, content),
+      okText: '确认热重载',
+      cancelText: '取消',
+      onOk: executeHotReloadMaps,
+    });
+  };
+
   watch(
     () => props.open,
     (val) => {
@@ -172,8 +221,18 @@
           @click="fetchMaps"
           :loading="loading"
           class="!flex !items-center !justify-center w-full sm:!w-auto"
-          >刷新</a-button
         >
+          <template #icon><reload-outlined /></template>
+          刷新
+        </a-button>
+        <a-button
+          @click="confirmHotReloadMaps"
+          :loading="hotReloading"
+          class="!flex !items-center !justify-center w-full sm:!w-auto"
+        >
+          <template #icon><reload-outlined /></template>
+          热重载地图
+        </a-button>
       </div>
 
       <!-- Map List -->
