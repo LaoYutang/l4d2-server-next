@@ -218,8 +218,11 @@
               <td class="px-4 py-4">
                 <a-tag :color="record.role === 'admin' ? 'blue' : 'default'">{{ record.role }}</a-tag>
               </td>
-              <td class="px-4 py-4 font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                {{ record.ip }}
+              <td class="px-4 py-4 text-gray-700 dark:text-gray-300">
+                <div class="font-mono whitespace-nowrap">{{ record.ip }}</div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {{ record.location || '未知' }}
+                </div>
               </td>
               <td class="px-4 py-4 font-mono text-xs text-gray-700 dark:text-gray-300 break-all">
                 {{ record.path }}
@@ -263,9 +266,14 @@
               <a-tag :color="record.role === 'admin' ? 'blue' : 'default'" class="!mr-0">
                 {{ record.role }}
               </a-tag>
-              <span class="font-mono text-sm text-gray-700 dark:text-gray-300 break-all">
-                {{ record.ip }}
-              </span>
+              <div class="min-w-0">
+                <div class="font-mono text-sm text-gray-700 dark:text-gray-300 break-all">
+                  {{ record.ip }}
+                </div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 break-words">
+                  {{ record.location || '未知' }}
+                </div>
+              </div>
             </div>
             <div
               class="font-mono text-xs rounded-md px-3 py-2 break-all bg-gray-50 text-gray-700 border border-gray-100 dark:bg-gray-900/60 dark:text-gray-300 dark:border-gray-700"

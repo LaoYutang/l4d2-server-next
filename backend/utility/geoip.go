@@ -2,6 +2,7 @@ package utility
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -48,19 +49,18 @@ func InitGeoIP(v4Path, v6Path string) bool {
 
 // GetLocation returns the location string for a given IP
 // Format: [ ISP ] Country-Province-City
-func GetLocation(ip string) string {
-	if ipRegionService == nil {
+func GetLocation(address string) string {
+	ip := normalizeLocationIP(address)
+	if ip == "" {
 		return ""
-	}
-
-	// Clean up IP (remove port if present)
-	if strings.Contains(ip, ":") {
-		ip = strings.Split(ip, ":")[0]
 	}
 
 	// Skip check for local IPs
 	if ip == "::1" || ip == "127.0.0.1" || ip == "localhost" {
 		return "Localhost"
+	}
+	if net.ParseIP(ip) == nil || ipRegionService == nil {
+		return ""
 	}
 
 	// Check cache
@@ -120,6 +120,21 @@ func GetLocation(ip string) string {
 	geoCache.Set(ip, result, cache.DefaultExpiration)
 
 	return result
+}
+
+func normalizeLocationIP(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+
+	if host, _, err := net.SplitHostPort(address); err == nil {
+		return strings.Trim(host, "[]")
+	}
+	if strings.HasPrefix(address, "[") && strings.HasSuffix(address, "]") {
+		return strings.TrimSuffix(strings.TrimPrefix(address, "["), "]")
+	}
+	return address
 }
 
 // GetIPRegionService returns the initialized service instance

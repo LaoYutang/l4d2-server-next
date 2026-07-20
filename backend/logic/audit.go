@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"l4d2-manager-next/db"
 	"l4d2-manager-next/model"
+	"l4d2-manager-next/utility"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,11 @@ type AuditListFilter struct {
 	Path      string
 	Success   *bool
 	Keyword   string
+}
+
+type AuditLogItem struct {
+	model.AuditLog
+	Location string `json:"location"`
 }
 
 type auditWriter struct {
@@ -171,7 +177,7 @@ func (w *auditWriter) writeBatch(batch []model.AuditLog) {
 	log.Printf("[AUDIT] dropped %d database audit record(s) after retries: %v", len(batch), err)
 }
 
-func ListAuditLogs(filter AuditListFilter) ([]model.AuditLog, int64, error) {
+func ListAuditLogs(filter AuditListFilter) ([]AuditLogItem, int64, error) {
 	if db.AuditDB == nil {
 		return nil, 0, ErrAuditDatabaseUnavailable
 	}
@@ -204,12 +210,32 @@ func ListAuditLogs(filter AuditListFilter) ([]model.AuditLog, int64, error) {
 		return nil, 0, fmt.Errorf("count audit logs: %w", err)
 	}
 
-	var items []model.AuditLog
+	var records []model.AuditLog
 	offset := (filter.Page - 1) * filter.PageSize
-	if err := query.Order("time DESC").Order("id DESC").Offset(offset).Limit(filter.PageSize).Find(&items).Error; err != nil {
+	if err := query.Order("time DESC").Order("id DESC").Offset(offset).Limit(filter.PageSize).Find(&records).Error; err != nil {
 		return nil, 0, fmt.Errorf("list audit logs: %w", err)
 	}
-	return items, total, nil
+	return buildAuditLogItems(records, utility.GetLocation), total, nil
+}
+
+func buildAuditLogItems(records []model.AuditLog, lookupLocation func(string) string) []AuditLogItem {
+	items := make([]AuditLogItem, len(records))
+	locations := make(map[string]string, len(records))
+	for index, record := range records {
+		location, found := locations[record.IP]
+		if !found {
+			location = lookupLocation(record.IP)
+			if location == "" {
+				location = "未知"
+			}
+			locations[record.IP] = location
+		}
+		items[index] = AuditLogItem{
+			AuditLog: record,
+			Location: location,
+		}
+	}
+	return items
 }
 
 func containsPattern(value string) string {

@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"encoding/json"
 	"errors"
 	"l4d2-manager-next/db"
 	"l4d2-manager-next/model"
@@ -145,6 +146,9 @@ func TestListAuditLogsFiltersAndPaginates(t *testing.T) {
 	if total != 3 || len(items) != 2 || items[0].Time != 300 || items[1].Time != 200 {
 		t.Fatalf("unexpected pagination result: total=%d items=%+v", total, items)
 	}
+	if items[0].Location != "未知" || items[1].Location != "未知" {
+		t.Fatalf("expected historical records to receive fallback locations, got %+v", items)
+	}
 
 	failed := false
 	items, total, err = ListAuditLogs(AuditListFilter{
@@ -163,5 +167,55 @@ func TestListAuditLogsFiltersAndPaginates(t *testing.T) {
 	}
 	if total != 1 || len(items) != 1 || items[0].Detail != "删除地图文件: test.vpk" {
 		t.Fatalf("unexpected filtered result: total=%d items=%+v", total, items)
+	}
+}
+
+func TestBuildAuditLogItemsAddsLocationsAndDeduplicatesLookups(t *testing.T) {
+	records := []model.AuditLog{
+		{Time: 1, IP: "203.0.113.10"},
+		{Time: 2, IP: "203.0.113.10"},
+		{Time: 3, IP: "198.51.100.20"},
+	}
+	lookupCounts := make(map[string]int)
+	items := buildAuditLogItems(records, func(ip string) string {
+		lookupCounts[ip]++
+		if ip == "203.0.113.10" {
+			return "[ 电信 ] 中国-广东省-深圳市"
+		}
+		return ""
+	})
+
+	if len(items) != len(records) {
+		t.Fatalf("expected %d items, got %d", len(records), len(items))
+	}
+	if items[0].Location != "[ 电信 ] 中国-广东省-深圳市" || items[1].Location != items[0].Location {
+		t.Fatalf("unexpected resolved locations: %+v", items)
+	}
+	if items[2].Location != "未知" {
+		t.Fatalf("expected unknown fallback, got %q", items[2].Location)
+	}
+	if lookupCounts["203.0.113.10"] != 1 || lookupCounts["198.51.100.20"] != 1 {
+		t.Fatalf("expected one lookup per unique IP, got %+v", lookupCounts)
+	}
+}
+
+func TestAuditLogItemJSONIncludesLocationWithoutDatabaseID(t *testing.T) {
+	data, err := json.Marshal(AuditLogItem{
+		AuditLog: model.AuditLog{ID: 42, Time: 100, IP: "203.0.113.10"},
+		Location: "[ 电信 ] 中国-广东省-深圳市",
+	})
+	if err != nil {
+		t.Fatalf("marshal audit log item: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal audit log item: %v", err)
+	}
+	if payload["location"] != "[ 电信 ] 中国-广东省-深圳市" || payload["ip"] != "203.0.113.10" {
+		t.Fatalf("unexpected audit log JSON: %s", data)
+	}
+	if _, exists := payload["ID"]; exists {
+		t.Fatalf("database ID must not be exposed: %s", data)
 	}
 }

@@ -8,6 +8,7 @@ export interface AuditLogItem {
   time: number;
   role: 'admin' | 'guest';
   ip: string;
+  location: string;
   path: string;
   success: boolean;
   detail: string;
