@@ -39,7 +39,7 @@ func LoadManagerConfig() {
 		EnableSelfService:    false,
 		EnablePlayerStats:    true,
 		EnableMonitorHistory: true,
-		EnableVPKTrim:        false,
+		EnableVPKTrim:        true,
 		MapHotReloadCommand:  DefaultMapHotReloadCommand,
 	}
 

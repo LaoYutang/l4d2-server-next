@@ -12,7 +12,6 @@
     Input as AInput,
     Divider as ADivider,
     Switch as ASwitch,
-    Tag as ATag,
   } from 'ant-design-vue';
   import {
     KeyOutlined,
@@ -363,7 +362,6 @@
         <div>
           <div class="text-sm font-bold text-gray-800 dark:text-gray-200 flex flex-wrap items-center gap-2">
             <CloudUploadOutlined /> <span>启用地图自动精简</span>
-            <a-tag color="warning" class="!m-0">Beta</a-tag>
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             仅精简启用后上传和下载的地图资源，可以极大程度减轻服务器存储压力。精简后的地图仅适合服务端使用，不适合客户端本地使用。

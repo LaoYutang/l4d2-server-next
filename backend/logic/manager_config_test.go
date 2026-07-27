@@ -26,6 +26,27 @@ func setupManagerConfigTest(t *testing.T) {
 	})
 }
 
+func TestVPKTrimDefaultsEnabledWhenConfigMissingOrLegacy(t *testing.T) {
+	setupManagerConfigTest(t)
+
+	if !IsVPKTrimEnabled() {
+		t.Fatal("VPK trim disabled with missing config, want enabled by default")
+	}
+
+	if err := consts.EnsureManagerDataPath(); err != nil {
+		t.Fatalf("create manager data path: %v", err)
+	}
+	legacyConfig := `{"enable_self_service":true,"enable_player_stats":false}`
+	if err := os.WriteFile(consts.ManagerConfigPath, []byte(legacyConfig), 0644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	LoadManagerConfig()
+	if !IsVPKTrimEnabled() {
+		t.Fatal("VPK trim disabled with legacy config, want enabled by default")
+	}
+}
+
 func TestMapHotReloadCommandDefaultsWhenConfigMissingOrLegacy(t *testing.T) {
 	setupManagerConfigTest(t)
 

@@ -176,10 +176,12 @@ func TestUploadMergeAcceptsValidUploadId(t *testing.T) {
 	if err := os.MkdirAll(tempPath, 0755); err != nil {
 		t.Fatalf("create temp path: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(tempPath, ".meta"), []byte("map.vpk\n3\n1\n"), 0644); err != nil {
+	sourceContent := []byte("not a supported vpk layout")
+	meta := fmt.Sprintf("map.vpk\n%d\n1\n", len(sourceContent))
+	if err := os.WriteFile(filepath.Join(tempPath, ".meta"), []byte(meta), 0644); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(tempPath, "0"), []byte("vpk"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempPath, "0"), sourceContent, 0644); err != nil {
 		t.Fatalf("write chunk: %v", err)
 	}
 
