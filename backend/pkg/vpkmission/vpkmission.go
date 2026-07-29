@@ -3,6 +3,7 @@ package vpkmission
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,31 +41,16 @@ func (e FileError) Unwrap() error {
 }
 
 func ParseMission(r io.Reader) (*Campaign, error) {
-	root, err := vdf.ReadTolerant(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("parse mission vdf: read input: %w", err)
+	}
+
+	result, err := parseMissionData(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse mission vdf: %w", err)
 	}
-
-	return campaignFromKeyValues(root), nil
-}
-
-func campaignFromKeyValues(root *vdf.KeyValues) *Campaign {
-	campaign := &Campaign{
-		Title:    findFirstValue(root, "displaytitle"),
-		Chapters: make([]*Chapter, 0, 8),
-	}
-
-	walkKeys(root, func(node *vdf.KeyValues) {
-		mode := strings.ToLower(node.Key)
-		if mode == "" {
-			return
-		}
-		for _, chapter := range chaptersFromMode(node, mode) {
-			mergeChapter(campaign, chapter)
-		}
-	})
-
-	return campaign
+	return result.Campaign, nil
 }
 
 func ParseVPK(path string) ([]*Campaign, error) {
@@ -78,6 +64,7 @@ func ParseVPK(path string) ([]*Campaign, error) {
 
 	foundMission := false
 	campaigns := make([]*Campaign, 0, 4)
+	missionErrors := make([]string, 0)
 	for _, archiveFile := range archive.Files {
 		name := archiveFile.Name()
 		if !isMissionFile(name) {
@@ -90,23 +77,45 @@ func ParseVPK(path string) ([]*Campaign, error) {
 			return nil, fmt.Errorf("open mission file %s: %w", name, err)
 		}
 
-		campaign, parseErr := ParseMission(rc)
+		data, readErr := io.ReadAll(rc)
 		closeErr := rc.Close()
-		if parseErr != nil {
-			return nil, fmt.Errorf("parse mission file %s: %w", name, parseErr)
+		if readErr != nil {
+			return nil, fmt.Errorf("read mission file %s: %w", name, readErr)
 		}
 		if closeErr != nil {
 			return nil, fmt.Errorf("close mission file %s: %w", name, closeErr)
 		}
 
-		campaign.VpkName = filepath.Base(path)
-		campaigns = mergeCampaignList(campaigns, campaign)
+		result, parseErr := parseMissionData(data)
+		if parseErr != nil {
+			missionErrors = append(missionErrors, fmt.Sprintf("%s: %v", name, parseErr))
+			log.Printf("跳过无法解析的 mission 文件 %s（VPK: %s）: %v", name, filepath.Base(path), parseErr)
+			continue
+		}
+		if result.Recovered {
+			log.Printf(
+				"已宽容恢复 mission 文件 %s（VPK: %s）: %s",
+				name,
+				filepath.Base(path),
+				formatRecoveryIssues(result.Issues),
+			)
+		}
+
+		result.Campaign.VpkName = filepath.Base(path)
+		campaigns = mergeCampaignList(campaigns, result.Campaign)
 	}
 
 	if !foundMission {
 		return nil, fmt.Errorf("vpk %s contains no mission files", filepath.Base(path))
 	}
 	if len(campaigns) == 0 {
+		if len(missionErrors) > 0 {
+			return nil, fmt.Errorf(
+				"vpk %s contains no parsed campaigns: %s",
+				filepath.Base(path),
+				strings.Join(missionErrors, "; "),
+			)
+		}
 		return nil, fmt.Errorf("vpk %s contains no parsed campaigns", filepath.Base(path))
 	}
 
@@ -160,32 +169,12 @@ func chaptersFromMode(modeNode *vdf.KeyValues, mode string) []*Chapter {
 	return chapters
 }
 
-func findFirstValue(root *vdf.KeyValues, key string) string {
-	var found string
-	walkKeys(root, func(node *vdf.KeyValues) {
-		if found != "" {
-			return
-		}
-		found = valueForKey(node, key)
-	})
-	return found
-}
-
 func valueForKey(node *vdf.KeyValues, key string) string {
 	value := node.FindKey(key)
 	if value == nil || !value.HasValue {
 		return ""
 	}
 	return value.Value
-}
-
-func walkKeys(root *vdf.KeyValues, visit func(*vdf.KeyValues)) {
-	for node := root; node != nil; node = node.NextSubKey() {
-		visit(node)
-		for child := node.FirstTrueSubKey(); child != nil; child = child.NextTrueSubKey() {
-			walkKeys(child, visit)
-		}
-	}
 }
 
 func mergeCampaignList(campaigns []*Campaign, campaign *Campaign) []*Campaign {
