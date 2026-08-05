@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"l4d2-manager-next/consts"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 )
 
 const DefaultMapHotReloadCommand = "update_addon_paths; mission_reload"
+const SteamCDNHost = "cdn.steamusercontent.com"
 
 type ManagerConfig struct {
 	EnableSelfService    bool      `json:"enable_self_service"`
@@ -20,6 +22,7 @@ type ManagerConfig struct {
 	EnableMonitorHistory bool      `json:"enable_monitor_history"`
 	EnableVPKTrim        bool      `json:"enable_vpk_trim"`
 	MapHotReloadCommand  string    `json:"map_hot_reload_command"`
+	SteamCDNIP           string    `json:"steam_cdn_ip,omitempty"`
 }
 
 var (
@@ -41,6 +44,7 @@ func LoadManagerConfig() {
 		EnableMonitorHistory: true,
 		EnableVPKTrim:        true,
 		MapHotReloadCommand:  DefaultMapHotReloadCommand,
+		SteamCDNIP:           "",
 	}
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
@@ -52,7 +56,16 @@ func LoadManagerConfig() {
 		return
 	}
 
-	json.Unmarshal(data, managerConfig)
+	if err := json.Unmarshal(data, managerConfig); err != nil {
+		return
+	}
+
+	normalizedIP, err := NormalizeSteamCDNIP(managerConfig.SteamCDNIP)
+	if err != nil {
+		managerConfig.SteamCDNIP = ""
+		return
+	}
+	managerConfig.SteamCDNIP = normalizedIP
 }
 
 func saveManagerConfig() error {
@@ -154,6 +167,38 @@ func SetMapHotReloadCommand(command string) (string, error) {
 	managerConfigMutex.Lock()
 	defer managerConfigMutex.Unlock()
 	managerConfig.MapHotReloadCommand = normalized
+	return normalized, saveManagerConfig()
+}
+
+func GetSteamCDNIP() string {
+	managerConfigMutex.RLock()
+	defer managerConfigMutex.RUnlock()
+	return managerConfig.SteamCDNIP
+}
+
+func NormalizeSteamCDNIP(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+
+	addr, err := netip.ParseAddr(value)
+	if err != nil || addr.Zone() != "" {
+		return "", fmt.Errorf("Steam CDN 指定 IP 格式无效")
+	}
+
+	return addr.Unmap().String(), nil
+}
+
+func SetSteamCDNIP(value string) (string, error) {
+	normalized, err := NormalizeSteamCDNIP(value)
+	if err != nil {
+		return "", err
+	}
+
+	managerConfigMutex.Lock()
+	defer managerConfigMutex.Unlock()
+	managerConfig.SteamCDNIP = normalized
 	return normalized, saveManagerConfig()
 }
 

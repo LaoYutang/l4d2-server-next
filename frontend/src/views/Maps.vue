@@ -7,6 +7,7 @@
     type MapMissionCampaign,
     type MapSummaryItem,
     type ParsedDownloadItem,
+    type SteamCDNIPEntry,
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
   import { message, Modal } from 'ant-design-vue';
@@ -76,7 +77,29 @@
   const addingParsedItems = ref<Record<string, boolean>>({});
   const addedParsedItems = ref<Record<string, boolean>>({});
   const selectedParsedItemKeys = ref<string[]>([]);
+  const downloadConfigVisible = ref(false);
+  const downloadConfigLoading = ref(false);
+  const downloadConfigSaving = ref(false);
+  const steamCDNIP = ref('');
+  const steamCDNIPEntries = ref<SteamCDNIPEntry[]>([]);
+  const steamCDNIPEntriesError = ref('');
   let downloadRefreshInterval: number | null = null;
+
+  const steamCDNIPOptions = computed(() =>
+    steamCDNIPEntries.value.map((entry) => ({
+      value: entry.ip,
+      label: entry.category ? `${entry.category} · ${entry.ip}` : entry.ip,
+    }))
+  );
+
+  const filterSteamCDNIPOption = (
+    input: string,
+    option?: { label?: string; value?: string }
+  ) => {
+    const keyword = input.trim().toLowerCase();
+    if (!keyword) return true;
+    return `${option?.label || ''} ${option?.value || ''}`.toLowerCase().includes(keyword);
+  };
 
   // Local Maps Logic
   const loadMaps = async () => {
@@ -580,6 +603,53 @@
 
   const openLinkParseModal = () => {
     linkParseVisible.value = true;
+  };
+
+  const openDownloadConfig = async () => {
+    if (!isAdmin.value) return;
+
+    downloadConfigVisible.value = true;
+    downloadConfigLoading.value = true;
+    steamCDNIPEntriesError.value = '';
+
+    const [configResult, entriesResult] = await Promise.allSettled([
+      api.getDownloadConfig(),
+      api.getSteamCDNIPEntries(),
+    ]);
+
+    if (configResult.status === 'fulfilled') {
+      steamCDNIP.value = configResult.value.steam_cdn_ip || '';
+    } else {
+      message.error('获取下载配置失败: ' + String(configResult.reason));
+      downloadConfigVisible.value = false;
+    }
+
+    if (entriesResult.status === 'fulfilled') {
+      steamCDNIPEntries.value = entriesResult.value;
+      if (entriesResult.value.length === 0) {
+        steamCDNIPEntriesError.value = '候选 IP 服务暂未返回可用地址，可直接输入 IP。';
+      }
+    } else {
+      console.warn('Failed to load Steam CDN IP entries', entriesResult.reason);
+      steamCDNIPEntries.value = [];
+      steamCDNIPEntriesError.value = '候选 IP 列表加载失败，可直接输入 IP。';
+    }
+
+    downloadConfigLoading.value = false;
+  };
+
+  const submitDownloadConfig = async () => {
+    downloadConfigSaving.value = true;
+    try {
+      const result = await api.setDownloadConfig(steamCDNIP.value.trim());
+      steamCDNIP.value = result.steam_cdn_ip || '';
+      message.success(result.steam_cdn_ip ? 'Steam CDN 指定 IP 已保存' : '已恢复使用 DNS');
+      downloadConfigVisible.value = false;
+    } catch (e: any) {
+      message.error('保存下载配置失败: ' + e.message);
+    } finally {
+      downloadConfigSaving.value = false;
+    }
   };
 
   const addParsedDownload = async (
@@ -1247,7 +1317,7 @@
       <a-tab-pane key="download" tab="下载任务">
         <div class="space-y-4">
           <!-- Add Task & Actions -->
-          <div class="flex justify-between items-center">
+          <div class="flex flex-wrap justify-between items-center gap-2">
             <div class="flex gap-2 flex-wrap">
               <a-button
                 type="primary"
@@ -1257,10 +1327,24 @@
                 <template #icon><plus-outlined /></template>
                 添加任务
               </a-button>
-              <a-button @click="openLinkParseModal" class="!flex !items-center !justify-center">
-                <template #icon><search-outlined /></template>
-                解析链接
-              </a-button>
+              <a-button-group class="!flex">
+                <a-button
+                  @click="openLinkParseModal"
+                  class="!flex !items-center !justify-center"
+                >
+                  <template #icon><search-outlined /></template>
+                  解析链接
+                </a-button>
+                <a-button
+                  v-if="isAdmin"
+                  @click="openDownloadConfig"
+                  class="!flex !items-center !justify-center"
+                  title="下载设置"
+                  aria-label="下载设置"
+                >
+                  <template #icon><setting-outlined /></template>
+                </a-button>
+              </a-button-group>
             </div>
 
             <a-button
@@ -1398,6 +1482,48 @@
           />
         </a-modal>
 
+        <a-modal
+          v-model:open="downloadConfigVisible"
+          title="下载设置"
+          ok-text="保存"
+          cancel-text="取消"
+          :width="520"
+          :confirmLoading="downloadConfigSaving"
+          :ok-button-props="{ disabled: downloadConfigLoading }"
+          wrap-class-name="download-config-modal"
+          @ok="submitDownloadConfig"
+        >
+          <a-spin :spinning="downloadConfigLoading">
+            <a-form layout="vertical">
+              <a-form-item label="Steam CDN 指定 IP" class="!mb-3">
+                <a-auto-complete
+                  v-model:value="steamCDNIP"
+                  :options="steamCDNIPOptions"
+                  :filter-option="filterSteamCDNIPOption"
+                  :disabled="downloadConfigLoading"
+                  allow-clear
+                  placeholder="留空则使用 DNS，也可以直接输入 IP"
+                />
+              </a-form-item>
+
+              <a-alert
+                v-if="steamCDNIPEntriesError"
+                type="warning"
+                show-icon
+                :message="steamCDNIPEntriesError"
+                class="mb-3"
+              />
+
+              <div
+                class="rounded-lg border border-gray-200 bg-gray-50/80 p-3 text-xs leading-5 text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-gray-300"
+              >
+                <div>仅 cdn.steamusercontent.com 的下载连接会使用此 IP。</div>
+                <div>请求域名与 HTTPS 证书校验保持不变；指定 IP 不可用时不会回退 DNS。</div>
+              </div>
+            </a-form>
+          </a-spin>
+        </a-modal>
+
         <a-modal v-model:open="linkParseVisible" title="解析链接" width="920px" :footer="null">
           <div class="space-y-4">
             <a-input-search
@@ -1502,6 +1628,27 @@
   :global(.dark .map-detail-modal) {
     --ant-color-split: #334155;
     --ant-color-border-secondary: #334155;
+  }
+
+  :global(.download-config-modal .ant-modal) {
+    max-width: calc(100vw - 24px);
+  }
+
+  :global(.download-config-modal .ant-modal-body) {
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 640px) {
+    :global(.download-config-modal .ant-modal) {
+      top: 12px;
+      margin: 0 auto;
+      padding-bottom: 12px;
+    }
+
+    :global(.download-config-modal .ant-modal-body) {
+      max-height: calc(100vh - 170px);
+      overflow-y: auto;
+    }
   }
 
   :deep(.map-detail-chapter-table .ant-table) {

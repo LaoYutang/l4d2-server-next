@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/logic"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,6 +95,59 @@ func cleanDownloadHeaderValue(value string) string {
 
 func defaultDownloadUserAgent() string {
 	return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+}
+
+type downloadDialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+var (
+	downloadNetworkDialer = &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	downloadHTTPTransport = newDownloadHTTPTransport(logic.GetSteamCDNIP, downloadNetworkDialer.DialContext)
+	downloadHTTPClient    = &http.Client{Transport: downloadHTTPTransport}
+)
+
+func normalizeDownloadHostname(host string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+}
+
+func isSteamCDNDownloadHost(host string) bool {
+	return normalizeDownloadHostname(host) == logic.SteamCDNHost
+}
+
+func resolveDownloadDialAddress(address, steamCDNIP string) string {
+	if steamCDNIP == "" {
+		return address
+	}
+
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || !isSteamCDNDownloadHost(host) {
+		return address
+	}
+
+	return net.JoinHostPort(steamCDNIP, port)
+}
+
+func newDownloadHTTPTransport(
+	getSteamCDNIP func() string,
+	dialContext downloadDialContextFunc,
+) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		return dialContext(ctx, network, resolveDownloadDialAddress(address, getSteamCDNIP()))
+	}
+	transport.Proxy = func(req *http.Request) (*url.URL, error) {
+		if getSteamCDNIP() != "" && isSteamCDNDownloadHost(req.URL.Hostname()) {
+			return nil, nil
+		}
+		return http.ProxyFromEnvironment(req)
+	}
+	return transport
+}
+
+func closeDownloadIdleConnections() {
+	downloadHTTPTransport.CloseIdleConnections()
 }
 
 func cleanDownloadFilename(filename string) string {
@@ -211,7 +267,7 @@ func (dt *downloadTask) download() {
 		req.Header.Set("Referer", dt.referer)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		dt.markFailed(fmt.Sprintf("下载失败: %v", err))
 		return

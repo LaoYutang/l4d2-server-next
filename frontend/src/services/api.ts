@@ -65,6 +65,15 @@ export interface DownloadLinkParseResult {
   items: ParsedDownloadItem[];
 }
 
+export interface DownloadConfig {
+  steam_cdn_ip: string;
+}
+
+export interface SteamCDNIPEntry {
+  ip: string;
+  category: string;
+}
+
 export interface MapMissionChapter {
   Code: string;
   Title: string;
@@ -1002,6 +1011,58 @@ class ApiService {
       return data || [];
     } catch {
       return [];
+    }
+  }
+
+  async getDownloadConfig(): Promise<DownloadConfig> {
+    const response = await this.post('/download/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setDownloadConfig(steamCDNIP: string): Promise<{ status: string; steam_cdn_ip: string }> {
+    const response = await this.postJson('/download/config/update', {
+      steam_cdn_ip: steamCDNIP,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getSteamCDNIPEntries(): Promise<SteamCDNIPEntry[]> {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(
+        'https://lytvpk-get-ips.laoyutang.cn/?domain=cdn.steamusercontent.com&format=entries',
+        { signal: controller.signal }
+      );
+      if (!response.ok) {
+        throw new Error(`候选 IP 服务返回 HTTP ${response.status}`);
+      }
+
+      const data: unknown = await response.json();
+      if (!Array.isArray(data)) {
+        throw new Error('候选 IP 服务返回格式错误');
+      }
+
+      const seen = new Set<string>();
+      const entries: SteamCDNIPEntry[] = [];
+      for (const rawEntry of data) {
+        if (!rawEntry || typeof rawEntry !== 'object') continue;
+        const entry = rawEntry as Record<string, unknown>;
+        const ip = typeof entry.ip === 'string' ? entry.ip.trim() : '';
+        if (!ip || seen.has(ip)) continue;
+
+        entries.push({
+          ip,
+          category: typeof entry.category === 'string' ? entry.category.trim() : '',
+        });
+        seen.add(ip);
+      }
+      return entries;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 

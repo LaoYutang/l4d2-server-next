@@ -118,3 +118,86 @@ func TestNormalizeMapHotReloadCommandRejectsInvalidCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestSteamCDNIPDefaultsEmptyWhenConfigMissingOrLegacy(t *testing.T) {
+	setupManagerConfigTest(t)
+
+	if got := GetSteamCDNIP(); got != "" {
+		t.Fatalf("default Steam CDN IP = %q, want empty", got)
+	}
+
+	if err := consts.EnsureManagerDataPath(); err != nil {
+		t.Fatalf("create manager data path: %v", err)
+	}
+	legacyConfig := `{"enable_self_service":true,"enable_player_stats":false}`
+	if err := os.WriteFile(consts.ManagerConfigPath, []byte(legacyConfig), 0644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	LoadManagerConfig()
+	if got := GetSteamCDNIP(); got != "" {
+		t.Fatalf("legacy config Steam CDN IP = %q, want empty", got)
+	}
+}
+
+func TestSetSteamCDNIPSavesNormalizesAndClears(t *testing.T) {
+	setupManagerConfigTest(t)
+
+	got, err := SetSteamCDNIP(" 192.0.2.10 ")
+	if err != nil {
+		t.Fatalf("SetSteamCDNIP(IPv4) error = %v", err)
+	}
+	if got != "192.0.2.10" {
+		t.Fatalf("normalized IPv4 = %q, want 192.0.2.10", got)
+	}
+
+	LoadManagerConfig()
+	if got := GetSteamCDNIP(); got != "192.0.2.10" {
+		t.Fatalf("loaded IPv4 = %q, want 192.0.2.10", got)
+	}
+
+	got, err = SetSteamCDNIP("2001:0db8:0:0:0:0:0:1")
+	if err != nil {
+		t.Fatalf("SetSteamCDNIP(IPv6) error = %v", err)
+	}
+	if got != "2001:db8::1" {
+		t.Fatalf("normalized IPv6 = %q, want 2001:db8::1", got)
+	}
+
+	got, err = SetSteamCDNIP("   ")
+	if err != nil {
+		t.Fatalf("SetSteamCDNIP(empty) error = %v", err)
+	}
+	if got != "" || GetSteamCDNIP() != "" {
+		t.Fatalf("cleared Steam CDN IP = %q / %q, want empty", got, GetSteamCDNIP())
+	}
+}
+
+func TestNormalizeSteamCDNIPRejectsNonIPValues(t *testing.T) {
+	for _, value := range []string{
+		"cdn.steamusercontent.com",
+		"192.0.2.999",
+		"fe80::1%eth0",
+	} {
+		if got, err := NormalizeSteamCDNIP(value); err == nil {
+			t.Fatalf("NormalizeSteamCDNIP(%q) = %q, want error", value, got)
+		}
+	}
+}
+
+func TestLoadManagerConfigIgnoresInvalidSteamCDNIP(t *testing.T) {
+	setupManagerConfigTest(t)
+
+	if err := consts.EnsureManagerDataPath(); err != nil {
+		t.Fatalf("create manager data path: %v", err)
+	}
+	config := `{"steam_cdn_ip":"not-an-ip"}`
+	if err := os.WriteFile(consts.ManagerConfigPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+
+	LoadManagerConfig()
+	if got := GetSteamCDNIP(); got != "" {
+		t.Fatalf("invalid persisted Steam CDN IP = %q, want empty", got)
+	}
+}
