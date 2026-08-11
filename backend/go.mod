@@ -14,7 +14,7 @@ require (
 	github.com/google/gapid v1.6.1
 	github.com/google/uuid v1.3.0
 	github.com/gorcon/rcon v1.3.5
-	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20260127105604-ad0cfd6bd94f
+	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20260810050043-e05f0cb75ffd
 	github.com/nwaples/rardecode v1.1.3
 	github.com/panjf2000/ants/v2 v2.11.4
 	github.com/patrickmn/go-cache v2.1.0+incompatible

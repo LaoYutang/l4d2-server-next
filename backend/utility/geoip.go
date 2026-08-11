@@ -64,7 +64,7 @@ func LookupRawRegion(address string) (string, error) {
 		}
 	}
 
-	region, err := ipRegionService.SearchByStr(ip)
+	region, err := ipRegionService.Search(ip)
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +99,7 @@ func GetLocation(address string) string {
 		return val.(string)
 	}
 
-	region, err := ipRegionService.SearchByStr(ip)
+	region, err := ipRegionService.Search(ip)
 	if err != nil {
 		return ""
 	}
