@@ -34,19 +34,19 @@ func main() {
 	go logic.CleanPluginExportTemp()
 	go logic.CleanVPKTrimTemp()
 
+	logic.InitAccessControl()
+
 	router := gin.Default()
+	if err := router.SetTrustedProxies(nil); err != nil {
+		panic("配置 Gin 可信代理失败: " + err.Error())
+	}
 
 	// Initialize GeoIP
-	// Try to initialize regardless of whitelist setting to enable location query
+	// Initialize independently so IP/CIDR access rules still work without GeoIP.
 	if utility.InitGeoIP("./ip2region_v4.xdb", "./ip2region_v6.xdb") {
 		defer utility.CloseGeoIP()
-		// Initialize middleware state (whitelist)
-		middlewares.InitGeoIPMiddleware()
-		// Only apply blocking middleware if whitelist is configured
-		if os.Getenv("REGION_WHITE_LIST") != "" {
-			router.Use(middlewares.BlockForeignIPs())
-		}
 	}
+	router.Use(middlewares.AccessControl())
 
 	// Static files cache middleware
 	router.Use(func(c *gin.Context) {
@@ -246,6 +246,15 @@ func main() {
 	audit := router.Group("/audit", middlewares.Auth(privateKey))
 	{
 		audit.POST("/list", controller.ListAuditLogs)
+	}
+
+	// Panel Access Control Group (admin-only checks are enforced in controllers)
+	accessControl := router.Group("/access-control", middlewares.Auth(privateKey))
+	{
+		accessControl.POST("/config", controller.GetAccessControlConfig)
+		accessControl.POST("/preview", controller.PreviewAccessControl)
+		accessControl.POST("/panel-rules/update", controller.UpdatePanelAccessRules)
+		accessControl.POST("/trusted-proxies/update", controller.UpdateAccessControlTrustedProxies)
 	}
 
 	// Static files fallback: serve from ./static for unmatched routes (SPA)

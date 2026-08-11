@@ -16,6 +16,7 @@ declare module 'vue' {
     AButton: typeof import('ant-design-vue/es')['Button']
     AButtonGroup: typeof import('ant-design-vue/es')['ButtonGroup']
     ACard: typeof import('ant-design-vue/es')['Card']
+    AccessRuleList: typeof import('./components/AccessRuleList.vue')['default']
     ACollapse: typeof import('ant-design-vue/es')['Collapse']
     ACollapsePanel: typeof import('ant-design-vue/es')['CollapsePanel']
     ADescriptions: typeof import('ant-design-vue/es')['Descriptions']

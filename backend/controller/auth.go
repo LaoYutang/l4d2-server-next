@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/gin-gonic/gin"
@@ -129,7 +130,7 @@ func GenerateSelfServiceCode(c *gin.Context) {
 	}
 
 	timeFormat := "2006-01-02 15:04:05"
-	log.Printf("[自助授权] IP: %s 获取了授权码, 有效期: %s - %s", c.ClientIP(), now.Format(timeFormat), expireTime.Format(timeFormat))
+	log.Printf("[自助授权] IP: %s 获取了授权码, 有效期: %s - %s", middlewares.GetClientIP(c), now.Format(timeFormat), expireTime.Format(timeFormat))
 
 	c.JSON(200, gin.H{
 		"code": tokenString,

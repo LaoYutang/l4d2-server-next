@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 	"l4d2-manager-next/model"
 	"runtime/debug"
 	"strings"
@@ -21,7 +22,7 @@ var enqueueAuditLog = logic.EnqueueAuditLog
 // Format: [OPT] Time | Role | IP | Path | SUCCESS/FAILED | Detail
 func LogOp(c *gin.Context, detail string) func() {
 	startedAt := time.Now()
-	ip := c.ClientIP()
+	ip := middlewares.GetClientIP(c)
 	path := c.Request.URL.Path
 
 	roleVal, exists := c.Get("role")

@@ -27,7 +27,7 @@ const bearerPrefix = "Bearer "
 
 func Auth(privateKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
+		ip := GetClientIP(c)
 
 		mutex.Lock()
 		attempt, exists := ipAttempts[ip]

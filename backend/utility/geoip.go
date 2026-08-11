@@ -13,6 +13,7 @@ import (
 var (
 	ipRegionService *service.Ip2Region
 	geoCache        *cache.Cache
+	rawGeoCache     *cache.Cache
 )
 
 // InitGeoIP initializes the ip2region service with v4 and v6 databases
@@ -21,6 +22,7 @@ func InitGeoIP(v4Path, v6Path string) bool {
 
 	// Initialize cache with 24 hour expiration and 1 hour cleanup interval
 	geoCache = cache.New(24*time.Hour, 1*time.Hour)
+	rawGeoCache = cache.New(24*time.Hour, 1*time.Hour)
 
 	// 1. Create v4 config
 	v4Config, err := service.NewV4Config(service.VIndexCache, v4Path, 20)
@@ -45,6 +47,35 @@ func InitGeoIP(v4Path, v6Path string) bool {
 
 	fmt.Println("GeoIP service initialized.")
 	return true
+}
+
+// LookupRawRegion returns the unformatted ip2region result used by access rules.
+func LookupRawRegion(address string) (string, error) {
+	ip := normalizeLocationIP(address)
+	if net.ParseIP(ip) == nil {
+		return "", fmt.Errorf("invalid IP: %s", address)
+	}
+	if ipRegionService == nil {
+		return "", fmt.Errorf("GeoIP service is unavailable")
+	}
+	if rawGeoCache != nil {
+		if value, found := rawGeoCache.Get(ip); found {
+			return value.(string), nil
+		}
+	}
+
+	region, err := ipRegionService.SearchByStr(ip)
+	if err != nil {
+		return "", err
+	}
+	if rawGeoCache != nil {
+		rawGeoCache.Set(ip, region, cache.DefaultExpiration)
+	}
+	return region, nil
+}
+
+func IsGeoIPAvailable() bool {
+	return ipRegionService != nil
 }
 
 // GetLocation returns the location string for a given IP
@@ -146,5 +177,6 @@ func GetIPRegionService() *service.Ip2Region {
 func CloseGeoIP() {
 	if ipRegionService != nil {
 		ipRegionService.Close()
+		ipRegionService = nil
 	}
 }

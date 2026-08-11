@@ -16,6 +16,7 @@ var MonitorDBPath string
 var PlayerStatsDBPath string
 var AuditDBPath string
 var ManagerConfigPath string
+var AccessControlConfigPath string
 var Version = "Dev"
 
 func init() {
@@ -28,6 +29,7 @@ func init() {
 	PlayerStatsDBPath = filepath.Join(ManagerDataPath, "player_stats.db")
 	AuditDBPath = filepath.Join(ManagerDataPath, "audit.db")
 	ManagerConfigPath = filepath.Join(ManagerDataPath, "manager_config.json")
+	AccessControlConfigPath = filepath.Join(ManagerDataPath, "access_control.json")
 
 	if err := EnsureManagerDataPath(); err != nil {
 		log.Printf("failed to create manager data directory %s: %v", ManagerDataPath, err)
@@ -62,6 +64,7 @@ func migrateLegacyManagerData() {
 	legacyFiles := map[string]string{
 		"private.key":         PrivateKeyPath,
 		"manager_config.json": ManagerConfigPath,
+		"access_control.json": AccessControlConfigPath,
 		"monitor.db":          MonitorDBPath,
 		"monitor.db-wal":      filepath.Join(ManagerDataPath, "monitor.db-wal"),
 		"monitor.db-shm":      filepath.Join(ManagerDataPath, "monitor.db-shm"),

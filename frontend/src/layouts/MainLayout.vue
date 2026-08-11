@@ -20,6 +20,7 @@
     FileTextOutlined,
     TeamOutlined,
     AuditOutlined,
+    SecurityScanOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -170,6 +171,11 @@
           <span>操作审计</span>
         </a-menu-item>
 
+        <a-menu-item v-if="authStore.isAdmin" key="/access-control">
+          <template #icon><SecurityScanOutlined /></template>
+          <span>访问控制</span>
+        </a-menu-item>
+
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -270,6 +276,10 @@
         <a-menu-item v-if="authStore.isAdmin" key="/audit">
           <template #icon><AuditOutlined /></template>
           操作审计
+        </a-menu-item>
+        <a-menu-item v-if="authStore.isAdmin" key="/access-control">
+          <template #icon><SecurityScanOutlined /></template>
+          访问控制
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>

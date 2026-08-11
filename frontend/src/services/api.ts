@@ -33,6 +33,70 @@ export interface AuditListResponse {
   page_size: number;
 }
 
+export type AccessRuleType = 'keyword' | 'ip' | 'cidr';
+
+export interface AccessControlRule {
+  id: string;
+  enabled: boolean;
+  type: AccessRuleType;
+  value: string;
+  remark?: string;
+}
+
+export interface AccessControlConfig {
+  version: number;
+  revision: number;
+  enabled: boolean;
+  trusted_proxies: string[];
+  panel_blacklist: AccessControlRule[];
+  panel_whitelist: AccessControlRule[];
+}
+
+export interface ClientIPDiagnostic {
+  peer_ip: string;
+  client_ip: string;
+  source: 'remote_addr' | 'x_forwarded_for' | 'x_real_ip' | string;
+  x_forwarded_for?: string;
+  x_real_ip?: string;
+  peer_trusted: boolean;
+  matched_trusted_proxy?: string;
+}
+
+export interface AccessDecision {
+  allowed: boolean;
+  reason: string;
+  region?: string;
+  matched_rule?: AccessControlRule;
+}
+
+export interface AccessControlStateResponse {
+  config: AccessControlConfig;
+  recovery_mode: boolean;
+  load_error?: string;
+  geoip_available: boolean;
+  current_connection: ClientIPDiagnostic;
+  current_decision: AccessDecision;
+}
+
+export interface AccessControlPreviewResponse {
+  config: AccessControlConfig;
+  current_connection: ClientIPDiagnostic;
+  current_decision: AccessDecision;
+  test_decision?: AccessDecision;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+  code: string;
+
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export interface WorkshopDownloadItem {
   publishedfileid: string;
   title: string;
@@ -1066,6 +1130,20 @@ class ApiService {
     }
   }
 
+  private async throwDetailedError(response: Response): Promise<never> {
+    const text = await response.text();
+    let code = 'request_failed';
+    let errorMessage = text || `请求失败（HTTP ${response.status}）`;
+    try {
+      const data = JSON.parse(text);
+      code = typeof data.error === 'string' ? data.error : code;
+      errorMessage = typeof data.message === 'string' ? data.message : errorMessage;
+    } catch {
+      // Keep the plain-text response.
+    }
+    throw new ApiRequestError(response.status, code, errorMessage);
+  }
+
   async addDownloadTask(url: string, filename?: string, referer?: string) {
     const fd = new FormData();
     fd.append('url', url);
@@ -1174,6 +1252,45 @@ class ApiService {
   async getAuditLogs(params: AuditListParams): Promise<AuditListResponse> {
     const response = await this.postJson('/audit/list', params);
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getAccessControlConfig(): Promise<AccessControlStateResponse> {
+    const response = await this.post('/access-control/config');
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async previewAccessControl(data: {
+    section: 'panel_rules' | 'trusted_proxies';
+    enabled?: boolean;
+    panel_blacklist?: AccessControlRule[];
+    panel_whitelist?: AccessControlRule[];
+    trusted_proxies?: string[];
+    test_ip?: string;
+  }): Promise<AccessControlPreviewResponse> {
+    const response = await this.postJson('/access-control/preview', data);
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async updatePanelAccessRules(data: {
+    expected_revision: number;
+    enabled: boolean;
+    panel_blacklist: AccessControlRule[];
+    panel_whitelist: AccessControlRule[];
+  }): Promise<AccessControlStateResponse> {
+    const response = await this.postJson('/access-control/panel-rules/update', data);
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async updateAccessControlTrustedProxies(data: {
+    expected_revision: number;
+    trusted_proxies: string[];
+  }): Promise<AccessControlStateResponse> {
+    const response = await this.postJson('/access-control/trusted-proxies/update', data);
+    if (!response.ok) return this.throwDetailedError(response);
     return response.json();
   }
 

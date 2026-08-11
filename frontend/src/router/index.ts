@@ -15,6 +15,7 @@ const ServerConfig = () => import('../views/ServerConfig.vue');
 const Backup = () => import('../views/Backup.vue');
 const Logs = () => import('../views/Logs.vue');
 const Audit = () => import('../views/Audit.vue');
+const AccessControl = () => import('../views/AccessControl.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -94,6 +95,12 @@ const router = createRouter({
           path: 'audit',
           name: 'Audit',
           component: Audit,
+          meta: { requiresAdmin: true },
+        },
+        {
+          path: 'access-control',
+          name: 'AccessControl',
+          component: AccessControl,
           meta: { requiresAdmin: true },
         },
       ],

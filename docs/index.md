@@ -21,7 +21,7 @@ features:
   - title: 内置整合资源
     details: 镜像包含 SourceMod、Metamod 与常用插件资源，适合快速开服和后续扩展。
   - title: 运维友好
-    details: 支持备份迁移、插件导出、地图资源精简、授权码访问和 GeoIP 白名单。
+    details: 支持备份迁移、插件导出、地图资源精简、授权码访问、面板黑白名单和可信代理。
 ---
 
 ## 预览截图
