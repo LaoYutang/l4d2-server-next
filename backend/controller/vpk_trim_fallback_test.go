@@ -19,6 +19,7 @@ func TestFinalizeVpkFileFallsBackToOriginalWhenTrimUnsupported(t *testing.T) {
 	oldMapListFilePath := consts.MapListFilePath
 	oldManagerDataPath := consts.ManagerDataPath
 	oldManagerConfigPath := consts.ManagerConfigPath
+	oldMapVPKInspectionsPath := consts.MapVPKInspectionsPath
 
 	root := t.TempDir()
 	addonsPath := filepath.Join(root, "addons")
@@ -30,6 +31,7 @@ func TestFinalizeVpkFileFallsBackToOriginalWhenTrimUnsupported(t *testing.T) {
 	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
 	consts.ManagerDataPath = filepath.Join(root, "data")
 	consts.ManagerConfigPath = filepath.Join(consts.ManagerDataPath, "manager_config.json")
+	consts.MapVPKInspectionsPath = filepath.Join(consts.ManagerDataPath, "map_vpk_inspections.json")
 
 	if err := logic.SetVPKTrimEnable(true); err != nil {
 		t.Fatalf("enable vpk trim: %v", err)
@@ -40,6 +42,7 @@ func TestFinalizeVpkFileFallsBackToOriginalWhenTrimUnsupported(t *testing.T) {
 		consts.MapListFilePath = oldMapListFilePath
 		consts.ManagerDataPath = oldManagerDataPath
 		consts.ManagerConfigPath = oldManagerConfigPath
+		consts.MapVPKInspectionsPath = oldMapVPKInspectionsPath
 	})
 
 	sourcePath := filepath.Join(root, "incoming.vpk")

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/logic"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -95,6 +96,9 @@ func TrimMap(c *gin.Context) {
 	if err := replaceMapWithTrimmedVPK(mapName, sourcePath, trimmedPath); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "替换精简VPK失败: %v", err)
 		return
+	}
+	if err := logic.InspectAndStoreMapVPK(mapName, sourcePath); err != nil {
+		log.Printf("重新检测精简后的地图 VPK 失败（%s）: %v", mapName, err)
 	}
 
 	savedSize := originalSize - trimmedSize

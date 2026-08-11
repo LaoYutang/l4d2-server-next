@@ -17,6 +17,7 @@ var PlayerStatsDBPath string
 var AuditDBPath string
 var ManagerConfigPath string
 var AccessControlConfigPath string
+var MapVPKInspectionsPath string
 var Version = "Dev"
 
 func init() {
@@ -30,6 +31,7 @@ func init() {
 	AuditDBPath = filepath.Join(ManagerDataPath, "audit.db")
 	ManagerConfigPath = filepath.Join(ManagerDataPath, "manager_config.json")
 	AccessControlConfigPath = filepath.Join(ManagerDataPath, "access_control.json")
+	MapVPKInspectionsPath = filepath.Join(ManagerDataPath, "map_vpk_inspections.json")
 
 	if err := EnsureManagerDataPath(); err != nil {
 		log.Printf("failed to create manager data directory %s: %v", ManagerDataPath, err)

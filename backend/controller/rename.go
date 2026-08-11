@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -92,6 +94,9 @@ func RenameMap(c *gin.Context) {
 		_ = os.Rename(newPath, oldPath)
 		FailWithError(c, http.StatusInternalServerError, "写入地图记录失败: %v", err)
 		return
+	}
+	if err := logic.RenameMapVPKInspection(oldName, newName); err != nil {
+		log.Printf("更新地图 VPK 检测记录名称失败（%s -> %s）: %v", oldName, newName, err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"name": newName, "message": fmt.Sprintf("地图已重命名为 %s", newName)})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -194,8 +195,14 @@ func TestUploadMergeAcceptsValidUploadId(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q, want 200", w.Code, w.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(addonsPath, "map.vpk")); err != nil {
+	mapPath := filepath.Join(addonsPath, "map.vpk")
+	mapInfo, err := os.Stat(mapPath)
+	if err != nil {
 		t.Fatalf("merged map missing: %v", err)
+	}
+	inspection := logic.GetMapVPKInspection("map.vpk", mapInfo)
+	if inspection.Dictionary.Status != logic.DictionaryStatusUnreadable {
+		t.Fatalf("final map inspection status = %q, want unreadable", inspection.Dictionary.Status)
 	}
 	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
 		t.Fatalf("upload temp directory still exists: %v", err)
@@ -207,6 +214,7 @@ func setupChunkUploadTestPaths(t *testing.T) (string, string) {
 
 	oldAddonsBasePath := consts.AddonsBasePath
 	oldMapListFilePath := consts.MapListFilePath
+	oldMapVPKInspectionsPath := consts.MapVPKInspectionsPath
 	rootDir := t.TempDir()
 	addonsPath := filepath.Join(rootDir, "addons")
 	if err := os.MkdirAll(addonsPath, 0755); err != nil {
@@ -214,12 +222,14 @@ func setupChunkUploadTestPaths(t *testing.T) (string, string) {
 	}
 	consts.AddonsBasePath = addonsPath
 	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
+	consts.MapVPKInspectionsPath = filepath.Join(rootDir, "data", "map_vpk_inspections.json")
 	if err := os.WriteFile(consts.MapListFilePath, nil, 0644); err != nil {
 		t.Fatalf("create maplist: %v", err)
 	}
 	t.Cleanup(func() {
 		consts.AddonsBasePath = oldAddonsBasePath
 		consts.MapListFilePath = oldMapListFilePath
+		consts.MapVPKInspectionsPath = oldMapVPKInspectionsPath
 	})
 	return rootDir, addonsPath
 }

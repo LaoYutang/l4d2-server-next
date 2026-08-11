@@ -3,6 +3,7 @@ package vpk
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -60,6 +61,22 @@ func (f *File) Open(o *Opener) (io.ReadCloser, error) {
 	}, nil
 }
 
+// OpenReaderAt returns a random-access reader for a file without calculating
+// its checksum. The Opener owns the underlying file handles and must remain
+// open while the returned reader is in use.
+func (f *File) OpenReaderAt(o *Opener) io.ReaderAt {
+	return &fileReaderAt{file: f, opener: o}
+}
+
+type fileReaderAt struct {
+	file   *File
+	opener *Opener
+}
+
+func (r *fileReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	return readFileAt(r.file, r.opener, p, off)
+}
+
 type fileReader struct {
 	io.Reader
 	crc    hash.Hash32
@@ -68,44 +85,67 @@ type fileReader struct {
 }
 
 func (r *fileReader) ReadAt(p []byte, off int64) (n int, err error) {
-	if off < int64(len(r.file.Metadata)) {
-		n = copy(p, r.file.Metadata[off:])
-		off -= int64(n)
-		p = p[n:]
-	}
+	return readFileAt(r.file, r.opener, p, off)
+}
 
+func readFileAt(file *File, opener *Opener, p []byte, off int64) (n int, err error) {
+	if off < 0 {
+		return 0, fmt.Errorf("vpk: negative file offset %d", off)
+	}
 	if len(p) == 0 {
-		return
+		return 0, nil
+	}
+	if off >= int64(file.Size()) {
+		return 0, io.EOF
 	}
 
-	for _, c := range r.file.DataLocation {
-		if off >= int64(c.EntryLength) {
-			off -= int64(c.EntryLength)
+	metadataSize := int64(len(file.Metadata))
+	if off < metadataSize {
+		n1 := copy(p, file.Metadata[off:])
+		n += n1
+		p = p[n1:]
+		off += int64(n1)
+		if len(p) == 0 {
+			return n, nil
+		}
+	}
+
+	dataOffset := off - metadataSize
+	for _, chunk := range file.DataLocation {
+		chunkLength := int64(chunk.EntryLength)
+		if dataOffset >= chunkLength {
+			dataOffset -= chunkLength
 			continue
 		}
 
-		offset := int64(c.EntryOffset) + off
-		if c.ArchiveIndex == selfArchive {
-			offset += int64(r.file.fileOffset)
+		archiveOffset := int64(chunk.EntryOffset) + dataOffset
+		if chunk.ArchiveIndex == selfArchive {
+			archiveOffset += int64(file.fileOffset)
 		}
 
-		len1 := int(c.EntryLength) - int(off)
-		if len1 > len(p) {
-			len1 = len(p)
+		readLength := int(chunkLength - dataOffset)
+		if readLength > len(p) {
+			readLength = len(p)
 		}
 
-		f, err := r.opener.Archive(int(c.ArchiveIndex))
-		if err != nil {
-			return n, err
+		archive, openErr := opener.Archive(int(chunk.ArchiveIndex))
+		if openErr != nil {
+			return n, openErr
 		}
 
-		n1, err := f.ReadAt(p[:len1], offset)
+		n1, readErr := archive.ReadAt(p[:readLength], archiveOffset)
 		n += n1
-		p = p[len1:]
-		off += int64(len1)
-		if err != nil || len(p) == 0 {
-			return n, err
+		p = p[n1:]
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return n, readErr
 		}
+		if n1 != readLength {
+			return n, io.EOF
+		}
+		if len(p) == 0 {
+			return n, nil
+		}
+		dataOffset = 0
 	}
 
 	return n, io.EOF

@@ -3,6 +3,7 @@ package controller
 import (
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/logic"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -54,6 +55,9 @@ func Remove(c *gin.Context) {
 	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "删除时写入文件失败: %v", err)
 		return
+	}
+	if err := logic.DeleteMapVPKInspection(mapName); err != nil {
+		log.Printf("删除地图 VPK 检测记录失败（%s）: %v", mapName, err)
 	}
 
 	c.String(http.StatusOK, "删除成功！")

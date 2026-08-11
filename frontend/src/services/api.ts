@@ -172,11 +172,54 @@ export interface MapMissionDetail {
   campaigns: MapMissionCampaign[];
 }
 
+export type MapDictionaryInspectionStatus =
+  | 'present'
+  | 'missing'
+  | 'unreadable'
+  | 'not_applicable'
+  | 'not_checked';
+
+export interface MapDictionaryChapterInspection {
+  bsp_path: string;
+  chapter_code: string;
+  chapter_title?: string;
+  campaign_title?: string;
+  status: 'present' | 'missing' | 'unreadable';
+  message?: string;
+}
+
+export interface MapVPKInspection {
+  checked_at?: string;
+  dictionary: {
+    status: MapDictionaryInspectionStatus;
+    chapters: MapDictionaryChapterInspection[];
+  };
+  global_scripts: {
+    status: 'clean' | 'detected' | 'unreadable' | 'not_checked';
+    files: string[];
+  };
+}
+
+export interface MapGlobalScriptContent {
+  path: string;
+  size: number;
+  encoding: 'utf-8' | 'gbk' | 'unknown';
+  content?: string;
+  truncated: boolean;
+  error?: string;
+}
+
+export interface MapGlobalScriptsResponse {
+  map: string;
+  scripts: MapGlobalScriptContent[];
+}
+
 export interface MapSummaryItem {
   title: string;
   campaigns: string[];
   chapter_count: number;
   error: string;
+  inspection?: MapVPKInspection;
 }
 
 export interface MapSummaryResponse {
@@ -722,6 +765,12 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
     const data: MapSummaryResponse = await response.json();
     return data.items || {};
+  }
+
+  async getMapGlobalScripts(mapName: string): Promise<MapGlobalScriptsResponse> {
+    const response = await this.postJson('/maps/inspection/global-scripts', { map: mapName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async trimMap(mapName: string): Promise<MapTrimResult> {

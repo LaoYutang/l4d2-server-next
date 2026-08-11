@@ -7,6 +7,7 @@ import (
 	"io"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/logic"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -146,7 +147,14 @@ func finalizeVpkFile(sourcePath, cleanName string) error {
 		}
 	}()
 
+	if err := logic.InspectAndStoreMapVPK(cleanName, destPath); err != nil {
+		log.Printf("检测地图 VPK 失败（%s）: %v", cleanName, err)
+	}
+
 	if err := recordMap(cleanName); err != nil {
+		if cleanupErr := logic.DeleteMapVPKInspection(cleanName); cleanupErr != nil {
+			log.Printf("清理未落盘地图的 VPK 检测记录失败（%s）: %v", cleanName, cleanupErr)
+		}
 		return fmt.Errorf("记录地图失败: %w", err)
 	}
 	recorded = true

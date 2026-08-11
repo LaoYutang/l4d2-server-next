@@ -4,6 +4,8 @@
   import {
     api,
     type DownloadLinkParseResult,
+    type MapDictionaryChapterInspection,
+    type MapGlobalScriptContent,
     type MapMissionCampaign,
     type MapSummaryItem,
     type ParsedDownloadItem,
@@ -47,6 +49,13 @@
   const detailLoading = ref(false);
   const detailMapName = ref('');
   const detailCampaigns = ref<MapMissionCampaign[]>([]);
+  const globalScriptsVisible = ref(false);
+  const globalScriptsLoading = ref(false);
+  const globalScriptsError = ref('');
+  const globalScriptsMapName = ref('');
+  const globalScripts = ref<MapGlobalScriptContent[]>([]);
+  const globalScriptActiveKeys = ref<string[]>([]);
+  let globalScriptRequestId = 0;
   const hotReloading = ref(false);
   const hotReloadConfigVisible = ref(false);
   const hotReloadConfigLoading = ref(false);
@@ -348,6 +357,7 @@
             message.info(result.message || '当前地图无需精简');
           }
           loadMaps();
+          loadMapSummaries([name]);
         } catch (e: any) {
           message.error('精简失败: ' + e.message);
         } finally {
@@ -881,6 +891,94 @@
   const getMapSummaryError = (name: string) => mapSummaries.value[name]?.error || '';
   const isMapSummaryLoading = (name: string) => !!mapSummaryLoading.value[name];
 
+  const getMapInspection = (name: string) => mapSummaries.value[name]?.inspection;
+
+  const getMissingDictionaryChapters = (name: string) =>
+    (getMapInspection(name)?.dictionary.chapters || []).filter(
+      (chapter) => chapter.status === 'missing'
+    );
+
+  const getUnreadableDictionaryChapters = (name: string) =>
+    (getMapInspection(name)?.dictionary.chapters || []).filter(
+      (chapter) => chapter.status === 'unreadable'
+    );
+
+  const hasDictionaryInspectionError = (name: string) =>
+    getMapInspection(name)?.dictionary.status === 'unreadable' ||
+    getUnreadableDictionaryChapters(name).length > 0;
+
+  const getGlobalScriptCount = (name: string) => {
+    const globalScriptsInspection = getMapInspection(name)?.global_scripts;
+    if (globalScriptsInspection?.status !== 'detected') return 0;
+    return globalScriptsInspection.files?.length || 0;
+  };
+
+  const getChapterDisplayName = (chapter: MapDictionaryChapterInspection) => {
+    const campaignTitle = chapter.campaign_title?.trim();
+    const chapterTitle = chapter.chapter_title?.trim();
+    if (campaignTitle && chapterTitle) return `${campaignTitle} / ${chapterTitle}`;
+    if (chapterTitle) return chapterTitle;
+    if (campaignTitle) return campaignTitle;
+    return chapter.chapter_code?.trim() || chapter.bsp_path?.trim() || '未知章节';
+  };
+
+  const getChapterDisplayCode = (chapter: MapDictionaryChapterInspection) => {
+    if (!chapter.campaign_title?.trim() && !chapter.chapter_title?.trim()) return '';
+    return chapter.chapter_code?.trim() || chapter.bsp_path?.trim() || '';
+  };
+
+  const activatePopoverTag = (event: KeyboardEvent) => {
+    (event.currentTarget as HTMLElement | null)?.click();
+  };
+
+  const formatScriptSize = (size: number) => {
+    if (!Number.isFinite(size) || size < 0) return '未知大小';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+  };
+
+  const getRequestErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim()) return error.message.trim();
+    return fallback;
+  };
+
+  const openGlobalScripts = async (mapName: string) => {
+    const requestId = ++globalScriptRequestId;
+    globalScriptsMapName.value = mapName;
+    globalScripts.value = [];
+    globalScriptActiveKeys.value = [];
+    globalScriptsError.value = '';
+    globalScriptsLoading.value = true;
+    globalScriptsVisible.value = true;
+
+    try {
+      const result = await api.getMapGlobalScripts(mapName);
+      if (requestId !== globalScriptRequestId) return;
+      globalScripts.value = result.scripts || [];
+      const firstScript = globalScripts.value[0];
+      if (firstScript) {
+        globalScriptActiveKeys.value = [firstScript.path];
+      }
+    } catch (error) {
+      if (requestId !== globalScriptRequestId) return;
+      globalScriptsError.value = getRequestErrorMessage(error, '读取全局脚本失败');
+    } finally {
+      if (requestId === globalScriptRequestId) {
+        globalScriptsLoading.value = false;
+      }
+    }
+  };
+
+  const resetGlobalScriptsModal = () => {
+    globalScriptRequestId++;
+    globalScriptsLoading.value = false;
+    globalScriptsError.value = '';
+    globalScriptsMapName.value = '';
+    globalScripts.value = [];
+    globalScriptActiveKeys.value = [];
+  };
+
   watch(searchQuery, () => {
     paginationConfig.current = 1;
     loadSearchMapSummaries();
@@ -991,10 +1089,7 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="flex items-start gap-2 min-w-[180px]">
-                  <file-text-outlined
-                    class="mt-0.5 text-lg text-gray-400 dark:text-gray-500 shrink-0"
-                  />
+                <div class="min-w-[180px]">
                   <div class="min-w-0 flex flex-col gap-0.5">
                     <span class="font-medium break-all text-sm dark:text-gray-200">{{
                       record.name
@@ -1022,6 +1117,103 @@
                     >
                       未识别
                     </span>
+                    <div
+                      v-if="!isMapSummaryLoading(record.name)"
+                      class="mt-1 flex max-w-full flex-wrap gap-1"
+                    >
+                      <a-popover
+                        v-if="getMissingDictionaryChapters(record.name).length > 0"
+                        title="缺失字典的章节"
+                        trigger="click"
+                        placement="bottomLeft"
+                        overlayClassName="map-inspection-popover"
+                      >
+                        <template #content>
+                          <div class="map-inspection-list" role="list">
+                            <div
+                              v-for="chapter in getMissingDictionaryChapters(record.name)"
+                              :key="chapter.bsp_path"
+                              class="map-inspection-item"
+                              role="listitem"
+                            >
+                              <div class="map-inspection-primary">
+                                {{ getChapterDisplayName(chapter) }}
+                              </div>
+                              <div
+                                v-if="getChapterDisplayCode(chapter)"
+                                class="map-inspection-secondary"
+                              >
+                                {{ getChapterDisplayCode(chapter) }}
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                        <a-tag
+                          color="red"
+                          class="clickable-risk-tag"
+                          role="button"
+                          tabindex="0"
+                          @keydown.enter.prevent.stop="activatePopoverTag"
+                          @keydown.space.prevent.stop="activatePopoverTag"
+                        >
+                          字典缺失 {{ getMissingDictionaryChapters(record.name).length }}
+                        </a-tag>
+                      </a-popover>
+
+                      <a-popover
+                        v-if="hasDictionaryInspectionError(record.name)"
+                        title="字典检测异常"
+                        trigger="click"
+                        placement="bottomLeft"
+                        overlayClassName="map-inspection-popover"
+                      >
+                        <template #content>
+                          <div
+                            v-if="getUnreadableDictionaryChapters(record.name).length > 0"
+                            class="map-inspection-list"
+                            role="list"
+                          >
+                            <div
+                              v-for="chapter in getUnreadableDictionaryChapters(record.name)"
+                              :key="chapter.bsp_path"
+                              class="map-inspection-item"
+                              role="listitem"
+                            >
+                              <div class="map-inspection-primary">{{ chapter.bsp_path }}</div>
+                              <div class="map-inspection-secondary">
+                                {{ chapter.message || '无法解析 BSP' }}
+                              </div>
+                            </div>
+                          </div>
+                          <div v-else class="map-inspection-empty">
+                            无法解析 VPK 目录或 BSP 内容。
+                          </div>
+                        </template>
+                        <a-tag
+                          color="orange"
+                          class="clickable-risk-tag"
+                          role="button"
+                          tabindex="0"
+                          @keydown.enter.prevent.stop="activatePopoverTag"
+                          @keydown.space.prevent.stop="activatePopoverTag"
+                        >
+                          字典检测异常
+                        </a-tag>
+                      </a-popover>
+
+                      <a-tag
+                        v-if="getGlobalScriptCount(record.name) > 0"
+                        color="orange"
+                        class="clickable-risk-tag"
+                        role="button"
+                        tabindex="0"
+                        @click="openGlobalScripts(record.name)"
+                        @keydown.enter.prevent.stop="openGlobalScripts(record.name)"
+                        @keydown.space.prevent.stop="openGlobalScripts(record.name)"
+                      >
+                        存在全局脚本 {{ getGlobalScriptCount(record.name) }}
+                      </a-tag>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -1220,6 +1412,62 @@
               </a-table>
             </div>
           </div>
+        </a-modal>
+
+        <a-modal
+          v-model:open="globalScriptsVisible"
+          :title="`全局脚本 - ${globalScriptsMapName}`"
+          :footer="null"
+          width="900px"
+          wrap-class-name="global-scripts-modal"
+          @afterClose="resetGlobalScriptsModal"
+        >
+          <div v-if="globalScriptsLoading" class="py-12 text-center">
+            <a-spin tip="正在读取脚本内容..." />
+          </div>
+          <a-alert
+            v-else-if="globalScriptsError"
+            type="error"
+            show-icon
+            :message="globalScriptsError"
+          />
+          <a-empty
+            v-else-if="globalScripts.length === 0"
+            description="未读取到全局脚本"
+          />
+          <a-collapse v-else v-model:activeKey="globalScriptActiveKeys" class="script-collapse">
+            <a-collapse-panel
+              v-for="script in globalScripts"
+              :key="script.path"
+              :force-render="false"
+            >
+              <template #header>
+                <div class="script-panel-header">
+                  <span class="script-panel-path" :title="script.path">{{ script.path }}</span>
+                  <span class="script-panel-meta">
+                    {{ formatScriptSize(script.size) }} · {{ script.encoding }}
+                  </span>
+                </div>
+              </template>
+              <div class="script-panel-body">
+                <a-alert
+                  v-if="script.error"
+                  type="error"
+                  show-icon
+                  :message="script.error"
+                  class="mb-3"
+                />
+                <a-alert
+                  v-if="script.truncated"
+                  type="warning"
+                  show-icon
+                  message="脚本超过 512 KiB，仅显示前 512 KiB。"
+                  class="mb-3"
+                />
+                <pre v-if="!script.error" class="script-content">{{ script.content || '' }}</pre>
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
         </a-modal>
       </a-tab-pane>
 
@@ -1621,6 +1869,150 @@
 </template>
 
 <style scoped>
+  :deep(.clickable-risk-tag) {
+    margin-inline-end: 0;
+    cursor: pointer;
+    font-size: 12px;
+    user-select: none;
+  }
+
+  :deep(.clickable-risk-tag:focus-visible) {
+    outline: 2px solid #1677ff;
+    outline-offset: 2px;
+  }
+
+  :global(.map-inspection-popover) {
+    max-width: min(420px, calc(100vw - 24px));
+  }
+
+  :global(.map-inspection-popover .ant-popover-inner) {
+    max-width: min(420px, calc(100vw - 24px));
+  }
+
+  :global(.map-inspection-list) {
+    display: flex;
+    max-height: min(420px, 55vh);
+    min-width: min(300px, calc(100vw - 64px));
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+  }
+
+  :global(.map-inspection-item) {
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 8px;
+    overflow-wrap: anywhere;
+  }
+
+  :global(.map-inspection-item:last-child) {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  :global(.map-inspection-primary) {
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  :global(.map-inspection-secondary),
+  :global(.map-inspection-empty) {
+    margin-top: 2px;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  :global(.dark .map-inspection-item) {
+    border-bottom-color: #334155;
+  }
+
+  :global(.dark .map-inspection-primary) {
+    color: #e2e8f0;
+  }
+
+  :global(.dark .map-inspection-secondary),
+  :global(.dark .map-inspection-empty) {
+    color: #94a3b8;
+  }
+
+  :global(.global-scripts-modal .ant-modal) {
+    max-width: calc(100vw - 24px);
+  }
+
+  :global(.global-scripts-modal .ant-modal-body) {
+    max-height: calc(100vh - 170px);
+    overflow-y: auto;
+  }
+
+  .script-panel-header {
+    display: flex;
+    min-width: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    padding-right: 8px;
+  }
+
+  .script-panel-path {
+    min-width: 0;
+    flex: 1 1 460px;
+    color: #1f2937;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .script-panel-meta {
+    flex: 0 0 auto;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .script-content {
+    max-height: 52vh;
+    margin: 0;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #f8fafc;
+    padding: 12px;
+    color: #1f2937;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    tab-size: 4;
+    white-space: pre;
+  }
+
+  :global(.global-scripts-modal .script-collapse .ant-collapse-content-box) {
+    padding: 12px;
+  }
+
+  :global(.dark .global-scripts-modal .script-panel-path) {
+    color: #e2e8f0;
+  }
+
+  :global(.dark .global-scripts-modal .script-panel-meta) {
+    color: #94a3b8;
+  }
+
+  :global(.dark .global-scripts-modal .script-content) {
+    border-color: #334155;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+
+  :global(.dark .global-scripts-modal .ant-collapse),
+  :global(.dark .global-scripts-modal .ant-collapse-item) {
+    border-color: #334155;
+  }
+
   :global(.map-detail-modal .ant-modal-body) {
     padding-top: 14px;
   }
@@ -1639,6 +2031,36 @@
   }
 
   @media (max-width: 640px) {
+    :global(.map-inspection-list) {
+      min-width: 0;
+      width: calc(100vw - 64px);
+    }
+
+    :global(.global-scripts-modal .ant-modal) {
+      top: 12px;
+      margin: 0 auto;
+      padding-bottom: 12px;
+    }
+
+    :global(.global-scripts-modal .ant-modal-body) {
+      max-height: calc(100vh - 145px);
+    }
+
+    .script-panel-header {
+      gap: 3px;
+    }
+
+    .script-panel-path,
+    .script-panel-meta {
+      flex-basis: 100%;
+    }
+
+    .script-content {
+      max-height: 45vh;
+      padding: 10px;
+      font-size: 11px;
+    }
+
     :global(.download-config-modal .ant-modal) {
       top: 12px;
       margin: 0 auto;
@@ -1688,47 +2110,47 @@
     border-radius: 5px;
   }
 
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead > tr > th) {
+  :global(.dark .map-detail-chapter-table .ant-table-thead > tr > th) {
     color: #cbd5e1;
     border-bottom: 0 !important;
   }
 
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead),
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-thead > tr) {
+  :global(.dark .map-detail-chapter-table .ant-table-thead),
+  :global(.dark .map-detail-chapter-table .ant-table-thead > tr) {
     border-bottom: 0 !important;
   }
 
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-tbody > tr > td) {
+  :global(.dark .map-detail-chapter-table .ant-table-tbody > tr > td) {
     border-bottom: 1px solid #1e293b !important;
   }
 
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-header),
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-container),
-  :global(.dark) :deep(.map-detail-chapter-table .ant-table-content),
-  :global(.dark) :deep(.map-detail-chapter-table table) {
+  :global(.dark .map-detail-chapter-table .ant-table-header),
+  :global(.dark .map-detail-chapter-table .ant-table-container),
+  :global(.dark .map-detail-chapter-table .ant-table-content),
+  :global(.dark .map-detail-chapter-table table) {
     border-color: #334155 !important;
   }
 
   /* Dark mode overrides for Upload Dragger */
-  :global(.dark) :deep(.ant-upload.ant-upload-drag) {
+  :global(.dark .ant-upload.ant-upload-drag) {
     background-color: #1f2937 !important;
     border-color: #374151 !important;
   }
 
-  :global(.dark) :deep(.ant-upload.ant-upload-drag .ant-upload-text) {
+  :global(.dark .ant-upload.ant-upload-drag .ant-upload-text) {
     color: #e5e7eb !important;
   }
 
-  :global(.dark) :deep(.ant-upload.ant-upload-drag .ant-upload-hint) {
+  :global(.dark .ant-upload.ant-upload-drag .ant-upload-hint) {
     color: #9ca3af !important;
   }
 
-  :global(.dark) :deep(.ant-upload.ant-upload-drag:hover) {
+  :global(.dark .ant-upload.ant-upload-drag:hover) {
     border-color: #3b82f6 !important;
   }
 
   /* Target the icon specifically */
-  :global(.dark) :deep(.ant-upload.ant-upload-drag .anticon) {
+  :global(.dark .ant-upload.ant-upload-drag .anticon) {
     color: #3b82f6 !important;
   }
 </style>
