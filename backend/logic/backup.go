@@ -621,7 +621,7 @@ func captureServerConfig() *BackupServerConfig {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		if strings.Contains(line, "// [L4D2-MANAGER-CUSTOM]") {
+		if strings.Contains(line, ServerCustomConfigMarker) {
 			inCustomBlock = true
 			continue
 		}
@@ -671,6 +671,9 @@ func restoreServerConfig(cfg *BackupServerConfig) {
 			applyServerConfigToFile(fpath, cfg)
 		}
 	}
+	if err := EnsureGameBanPersistenceConfig(); err != nil {
+		fmt.Printf("Warning: failed to restore game ban persistence config: %v\n", err)
+	}
 }
 
 func applyServerConfigToFile(configPath string, cfg *BackupServerConfig) error {
@@ -702,7 +705,7 @@ func applyServerConfigToFile(configPath string, cfg *BackupServerConfig) error {
 	var newLines []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.Contains(line, "// [L4D2-MANAGER-CUSTOM]") {
+		if strings.Contains(line, ServerCustomConfigMarker) {
 			break
 		}
 		if strings.HasPrefix(trimmed, "sv_tags") {
@@ -722,7 +725,7 @@ func applyServerConfigToFile(configPath string, cfg *BackupServerConfig) error {
 	}
 
 	newLines = append(newLines, "")
-	newLines = append(newLines, "// [L4D2-MANAGER-CUSTOM]")
+	newLines = append(newLines, ServerCustomConfigMarker)
 
 	if cfg.Hidden {
 		originalTags = append(originalTags, "hidden")

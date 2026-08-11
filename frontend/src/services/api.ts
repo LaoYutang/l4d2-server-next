@@ -85,6 +85,23 @@ export interface AccessControlPreviewResponse {
   test_decision?: AccessDecision;
 }
 
+export type GameBanKind = 'steam_id' | 'ip';
+
+export interface GameBanEntry {
+  kind: GameBanKind;
+  value: string;
+  steam_id64?: string;
+  permanent: boolean;
+  remaining_minutes?: number;
+}
+
+export interface GameBanListResponse {
+  steam_bans: GameBanEntry[];
+  ip_bans: GameBanEntry[];
+  persistence_ready: boolean;
+  warnings: string[];
+}
+
 export class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -1290,6 +1307,31 @@ class ApiService {
     trusted_proxies: string[];
   }): Promise<AccessControlStateResponse> {
     const response = await this.postJson('/access-control/trusted-proxies/update', data);
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async getGameBans(): Promise<GameBanListResponse> {
+    const response = await this.post('/access-control/game-bans/list');
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async addGameBan(data: {
+    kind: GameBanKind;
+    value: string;
+    duration_minutes: number;
+  }): Promise<GameBanListResponse> {
+    const response = await this.postJson('/access-control/game-bans/add', data);
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async removeGameBan(data: {
+    kind: GameBanKind;
+    value: string;
+  }): Promise<GameBanListResponse> {
+    const response = await this.postJson('/access-control/game-bans/remove', data);
     if (!response.ok) return this.throwDetailedError(response);
     return response.json();
   }

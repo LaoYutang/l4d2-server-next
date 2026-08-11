@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ type UpdateServerConfigRequest struct {
 	CustomConfig     []string `json:"custom_config"`
 }
 
-const CustomConfigMarker = "// [L4D2-MANAGER-CUSTOM]"
+const CustomConfigMarker = logic.ServerCustomConfigMarker
 
 func GetServerConfig(c *gin.Context) {
 	configPath := filepath.Join(consts.GamePath, "cfg", "server.cfg")

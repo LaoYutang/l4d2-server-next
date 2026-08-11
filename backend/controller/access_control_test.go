@@ -42,6 +42,9 @@ func accessControlControllerRouter(role string) *gin.Engine {
 	})
 	router.POST("/access-control/config", GetAccessControlConfig)
 	router.POST("/access-control/panel-rules/update", UpdatePanelAccessRules)
+	router.POST("/access-control/game-bans/list", ListGameBans)
+	router.POST("/access-control/game-bans/add", AddGameBan)
+	router.POST("/access-control/game-bans/remove", RemoveGameBan)
 	return router
 }
 

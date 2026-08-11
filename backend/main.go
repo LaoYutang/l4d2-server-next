@@ -7,6 +7,7 @@ import (
 	"l4d2-manager-next/logic"
 	"l4d2-manager-next/middlewares"
 	"l4d2-manager-next/utility"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -35,6 +36,9 @@ func main() {
 	go logic.CleanVPKTrimTemp()
 
 	logic.InitAccessControl()
+	if err := logic.EnsureGameBanPersistenceConfig(); err != nil {
+		log.Printf("game ban persistence configuration is not ready: %v", err)
+	}
 
 	router := gin.Default()
 	if err := router.SetTrustedProxies(nil); err != nil {
@@ -255,6 +259,9 @@ func main() {
 		accessControl.POST("/preview", controller.PreviewAccessControl)
 		accessControl.POST("/panel-rules/update", controller.UpdatePanelAccessRules)
 		accessControl.POST("/trusted-proxies/update", controller.UpdateAccessControlTrustedProxies)
+		accessControl.POST("/game-bans/list", controller.ListGameBans)
+		accessControl.POST("/game-bans/add", controller.AddGameBan)
+		accessControl.POST("/game-bans/remove", controller.RemoveGameBan)
 	}
 
 	// Static files fallback: serve from ./static for unmatched routes (SPA)

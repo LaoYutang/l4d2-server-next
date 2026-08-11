@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, onMounted, ref } from 'vue';
+  import { computed, nextTick, onMounted, ref, watch } from 'vue';
   import { message } from 'ant-design-vue';
   import {
     DeleteOutlined,
@@ -9,8 +9,10 @@
     SaveOutlined,
     SecurityScanOutlined,
     ExperimentOutlined,
+    StopOutlined,
   } from '@ant-design/icons-vue';
   import AccessRuleList from '../components/AccessRuleList.vue';
+  import GameBlacklistTab from '../components/GameBlacklistTab.vue';
   import {
     api,
     ApiRequestError,
@@ -21,6 +23,8 @@
   } from '../services/api';
 
   const activeTab = ref('panel-rules');
+  const tabsRef = ref<{ $el?: HTMLElement } | null>(null);
+  const gameBlacklistActivated = ref(false);
   const loading = ref(true);
   const savingRules = ref(false);
   const savingProxies = ref(false);
@@ -208,6 +212,16 @@
     return decision.allowed ? 'success' : decision.reason === 'geoip_unavailable' ? 'warning' : 'error';
   };
 
+  watch(activeTab, (tab) => {
+    if (tab === 'game-blacklist') {
+      gameBlacklistActivated.value = true;
+    }
+    nextTick(() => {
+      const activeElement = tabsRef.value?.$el?.querySelector<HTMLElement>('.ant-tabs-tab-active');
+      activeElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  });
+
   onMounted(loadConfig);
 </script>
 
@@ -243,7 +257,7 @@
 
     <a-spin :spinning="loading">
       <a-card :bordered="false" class="access-control-card shadow-lg dark:shadow-slate-950/40">
-        <a-tabs v-model:activeKey="activeTab" class="access-control-tabs">
+        <a-tabs ref="tabsRef" v-model:activeKey="activeTab" class="access-control-tabs">
           <a-tab-pane key="panel-rules">
             <template #tab>
               <span class="whitespace-nowrap"><SafetyCertificateOutlined /> 面板黑白名单</span>
@@ -399,6 +413,14 @@
               </div>
             </div>
           </a-tab-pane>
+
+          <a-tab-pane key="game-blacklist">
+            <template #tab>
+              <span class="whitespace-nowrap"><StopOutlined /> 游戏黑名单</span>
+            </template>
+
+            <GameBlacklistTab v-if="gameBlacklistActivated" />
+          </a-tab-pane>
         </a-tabs>
       </a-card>
     </a-spin>
@@ -418,6 +440,24 @@
   @media (max-width: 640px) {
     .access-control-card :deep(.ant-card-body) {
       padding: 16px;
+    }
+
+    .access-control-tabs :deep(.ant-tabs-nav-wrap) {
+      overflow-x: auto !important;
+      scrollbar-width: none;
+    }
+
+    .access-control-tabs :deep(.ant-tabs-nav-wrap::-webkit-scrollbar) {
+      display: none;
+    }
+
+    .access-control-tabs :deep(.ant-tabs-nav-list) {
+      width: max-content;
+      transform: none !important;
+    }
+
+    .access-control-tabs :deep(.ant-tabs-nav-operations) {
+      display: none !important;
     }
   }
 </style>

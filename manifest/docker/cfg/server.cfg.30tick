@@ -48,5 +48,9 @@ sm_weapon sniper_awp damage 425
 // Set grenade launcher clip size.
 sm_weapon grenade_launcher clipsize 3
 
+// [L4D2-MANAGER-GAME-BANS]
+exec banned_user.cfg
+exec banned_ip.cfg
+
 sv_tags hidden
 sm_cvar sv_allow_lobby_connect_only "0"
