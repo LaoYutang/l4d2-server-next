@@ -199,14 +199,28 @@
 
   const customRequest = async (options: any) => {
     const { file, onSuccess, onError, onProgress } = options;
-    delete uploadStates.value[file.name];
+    const previousState = uploadStates.value[file.name];
+
     // 取消同文件的上一次上传（如果有）
     const existingController = uploadControllers.value[file.name];
     if (existingController) {
       existingController.abort();
+      if (uploadControllers.value[file.name] === existingController) {
+        delete uploadControllers.value[file.name];
+      }
     }
+    if (previousState) {
+      delete uploadStates.value[file.name];
+      try {
+        await api.cancelUpload(previousState.uploadId);
+      } catch (e: any) {
+        message.warning(`清理 ${file.name} 的上一次上传失败，将由服务器定时清理: ${e.message}`);
+      }
+    }
+
     const controller = new AbortController();
     uploadControllers.value[file.name] = controller;
+    let currentUploadId = '';
 
     try {
       const result = await api.uploadMap(
@@ -216,11 +230,20 @@
           uploadPercents.value[file.name] = percent;
           onProgress({ percent });
         },
-        controller.signal
+        controller.signal,
+        (uploadId: string) => {
+          currentUploadId = uploadId;
+          uploadStates.value[file.name] = { uploadId };
+        }
       );
       delete uploadSpeeds.value[file.name];
-      delete uploadControllers.value[file.name];
+      if (uploadControllers.value[file.name] === controller) {
+        delete uploadControllers.value[file.name];
+      }
       if ('success' in result && result.success) {
+        if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
+          delete uploadStates.value[file.name];
+        }
         delete uploadPercents.value[file.name];
         message.success(`${file.name} 上传成功`);
         onSuccess('Ok');
@@ -235,12 +258,20 @@
       }
     } catch (e: any) {
       delete uploadSpeeds.value[file.name];
-      delete uploadControllers.value[file.name];
+      if (uploadControllers.value[file.name] === controller) {
+        delete uploadControllers.value[file.name];
+      }
       const currentPercent = uploadPercents.value[file.name] || file.percent || 0;
       if (e.message === '上传已取消') {
+        if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
+          delete uploadStates.value[file.name];
+        }
         onProgress({ percent: currentPercent });
         onError(e);
         return;
+      }
+      if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
+        delete uploadStates.value[file.name];
       }
       message.error(`上传 ${file.name} 失败: ${e.message}`);
       onProgress({ percent: currentPercent });
@@ -308,12 +339,15 @@
   const removeUploadFile = async (uid: string) => {
     const file = fileList.value.find((f: any) => f.uid === uid);
     if (!file) return;
+    const state = uploadStates.value[file.name];
 
     // 如果有正在进行的上传，先取消
     const controller = uploadControllers.value[file.name];
     if (controller) {
       controller.abort();
-      delete uploadControllers.value[file.name];
+      if (uploadControllers.value[file.name] === controller) {
+        delete uploadControllers.value[file.name];
+      }
     }
 
     // 清理本地状态
@@ -322,6 +356,14 @@
     delete uploadPercents.value[file.name];
 
     fileList.value = fileList.value.filter((f: any) => f.uid !== uid);
+
+    if (state) {
+      try {
+        await api.cancelUpload(state.uploadId);
+      } catch (e: any) {
+        message.warning(`清理 ${file.name} 的上传临时文件失败，将由服务器定时清理: ${e.message}`);
+      }
+    }
   };
 
   const deleteMap = async (name: string) => {

@@ -812,9 +812,12 @@ class ApiService {
 
       const xhr = new XMLHttpRequest();
       let isAbortedByUser = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = () => {
-        clearTimeout(timeoutId);
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
         if (signal) {
           signal.removeEventListener('abort', onAbort);
         }
@@ -835,7 +838,7 @@ class ApiService {
       }
 
       // 30 秒超时：只 abort，不直接 reject，由 abort 事件统一处理
-      const timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         xhr.abort();
       }, 30000);
 
@@ -956,7 +959,8 @@ class ApiService {
   async uploadMap(
     file: File,
     onProgress?: (data: { percent: number; speed: string }) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onInitialized?: (uploadId: string) => void
   ): Promise<{ success: true } | { success: false; uploadId: string; uploadedChunks: number[] }> {
     const chunkSize = 5 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
@@ -969,6 +973,19 @@ class ApiService {
     });
     if (!initResponse.ok) throw new Error(await initResponse.text());
     const { uploadId } = await initResponse.json();
+
+    // 初始化请求无法安全中止，否则客户端可能拿不到服务端已创建的 uploadId。
+    // 如果用户在初始化期间取消，拿到 uploadId 后立即清理服务端临时文件。
+    if (signal?.aborted) {
+      try {
+        await this.cancelUpload(uploadId);
+      } catch (e: any) {
+        throw new Error(`上传已取消，但清理临时文件失败: ${e.message}`);
+      }
+      throw new Error('上传已取消');
+    }
+
+    onInitialized?.(uploadId);
 
     // 2. upload all chunks
     const pendingIndices: number[] = [];
