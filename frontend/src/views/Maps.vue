@@ -416,6 +416,8 @@
   };
 
   const openMapDetail = async (name: string) => {
+    if (!canOpenMapDetail(name)) return;
+
     detailMapName.value = name;
     detailCampaigns.value = [];
     detailVisible.value = true;
@@ -930,6 +932,7 @@
 
   const getMapSummaryTitle = (name: string) => mapSummaries.value[name]?.title || '';
   const getMapSummaryChapterCount = (name: string) => mapSummaries.value[name]?.chapter_count || 0;
+  const canOpenMapDetail = (name: string) => getMapSummaryChapterCount(name) > 0;
   const getMapSummaryError = (name: string) => mapSummaries.value[name]?.error || '';
   const isMapSummaryLoading = (name: string) => !!mapSummaryLoading.value[name];
 
@@ -1269,10 +1272,10 @@
                   <a-button
                     size="small"
                     type="text"
-                    :disabled="record.size === 'unknown'"
+                    :disabled="record.size === 'unknown' || !canOpenMapDetail(record.name)"
                     @click="openMapDetail(record.name)"
                     class="!flex !items-center !justify-center"
-                    title="详情"
+                    :title="canOpenMapDetail(record.name) ? '详情' : '未识别到章节，详情不可用'"
                   >
                     <template #icon><file-text-outlined /></template>
                     <span class="hidden sm:inline">详情</span>
