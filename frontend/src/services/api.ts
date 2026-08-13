@@ -114,20 +114,6 @@ export class ApiRequestError extends Error {
   }
 }
 
-export interface WorkshopDownloadItem {
-  publishedfileid: string;
-  title: string;
-  filename: string;
-  file_size: string;
-  file_url: string;
-  preview_url: string;
-}
-
-export interface WorkshopParseResult {
-  source_id: string;
-  items: WorkshopDownloadItem[];
-}
-
 export interface ParsedDownloadItem {
   id: string;
   title: string;
@@ -429,15 +415,6 @@ class ApiService {
     this.handleResponseError(response.status);
 
     return response;
-  }
-
-  async validatePassword() {
-    const response = await fetch('/auth', {
-      method: 'POST',
-      headers: this.createAuthHeaders(),
-    });
-    if (response.ok) return { success: true };
-    return { success: false, message: await response.text() };
   }
 
   async generateTempAuthCode(expiredHours: number) {
@@ -1231,12 +1208,6 @@ class ApiService {
 
   async parseDownloadLink(url: string): Promise<DownloadLinkParseResult> {
     const response = await this.postJson('/download/link/parse', { url });
-    if (!response.ok) throw new Error(await response.text());
-    return response.json();
-  }
-
-  async parseWorkshopLink(url: string): Promise<WorkshopParseResult> {
-    const response = await this.postJson('/download/workshop/parse', { url });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
