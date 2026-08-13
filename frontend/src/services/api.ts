@@ -4,6 +4,57 @@ export interface LogStream {
   close: () => void;
 }
 
+export type SourceModLogCategory = 'L' | 'errors' | 'other';
+
+export interface SourceModLogFile {
+  name: string;
+  date: string;
+  size: number;
+  category: SourceModLogCategory;
+  modified_at: string;
+  cleanup_at: string;
+  deletable: boolean;
+  protected_reason?: string;
+  version: string;
+}
+
+export interface SourceModLogListResponse {
+  installed: boolean;
+  message?: string;
+  categories?: Record<SourceModLogCategory, SourceModLogFile[]>;
+}
+
+export interface SourceModLogCleanupFilter {
+  categories: SourceModLogCategory[];
+  retention_days: 0 | 7 | 30 | 90;
+}
+
+export interface SourceModLogCleanupPreview {
+  installed: boolean;
+  candidates: SourceModLogFile[];
+  protected: SourceModLogFile[];
+  count: number;
+  total_size: number;
+}
+
+export interface SourceModLogDeleteTarget {
+  name: string;
+  version: string;
+}
+
+export interface SourceModLogDeleteIssue {
+  name: string;
+  reason: string;
+  message: string;
+}
+
+export interface SourceModLogDeleteResult {
+  deleted: string[];
+  skipped: SourceModLogDeleteIssue[];
+  failed: SourceModLogDeleteIssue[];
+  freed_bytes: number;
+}
+
 export interface AuditLogItem {
   time: number;
   role: 'admin' | 'guest';
@@ -1297,9 +1348,25 @@ class ApiService {
     return response.json();
   }
 
-  async getSourceModLogs() {
+  async getSourceModLogs(): Promise<SourceModLogListResponse> {
     const response = await this.post('/logs/list');
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async previewSourceModLogCleanup(
+    filter: SourceModLogCleanupFilter
+  ): Promise<SourceModLogCleanupPreview> {
+    const response = await this.postJson('/logs/cleanup/preview', filter);
+    if (!response.ok) return this.throwDetailedError(response);
+    return response.json();
+  }
+
+  async deleteSourceModLogs(
+    files: SourceModLogDeleteTarget[]
+  ): Promise<SourceModLogDeleteResult> {
+    const response = await this.postJson('/logs/delete', { files });
+    if (!response.ok) return this.throwDetailedError(response);
     return response.json();
   }
 

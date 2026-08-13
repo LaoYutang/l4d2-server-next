@@ -4,14 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"net/http"
 	"os"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,26 +18,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type LogFileInfo struct {
-	Name string `json:"name"`
-	Date string `json:"date"`
-	Size int64  `json:"size"`
-}
-
 type LogListResponse struct {
-	Installed  bool                     `json:"installed"`
-	Message    string                   `json:"message,omitempty"`
-	Categories map[string][]LogFileInfo `json:"categories,omitempty"`
+	Installed  bool                                `json:"installed"`
+	Message    string                              `json:"message,omitempty"`
+	Categories map[string][]logic.SourceModLogFile `json:"categories,omitempty"`
 }
 
-var (
-	lLogPattern     = regexp.MustCompile(`^L(\d{8})\.log$`)
-	errorLogPattern = regexp.MustCompile(`^errors_(\d{8})\.log$`)
-)
-
-type tempLogFile struct {
-	LogFileInfo
-	modTime time.Time
+type sourceModLogDeleteRequest struct {
+	Files []logic.SourceModLogDeleteTarget `json:"files"`
 }
 
 func decodeLogLine(line []byte) string {
@@ -58,8 +44,12 @@ func sendSSELine(c *gin.Context, line string, flusher http.Flusher) {
 }
 
 func ListSourceModLogs(c *gin.Context) {
-	sourceModPath := filepath.Join(consts.GamePath, "addons", "sourcemod")
-	if _, err := os.Stat(sourceModPath); os.IsNotExist(err) {
+	scan, err := logic.ScanSourceModLogs(time.Now())
+	if err != nil {
+		FailWithError(c, http.StatusInternalServerError, "读取日志目录失败: %v", err)
+		return
+	}
+	if !scan.Installed {
 		c.JSON(http.StatusOK, LogListResponse{
 			Installed: false,
 			Message:   "请安装 SourceMod",
@@ -67,81 +57,13 @@ func ListSourceModLogs(c *gin.Context) {
 		return
 	}
 
-	logsDir := filepath.Join(sourceModPath, "logs")
-	entries, err := os.ReadDir(logsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusOK, LogListResponse{
-				Installed:  true,
-				Categories: map[string][]LogFileInfo{"L": {}, "errors": {}, "other": {}},
-			})
-			return
-		}
-		FailWithError(c, http.StatusInternalServerError, "读取日志目录失败: %v", err)
-		return
-	}
-
-	var lFiles, errorFiles, otherFiles []tempLogFile
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".log") {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		temp := tempLogFile{
-			LogFileInfo: LogFileInfo{
-				Name: name,
-				Size: info.Size(),
-			},
-			modTime: info.ModTime(),
-		}
-
-		if matches := lLogPattern.FindStringSubmatch(name); matches != nil {
-			temp.Date = matches[1]
-			lFiles = append(lFiles, temp)
-		} else if matches := errorLogPattern.FindStringSubmatch(name); matches != nil {
-			temp.Date = matches[1]
-			errorFiles = append(errorFiles, temp)
-		} else {
-			temp.Date = info.ModTime().Format("20060102")
-			otherFiles = append(otherFiles, temp)
-		}
-	}
-
-	// Sort L and errors by date descending
-	sort.Slice(lFiles, func(i, j int) bool {
-		return lFiles[i].Date > lFiles[j].Date
-	})
-	sort.Slice(errorFiles, func(i, j int) bool {
-		return errorFiles[i].Date > errorFiles[j].Date
-	})
-	// Sort other by modTime descending
-	sort.Slice(otherFiles, func(i, j int) bool {
-		return otherFiles[i].modTime.After(otherFiles[j].modTime)
-	})
-
-	categories := map[string][]LogFileInfo{
+	categories := map[string][]logic.SourceModLogFile{
 		"L":      {},
 		"errors": {},
 		"other":  {},
 	}
-	for _, f := range lFiles {
-		categories["L"] = append(categories["L"], f.LogFileInfo)
-	}
-	for _, f := range errorFiles {
-		categories["errors"] = append(categories["errors"], f.LogFileInfo)
-	}
-	for _, f := range otherFiles {
-		categories["other"] = append(categories["other"], f.LogFileInfo)
+	for _, file := range scan.Files {
+		categories[file.Category] = append(categories[file.Category], file)
 	}
 
 	c.JSON(http.StatusOK, LogListResponse{
@@ -150,24 +72,109 @@ func ListSourceModLogs(c *gin.Context) {
 	})
 }
 
+func PreviewSourceModLogCleanup(c *gin.Context) {
+	if !requireSourceModLogAdmin(c) {
+		return
+	}
+
+	var filter logic.SourceModLogCleanupFilter
+	if err := c.ShouldBindJSON(&filter); err != nil {
+		c.String(http.StatusBadRequest, "请求参数无效")
+		return
+	}
+	preview, err := logic.PreviewSourceModLogCleanup(time.Now(), filter)
+	if err != nil {
+		if errors.Is(err, logic.ErrInvalidSourceModLogCleanupFilter) {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		FailWithError(c, http.StatusInternalServerError, "预览日志清理失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, preview)
+}
+
+func DeleteSourceModLogs(c *gin.Context) {
+	if !requireSourceModLogAdmin(c) {
+		return
+	}
+
+	var request sourceModLogDeleteRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.String(http.StatusBadRequest, "请求参数无效")
+		return
+	}
+	defer LogOp(c, sourceModLogDeleteAuditDetail(request.Files))()
+
+	result, err := logic.DeleteSourceModLogs(time.Now(), request.Files)
+	if err != nil {
+		if errors.Is(err, logic.ErrInvalidSourceModLogName) {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		FailWithError(c, http.StatusInternalServerError, "删除日志失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func requireSourceModLogAdmin(c *gin.Context) bool {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		c.String(http.StatusForbidden, "仅管理员可以管理日志文件")
+		return false
+	}
+	return true
+}
+
+func sourceModLogDeleteAuditDetail(files []logic.SourceModLogDeleteTarget) string {
+	const maxNames = 10
+	names := make([]string, 0, min(len(files), maxNames))
+	for i, file := range files {
+		if i >= maxNames {
+			break
+		}
+		names = append(names, file.Name)
+	}
+	detail := fmt.Sprintf("删除 SourceMod 日志文件，共 %d 个", len(files))
+	if len(names) > 0 {
+		detail += ": " + strings.Join(names, ", ")
+	}
+	if len(files) > maxNames {
+		detail += fmt.Sprintf(" 等 %d 个", len(files))
+	}
+	return detail
+}
+
 func StreamSourceModLog(c *gin.Context) {
 	filename := c.Query("file")
 
-	// Security: reject path traversal
-	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
-		c.String(http.StatusBadRequest, "invalid filename")
+	if err := logic.ValidateSourceModLogName(filename); err != nil {
+		c.String(http.StatusBadRequest, "invalid log filename")
 		return
 	}
 
-	// Security: only allow .log files
-	if !strings.HasSuffix(filename, ".log") {
-		c.String(http.StatusBadRequest, "only .log files allowed")
+	root, err := os.OpenRoot(logic.SourceModLogsDir())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "open log directory: %v", err)
+		return
+	}
+	defer root.Close()
+	info, err := root.Lstat(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			c.String(http.StatusNotFound, "log file not found")
+			return
+		}
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !info.Mode().IsRegular() {
+		c.String(http.StatusBadRequest, "only regular log files are allowed")
 		return
 	}
 
-	path := filepath.Join(consts.GamePath, "addons", "sourcemod", "logs", filename)
-
-	file, err := os.Open(path)
+	file, err := root.Open(filename)
 	if err != nil {
 		c.String(http.StatusInternalServerError, err.Error())
 		return

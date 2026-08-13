@@ -244,6 +244,8 @@ func main() {
 	logs := router.Group("/logs", middlewares.Auth(privateKey))
 	{
 		logs.POST("/list", controller.ListSourceModLogs)
+		logs.POST("/cleanup/preview", controller.PreviewSourceModLogCleanup)
+		logs.POST("/delete", controller.DeleteSourceModLogs)
 	}
 	router.GET("/logs/stream", middlewares.Auth(privateKey), controller.StreamSourceModLog)
 
