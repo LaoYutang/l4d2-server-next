@@ -65,10 +65,12 @@ declare module 'vue' {
     DifficultyModal: typeof import('./components/DifficultyModal.vue')['default']
     GameBlacklistTab: typeof import('./components/GameBlacklistTab.vue')['default']
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
+    MapHotReloadSetting: typeof import('./components/settings/MapHotReloadSetting.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
     PluginConfigModal: typeof import('./components/PluginConfigModal.vue')['default']
     PluginDetailModal: typeof import('./components/PluginDetailModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SteamCDNSetting: typeof import('./components/settings/SteamCDNSetting.vue')['default']
   }
 }

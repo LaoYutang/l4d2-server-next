@@ -9,9 +9,10 @@
     type MapMissionCampaign,
     type MapSummaryItem,
     type ParsedDownloadItem,
-    type SteamCDNIPEntry,
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
+  import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
+  import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -58,10 +59,6 @@
   let globalScriptRequestId = 0;
   const hotReloading = ref(false);
   const hotReloadConfigVisible = ref(false);
-  const hotReloadConfigLoading = ref(false);
-  const hotReloadConfigSaving = ref(false);
-  const hotReloadCommand = ref('');
-  const defaultHotReloadCommand = ref('update_addon_paths; mission_reload');
   const detailCampaignTitle = computed(() =>
     detailCampaigns.value.map((campaign) => campaign.Title || '未命名战役').join(' / ')
   );
@@ -87,28 +84,7 @@
   const addedParsedItems = ref<Record<string, boolean>>({});
   const selectedParsedItemKeys = ref<string[]>([]);
   const downloadConfigVisible = ref(false);
-  const downloadConfigLoading = ref(false);
-  const downloadConfigSaving = ref(false);
-  const steamCDNIP = ref('');
-  const steamCDNIPEntries = ref<SteamCDNIPEntry[]>([]);
-  const steamCDNIPEntriesError = ref('');
   let downloadRefreshInterval: number | null = null;
-
-  const steamCDNIPOptions = computed(() =>
-    steamCDNIPEntries.value.map((entry) => ({
-      value: entry.ip,
-      label: entry.category ? `${entry.category} · ${entry.ip}` : entry.ip,
-    }))
-  );
-
-  const filterSteamCDNIPOption = (
-    input: string,
-    option?: { label?: string; value?: string }
-  ) => {
-    const keyword = input.trim().toLowerCase();
-    if (!keyword) return true;
-    return `${option?.label || ''} ${option?.value || ''}`.toLowerCase().includes(keyword);
-  };
 
   // Local Maps Logic
   const loadMaps = async () => {
@@ -522,36 +498,9 @@
     });
   };
 
-  const openHotReloadConfig = async () => {
+  const openHotReloadConfig = () => {
     if (!isAdmin.value) return;
-
     hotReloadConfigVisible.value = true;
-    hotReloadConfigLoading.value = true;
-    try {
-      const config = await api.getMapHotReloadConfig();
-      defaultHotReloadCommand.value = config.default_command;
-      hotReloadCommand.value = config.command === config.default_command ? '' : config.command;
-    } catch (e: any) {
-      message.error('获取热重载配置失败: ' + e.message);
-      hotReloadConfigVisible.value = false;
-    } finally {
-      hotReloadConfigLoading.value = false;
-    }
-  };
-
-  const submitHotReloadConfig = async () => {
-    hotReloadConfigSaving.value = true;
-    try {
-      const result = await api.setMapHotReloadConfig(hotReloadCommand.value);
-      hotReloadCommand.value =
-        result.command === defaultHotReloadCommand.value ? '' : result.command;
-      message.success('热重载指令已保存');
-      hotReloadConfigVisible.value = false;
-    } catch (e: any) {
-      message.error('保存热重载配置失败: ' + e.message);
-    } finally {
-      hotReloadConfigSaving.value = false;
-    }
   };
 
   // Download Tasks Logic
@@ -659,51 +608,9 @@
     linkParseVisible.value = true;
   };
 
-  const openDownloadConfig = async () => {
+  const openDownloadConfig = () => {
     if (!isAdmin.value) return;
-
     downloadConfigVisible.value = true;
-    downloadConfigLoading.value = true;
-    steamCDNIPEntriesError.value = '';
-
-    const [configResult, entriesResult] = await Promise.allSettled([
-      api.getDownloadConfig(),
-      api.getSteamCDNIPEntries(),
-    ]);
-
-    if (configResult.status === 'fulfilled') {
-      steamCDNIP.value = configResult.value.steam_cdn_ip || '';
-    } else {
-      message.error('获取下载配置失败: ' + String(configResult.reason));
-      downloadConfigVisible.value = false;
-    }
-
-    if (entriesResult.status === 'fulfilled') {
-      steamCDNIPEntries.value = entriesResult.value;
-      if (entriesResult.value.length === 0) {
-        steamCDNIPEntriesError.value = '候选 IP 服务暂未返回可用地址，可直接输入 IP。';
-      }
-    } else {
-      console.warn('Failed to load Steam CDN IP entries', entriesResult.reason);
-      steamCDNIPEntries.value = [];
-      steamCDNIPEntriesError.value = '候选 IP 列表加载失败，可直接输入 IP。';
-    }
-
-    downloadConfigLoading.value = false;
-  };
-
-  const submitDownloadConfig = async () => {
-    downloadConfigSaving.value = true;
-    try {
-      const result = await api.setDownloadConfig(steamCDNIP.value.trim());
-      steamCDNIP.value = result.steam_cdn_ip || '';
-      message.success(result.steam_cdn_ip ? 'Steam CDN 指定 IP 已保存' : '已恢复使用 DNS');
-      downloadConfigVisible.value = false;
-    } catch (e: any) {
-      message.error('保存下载配置失败: ' + e.message);
-    } finally {
-      downloadConfigSaving.value = false;
-    }
   };
 
   const addParsedDownload = async (
@@ -1345,19 +1252,14 @@
         <a-modal
           v-model:open="hotReloadConfigVisible"
           title="热重载地图设置"
-          ok-text="保存"
-          cancel-text="取消"
-          :confirmLoading="hotReloadConfigSaving"
-          @ok="submitHotReloadConfig"
+          :footer="null"
         >
-          <div class="space-y-3">
-            <a-input
-              v-model:value="hotReloadCommand"
-              :disabled="hotReloadConfigLoading"
-              :placeholder="defaultHotReloadCommand"
-              @pressEnter="submitHotReloadConfig"
-            />
-          </div>
+          <MapHotReloadSetting
+            :active="hotReloadConfigVisible"
+            context="modal"
+            @saved="hotReloadConfigVisible = false"
+            @cancel="hotReloadConfigVisible = false"
+          />
         </a-modal>
 
         <a-modal
@@ -1778,43 +1680,16 @@
         <a-modal
           v-model:open="downloadConfigVisible"
           title="下载设置"
-          ok-text="保存"
-          cancel-text="取消"
           :width="520"
-          :confirmLoading="downloadConfigSaving"
-          :ok-button-props="{ disabled: downloadConfigLoading }"
+          :footer="null"
           wrap-class-name="download-config-modal"
-          @ok="submitDownloadConfig"
         >
-          <a-spin :spinning="downloadConfigLoading">
-            <a-form layout="vertical">
-              <a-form-item label="Steam CDN 指定 IP" class="!mb-3">
-                <a-auto-complete
-                  v-model:value="steamCDNIP"
-                  :options="steamCDNIPOptions"
-                  :filter-option="filterSteamCDNIPOption"
-                  :disabled="downloadConfigLoading"
-                  allow-clear
-                  placeholder="留空则使用 DNS，也可以直接输入 IP"
-                />
-              </a-form-item>
-
-              <a-alert
-                v-if="steamCDNIPEntriesError"
-                type="warning"
-                show-icon
-                :message="steamCDNIPEntriesError"
-                class="mb-3"
-              />
-
-              <div
-                class="rounded-lg border border-gray-200 bg-gray-50/80 p-3 text-xs leading-5 text-gray-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-gray-300"
-              >
-                <div>仅 cdn.steamusercontent.com 的下载连接会使用此 IP。</div>
-                <div>请求域名与 HTTPS 证书校验保持不变；指定 IP 不可用时不会回退 DNS。</div>
-              </div>
-            </a-form>
-          </a-spin>
+          <SteamCDNSetting
+            :active="downloadConfigVisible"
+            context="modal"
+            @saved="downloadConfigVisible = false"
+            @cancel="downloadConfigVisible = false"
+          />
         </a-modal>
 
         <a-modal v-model:open="linkParseVisible" title="解析链接" width="920px" :footer="null">
