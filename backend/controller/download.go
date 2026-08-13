@@ -686,6 +686,7 @@ func ParseWorkshopDownloadLink(c *gin.Context) {
 func AddDownloadTask(c *gin.Context) {
 	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "获取磁盘使用信息失败: %v", err)
+		return
 	} else if stat.UsedPercent > 90 {
 		FailWithError(c, http.StatusInsufficientStorage, "磁盘空间不足，当前使用率超过90%%")
 		return
