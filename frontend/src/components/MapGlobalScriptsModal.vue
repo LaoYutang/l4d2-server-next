@@ -1,13 +1,26 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
-  import { CloseOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons-vue';
+  import {
+    CloseOutlined,
+    EditOutlined,
+    EnvironmentOutlined,
+    SaveOutlined,
+    UndoOutlined,
+  } from '@ant-design/icons-vue';
   import { message } from 'ant-design-vue';
   import {
     api,
     ApiRequestError,
     type MapGlobalScriptContent,
+    type MapMissionCampaign,
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
+  import {
+    applyCampaignGuard,
+    inspectCampaignGuard,
+    prepareCampaignCodes,
+    removeCampaignGuard,
+  } from '../utils/mapCampaignGuard';
 
   defineOptions({ name: 'MapGlobalScriptsModal' });
 
@@ -36,7 +49,62 @@
   const editingPath = ref('');
   const draftContent = ref('');
   const saving = ref(false);
+  const campaignSelectorOpen = ref(false);
+  const campaignLoading = ref(false);
+  const campaignError = ref('');
+  const campaignLoaded = ref(false);
+  const campaigns = ref<MapMissionCampaign[]>([]);
+  const selectedCampaignKey = ref('');
   let requestId = 0;
+  let campaignRequestId = 0;
+
+  interface CampaignChoice {
+    key: string;
+    campaign: MapMissionCampaign;
+    codes: string[];
+    invalidCount: number;
+  }
+
+  const campaignChoices = computed<CampaignChoice[]>(() =>
+    campaigns.value.map((campaign, index) => {
+      const chapters = Array.isArray(campaign.Chapters) ? campaign.Chapters : [];
+      const prepared = prepareCampaignCodes(chapters.map((chapter) => chapter?.Code));
+      return {
+        key: `campaign-${index}`,
+        campaign,
+        codes: prepared.codes,
+        invalidCount: prepared.invalidCount,
+      };
+    })
+  );
+  const campaignSelectOptions = computed(() =>
+    campaignChoices.value.map((choice) => ({
+      value: choice.key,
+      label: `${choice.campaign.Title?.trim() || '未命名战役'} · ${
+        choice.campaign.VpkName?.trim() || '未知 VPK'
+      } · ${choice.codes.length} 个有效章节`,
+      disabled: choice.codes.length === 0,
+    }))
+  );
+  const selectedCampaignChoice = computed(() =>
+    campaignChoices.value.find((choice) => choice.key === selectedCampaignKey.value)
+  );
+  const draftGuardState = computed(() => inspectCampaignGuard(draftContent.value));
+  const codeSignature = (codes: string[]) => [...codes].sort().join('\u0000');
+  const currentLimitedCampaign = computed(() => {
+    if (draftGuardState.value.status !== 'valid') return undefined;
+    const currentSignature = codeSignature(draftGuardState.value.codes);
+    return campaignChoices.value.find(
+      (choice) => codeSignature(choice.codes) === currentSignature
+    );
+  });
+  const currentCampaignLimitLabel = computed(() => {
+    if (draftGuardState.value.status !== 'valid') return '';
+    return (
+      currentLimitedCampaign.value?.campaign.Title?.trim() ||
+      `${draftGuardState.value.codes.length} 个章节`
+    );
+  });
 
   const getRequestErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message.trim()) return error.message.trim();
@@ -50,7 +118,22 @@
     return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
   };
 
+  const closeCampaignSelector = () => {
+    campaignSelectorOpen.value = false;
+    selectedCampaignKey.value = '';
+  };
+
+  const resetCampaigns = () => {
+    campaignRequestId++;
+    closeCampaignSelector();
+    campaignLoading.value = false;
+    campaignError.value = '';
+    campaignLoaded.value = false;
+    campaigns.value = [];
+  };
+
   const clearEditing = () => {
+    closeCampaignSelector();
     editingPath.value = '';
     draftContent.value = '';
   };
@@ -68,6 +151,7 @@
     scripts.value = [];
     activeKeys.value = [];
     resetEditor();
+    resetCampaigns();
   };
 
   const loadScripts = async () => {
@@ -95,6 +179,84 @@
     } finally {
       if (currentRequestId === requestId) loading.value = false;
     }
+  };
+
+  const loadCampaigns = async (force = false) => {
+    if (campaignLoaded.value && !force) return;
+
+    const currentRequestId = ++campaignRequestId;
+    campaignLoading.value = true;
+    campaignError.value = '';
+    if (force) {
+      campaignLoaded.value = false;
+      campaigns.value = [];
+      selectedCampaignKey.value = '';
+    }
+
+    try {
+      const result = await api.getRconMapList();
+      if (currentRequestId !== campaignRequestId) return;
+      campaigns.value = Array.isArray(result)
+        ? result.filter((campaign) => campaign && typeof campaign === 'object')
+        : [];
+      campaignLoaded.value = true;
+    } catch (error) {
+      if (currentRequestId !== campaignRequestId) return;
+      campaignError.value = getRequestErrorMessage(error, '获取三方战役列表失败');
+    } finally {
+      if (currentRequestId === campaignRequestId) campaignLoading.value = false;
+    }
+  };
+
+  const openCampaignSelector = async () => {
+    const guardState = inspectCampaignGuard(draftContent.value);
+    if (guardState.status === 'malformed') {
+      message.warning(guardState.error);
+      return;
+    }
+
+    selectedCampaignKey.value = '';
+    campaignSelectorOpen.value = true;
+    await loadCampaigns();
+    if (!campaignSelectorOpen.value) return;
+    selectedCampaignKey.value = currentLimitedCampaign.value?.key || '';
+  };
+
+  const retryLoadCampaigns = async () => {
+    await loadCampaigns(true);
+    if (!campaignSelectorOpen.value) return;
+    selectedCampaignKey.value = currentLimitedCampaign.value?.key || '';
+  };
+
+  const applySelectedCampaign = () => {
+    const choice = selectedCampaignChoice.value;
+    if (!choice) {
+      message.warning('请选择一个包含有效章节 Code 的三方战役');
+      return;
+    }
+
+    const result = applyCampaignGuard(draftContent.value, choice.codes);
+    if (!result.ok) {
+      message.error(result.error);
+      return;
+    }
+
+    draftContent.value = result.content;
+    closeCampaignSelector();
+    const ignoredMessage = choice.invalidCount > 0
+      ? `，已忽略 ${choice.invalidCount} 个无效 Code`
+      : '';
+    message.success(`已限定为“${choice.campaign.Title || '未命名战役'}”${ignoredMessage}`);
+  };
+
+  const removeCampaignLimit = () => {
+    const result = removeCampaignGuard(draftContent.value);
+    if (!result.ok) {
+      message.error(result.error);
+      return;
+    }
+    draftContent.value = result.content;
+    message.success('已移除战役限定');
   };
 
   const getEditDisabledReason = (script: MapGlobalScriptContent) => {
@@ -219,6 +381,13 @@
             />
 
             <template v-if="editingPath === script.path">
+              <a-alert
+                v-if="draftGuardState.status === 'malformed'"
+                type="warning"
+                show-icon
+                :message="draftGuardState.error"
+                class="mb-3"
+              />
               <a-textarea
                 v-model:value="draftContent"
                 class="script-editor-textarea"
@@ -227,8 +396,30 @@
                 spellcheck="false"
               />
               <div class="script-editor-footer">
-                <span class="script-editor-count">{{ draftContent.length }} 个字符</span>
+                <div class="script-editor-status">
+                  <span class="script-editor-count">{{ draftContent.length }} 个字符</span>
+                  <a-tag v-if="draftGuardState.status === 'valid'" color="blue" class="!m-0">
+                    已限定：{{ currentCampaignLimitLabel }}
+                  </a-tag>
+                </div>
                 <a-space wrap>
+                  <a-button
+                    class="script-action-button"
+                    :disabled="saving"
+                    @click="openCampaignSelector"
+                  >
+                    <template #icon><environment-outlined /></template>
+                    {{ draftGuardState.status === 'valid' ? '更改限定' : '限制战役' }}
+                  </a-button>
+                  <a-button
+                    v-if="draftGuardState.status === 'valid'"
+                    class="script-action-button"
+                    :disabled="saving"
+                    @click="removeCampaignLimit"
+                  >
+                    <template #icon><undo-outlined /></template>
+                    移除限定
+                  </a-button>
                   <a-button
                     class="script-action-button"
                     :disabled="saving"
@@ -267,6 +458,86 @@
           </div>
         </a-collapse-panel>
       </a-collapse>
+    </template>
+  </a-modal>
+
+  <a-modal
+    v-model:open="campaignSelectorOpen"
+    title="限制脚本执行战役"
+    width="680px"
+    wrap-class-name="campaign-limit-modal"
+    :mask-closable="!campaignLoading"
+    :keyboard="!campaignLoading"
+    @after-close="selectedCampaignKey = ''"
+  >
+    <div v-if="campaignLoading" class="py-10 text-center">
+      <a-spin tip="正在读取三方战役..." />
+    </div>
+    <a-alert
+      v-else-if="campaignError"
+      type="error"
+      show-icon
+      :message="campaignError"
+    >
+      <template #action>
+        <a-button size="small" @click="retryLoadCampaigns">重试</a-button>
+      </template>
+    </a-alert>
+    <a-empty
+      v-else-if="campaignChoices.length === 0"
+      description="未读取到三方战役"
+    />
+    <div v-else class="campaign-selector-content">
+      <a-select
+        v-model:value="selectedCampaignKey"
+        class="w-full"
+        show-search
+        option-filter-prop="label"
+        placeholder="请选择三方战役"
+        :options="campaignSelectOptions"
+      />
+
+      <a-alert
+        v-if="draftGuardState.status === 'valid' && !currentLimitedCampaign"
+        type="info"
+        show-icon
+        message="当前脚本已有战役限定，但对应战役已不在三方战役列表中；可选择新战役替换。"
+      />
+
+      <div v-if="selectedCampaignChoice" class="campaign-choice-detail">
+        <div class="campaign-choice-title">
+          {{ selectedCampaignChoice.campaign.Title || '未命名战役' }}
+        </div>
+        <div class="campaign-choice-vpk">
+          {{ selectedCampaignChoice.campaign.VpkName || '未知 VPK' }}
+        </div>
+        <div class="campaign-code-list">
+          <a-tag
+            v-for="code in selectedCampaignChoice.codes"
+            :key="code"
+            class="!m-0 font-mono"
+          >
+            {{ code }}
+          </a-tag>
+        </div>
+        <a-alert
+          v-if="selectedCampaignChoice.invalidCount > 0"
+          type="warning"
+          show-icon
+          :message="`有 ${selectedCampaignChoice.invalidCount} 个章节 Code 格式无效，应用时会忽略。`"
+        />
+      </div>
+    </div>
+
+    <template #footer>
+      <a-button :disabled="campaignLoading" @click="closeCampaignSelector">取消</a-button>
+      <a-button
+        type="primary"
+        :disabled="campaignLoading || !selectedCampaignChoice"
+        @click="applySelectedCampaign"
+      >
+        应用限定
+      </a-button>
     </template>
   </a-modal>
 </template>
@@ -365,6 +636,53 @@
     margin-top: 10px;
   }
 
+  .script-editor-status {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  :global(.campaign-limit-modal .ant-modal) {
+    max-width: calc(100vw - 24px);
+  }
+
+  .campaign-selector-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .campaign-choice-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 12px;
+  }
+
+  .campaign-choice-title {
+    color: #1f2937;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .campaign-choice-vpk {
+    color: #6b7280;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .campaign-code-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
   :global(.global-scripts-modal .script-collapse .ant-collapse-content-box) {
     padding: 12px;
   }
@@ -382,6 +700,19 @@
     border-color: #334155;
     background: #0f172a;
     color: #e2e8f0;
+  }
+
+  :global(.dark .campaign-limit-modal .campaign-choice-detail) {
+    border-color: #334155;
+    background: #0f172a;
+  }
+
+  :global(.dark .campaign-limit-modal .campaign-choice-title) {
+    color: #e2e8f0;
+  }
+
+  :global(.dark .campaign-limit-modal .campaign-choice-vpk) {
+    color: #94a3b8;
   }
 
   :global(.dark .global-scripts-modal .ant-collapse),
@@ -417,6 +748,11 @@
 
     .script-editor-footer {
       align-items: stretch;
+      flex-direction: column;
+    }
+
+    .script-editor-status {
+      align-items: flex-start;
       flex-direction: column;
     }
   }

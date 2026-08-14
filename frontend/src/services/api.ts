@@ -852,7 +852,7 @@ class ApiService {
     return response.json();
   }
 
-  async getRconMapList() {
+  async getRconMapList(): Promise<MapMissionCampaign[]> {
     const response = await this.post('/rcon/maplist');
     if (!response.ok) throw new Error(await response.text());
     return response.json();
