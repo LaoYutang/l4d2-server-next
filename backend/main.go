@@ -34,6 +34,7 @@ func main() {
 	go logic.CleanDownloadTemp()
 	go logic.CleanPluginExportTemp()
 	go logic.CleanVPKTrimTemp()
+	go logic.CleanVPKScriptEditTemp()
 
 	logic.InitAccessControl()
 	if err := logic.EnsureGameBanPersistenceConfig(); err != nil {
@@ -129,6 +130,7 @@ func main() {
 	router.POST("/maps/detail", middlewares.Auth(privateKey), controller.GetMapMissionDetail)
 	router.POST("/maps/summary", middlewares.Auth(privateKey), controller.GetMapSummaries)
 	router.POST("/maps/inspection/global-scripts", middlewares.Auth(privateKey), controller.GetMapGlobalScripts)
+	router.POST("/maps/inspection/global-scripts/update", middlewares.Auth(privateKey), controller.UpdateMapGlobalScript)
 	router.POST("/maps/trim", middlewares.Auth(privateKey), controller.TrimMap)
 	router.POST("/remove", middlewares.Auth(privateKey), controller.Remove)
 	router.POST("/rename", middlewares.Auth(privateKey), controller.RenameMap)

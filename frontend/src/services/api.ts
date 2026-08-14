@@ -237,10 +237,12 @@ export interface MapVPKInspection {
   };
 }
 
+export type MapGlobalScriptEncoding = 'utf-8' | 'gbk' | 'unknown';
+
 export interface MapGlobalScriptContent {
   path: string;
   size: number;
-  encoding: 'utf-8' | 'gbk' | 'unknown';
+  encoding: MapGlobalScriptEncoding;
   content?: string;
   truncated: boolean;
   error?: string;
@@ -248,7 +250,14 @@ export interface MapGlobalScriptContent {
 
 export interface MapGlobalScriptsResponse {
   map: string;
+  revision: string;
   scripts: MapGlobalScriptContent[];
+}
+
+export interface MapGlobalScriptUpdateResponse {
+  map: string;
+  revision: string;
+  script: MapGlobalScriptContent;
 }
 
 export interface MapSummaryItem {
@@ -798,6 +807,18 @@ class ApiService {
   async getMapGlobalScripts(mapName: string): Promise<MapGlobalScriptsResponse> {
     const response = await this.postJson('/maps/inspection/global-scripts', { map: mapName });
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async updateMapGlobalScript(data: {
+    map: string;
+    path: string;
+    content: string;
+    encoding: MapGlobalScriptEncoding;
+    expected_revision: string;
+  }): Promise<MapGlobalScriptUpdateResponse> {
+    const response = await this.postJson('/maps/inspection/global-scripts/update', data);
+    if (!response.ok) return this.throwDetailedError(response);
     return response.json();
   }
 

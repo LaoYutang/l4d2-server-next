@@ -5,12 +5,12 @@
     api,
     type DownloadLinkParseResult,
     type MapDictionaryChapterInspection,
-    type MapGlobalScriptContent,
     type MapMissionCampaign,
     type MapSummaryItem,
     type ParsedDownloadItem,
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
+  import MapGlobalScriptsModal from '../components/MapGlobalScriptsModal.vue';
   import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import { message, Modal } from 'ant-design-vue';
@@ -51,12 +51,7 @@
   const detailMapName = ref('');
   const detailCampaigns = ref<MapMissionCampaign[]>([]);
   const globalScriptsVisible = ref(false);
-  const globalScriptsLoading = ref(false);
-  const globalScriptsError = ref('');
   const globalScriptsMapName = ref('');
-  const globalScripts = ref<MapGlobalScriptContent[]>([]);
-  const globalScriptActiveKeys = ref<string[]>([]);
-  let globalScriptRequestId = 0;
   const hotReloading = ref(false);
   const hotReloadConfigVisible = ref(false);
   const detailCampaignTitle = computed(() =>
@@ -883,52 +878,13 @@
     (event.currentTarget as HTMLElement | null)?.click();
   };
 
-  const formatScriptSize = (size: number) => {
-    if (!Number.isFinite(size) || size < 0) return '未知大小';
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
-    return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
-  };
-
-  const getRequestErrorMessage = (error: unknown, fallback: string) => {
-    if (error instanceof Error && error.message.trim()) return error.message.trim();
-    return fallback;
-  };
-
-  const openGlobalScripts = async (mapName: string) => {
-    const requestId = ++globalScriptRequestId;
+  const openGlobalScripts = (mapName: string) => {
     globalScriptsMapName.value = mapName;
-    globalScripts.value = [];
-    globalScriptActiveKeys.value = [];
-    globalScriptsError.value = '';
-    globalScriptsLoading.value = true;
     globalScriptsVisible.value = true;
-
-    try {
-      const result = await api.getMapGlobalScripts(mapName);
-      if (requestId !== globalScriptRequestId) return;
-      globalScripts.value = result.scripts || [];
-      const firstScript = globalScripts.value[0];
-      if (firstScript) {
-        globalScriptActiveKeys.value = [firstScript.path];
-      }
-    } catch (error) {
-      if (requestId !== globalScriptRequestId) return;
-      globalScriptsError.value = getRequestErrorMessage(error, '读取全局脚本失败');
-    } finally {
-      if (requestId === globalScriptRequestId) {
-        globalScriptsLoading.value = false;
-      }
-    }
   };
 
-  const resetGlobalScriptsModal = () => {
-    globalScriptRequestId++;
-    globalScriptsLoading.value = false;
-    globalScriptsError.value = '';
-    globalScriptsMapName.value = '';
-    globalScripts.value = [];
-    globalScriptActiveKeys.value = [];
+  const handleGlobalScriptsUpdated = (mapName: string) => {
+    void Promise.all([loadMaps(), loadMapSummaries([mapName])]);
   };
 
   watch(searchQuery, () => {
@@ -1361,61 +1317,11 @@
           </div>
         </a-modal>
 
-        <a-modal
+        <MapGlobalScriptsModal
           v-model:open="globalScriptsVisible"
-          :title="`全局脚本 - ${globalScriptsMapName}`"
-          :footer="null"
-          width="900px"
-          wrap-class-name="global-scripts-modal"
-          @afterClose="resetGlobalScriptsModal"
-        >
-          <div v-if="globalScriptsLoading" class="py-12 text-center">
-            <a-spin tip="正在读取脚本内容..." />
-          </div>
-          <a-alert
-            v-else-if="globalScriptsError"
-            type="error"
-            show-icon
-            :message="globalScriptsError"
-          />
-          <a-empty
-            v-else-if="globalScripts.length === 0"
-            description="未读取到全局脚本"
-          />
-          <a-collapse v-else v-model:activeKey="globalScriptActiveKeys" class="script-collapse">
-            <a-collapse-panel
-              v-for="script in globalScripts"
-              :key="script.path"
-              :force-render="false"
-            >
-              <template #header>
-                <div class="script-panel-header">
-                  <span class="script-panel-path" :title="script.path">{{ script.path }}</span>
-                  <span class="script-panel-meta">
-                    {{ formatScriptSize(script.size) }} · {{ script.encoding }}
-                  </span>
-                </div>
-              </template>
-              <div class="script-panel-body">
-                <a-alert
-                  v-if="script.error"
-                  type="error"
-                  show-icon
-                  :message="script.error"
-                  class="mb-3"
-                />
-                <a-alert
-                  v-if="script.truncated"
-                  type="warning"
-                  show-icon
-                  message="脚本超过 512 KiB，仅显示前 512 KiB。"
-                  class="mb-3"
-                />
-                <pre v-if="!script.error" class="script-content">{{ script.content || '' }}</pre>
-              </div>
-            </a-collapse-panel>
-          </a-collapse>
-        </a-modal>
+          :map-name="globalScriptsMapName"
+          @updated="handleGlobalScriptsUpdated"
+        />
       </a-tab-pane>
 
       <a-tab-pane key="upload" tab="上传地图">
@@ -1858,81 +1764,6 @@
     color: #94a3b8;
   }
 
-  :global(.global-scripts-modal .ant-modal) {
-    max-width: calc(100vw - 24px);
-  }
-
-  :global(.global-scripts-modal .ant-modal-body) {
-    max-height: calc(100vh - 170px);
-    overflow-y: auto;
-  }
-
-  .script-panel-header {
-    display: flex;
-    min-width: 0;
-    width: 100%;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 12px;
-    padding-right: 8px;
-  }
-
-  .script-panel-path {
-    min-width: 0;
-    flex: 1 1 460px;
-    color: #1f2937;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 12px;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .script-panel-meta {
-    flex: 0 0 auto;
-    color: #6b7280;
-    font-size: 12px;
-    font-weight: 400;
-  }
-
-  .script-content {
-    max-height: 52vh;
-    margin: 0;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    background: #f8fafc;
-    padding: 12px;
-    color: #1f2937;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 12px;
-    line-height: 1.55;
-    tab-size: 4;
-    white-space: pre;
-  }
-
-  :global(.global-scripts-modal .script-collapse .ant-collapse-content-box) {
-    padding: 12px;
-  }
-
-  :global(.dark .global-scripts-modal .script-panel-path) {
-    color: #e2e8f0;
-  }
-
-  :global(.dark .global-scripts-modal .script-panel-meta) {
-    color: #94a3b8;
-  }
-
-  :global(.dark .global-scripts-modal .script-content) {
-    border-color: #334155;
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-
-  :global(.dark .global-scripts-modal .ant-collapse),
-  :global(.dark .global-scripts-modal .ant-collapse-item) {
-    border-color: #334155;
-  }
-
   :global(.map-detail-modal .ant-modal-body) {
     padding-top: 14px;
   }
@@ -1954,31 +1785,6 @@
     :global(.map-inspection-list) {
       min-width: 0;
       width: calc(100vw - 64px);
-    }
-
-    :global(.global-scripts-modal .ant-modal) {
-      top: 12px;
-      margin: 0 auto;
-      padding-bottom: 12px;
-    }
-
-    :global(.global-scripts-modal .ant-modal-body) {
-      max-height: calc(100vh - 145px);
-    }
-
-    .script-panel-header {
-      gap: 3px;
-    }
-
-    .script-panel-path,
-    .script-panel-meta {
-      flex-basis: 100%;
-    }
-
-    .script-content {
-      max-height: 45vh;
-      padding: 10px;
-      font-size: 11px;
     }
 
     :global(.download-config-modal .ant-modal) {

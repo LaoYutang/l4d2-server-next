@@ -445,22 +445,27 @@ func RetainMapVPKInspections(mapNames []string) error {
 }
 
 func GetMapGlobalScriptContents(mapName string) ([]GlobalScriptContent, error) {
+	scripts, _, err := GetMapGlobalScriptContentsWithRevision(mapName)
+	return scripts, err
+}
+
+func GetMapGlobalScriptContentsWithRevision(mapName string) ([]GlobalScriptContent, string, error) {
 	mapName, err := NormalizeMapVPKName(mapName)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	allowedMaps, err := readAllowedMapNames()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if !allowedMaps[mapName] {
-		return nil, ErrMapRecordNotFound
+		return nil, "", ErrMapRecordNotFound
 	}
 
 	vpkPath := filepath.Join(consts.AddonsBasePath, mapName)
 	info, err := os.Stat(vpkPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	mapVPKInspectionMu.Lock()
@@ -471,20 +476,20 @@ func GetMapGlobalScriptContents(mapName string) ([]GlobalScriptContent, error) {
 	}
 	mapVPKInspectionMu.Unlock()
 	if !ok {
-		return nil, ErrMapInspectionNotFound
+		return nil, "", ErrMapInspectionNotFound
 	}
 	if record.Size != info.Size() || record.ModTimeNS != info.ModTime().UnixNano() {
-		return nil, ErrMapInspectionStale
+		return nil, "", ErrMapInspectionStale
 	}
 	if record.Inspection.GlobalScripts.Status != GlobalScriptsStatusDetected || len(record.Inspection.GlobalScripts.Files) == 0 {
-		return nil, ErrNoGlobalScripts
+		return nil, "", ErrNoGlobalScripts
 	}
 
 	opener := vpk.Single(vpkPath)
 	defer opener.Close()
 	archive, err := opener.ReadArchive()
 	if err != nil {
-		return nil, fmt.Errorf("解析 VPK 失败: %w", err)
+		return nil, "", fmt.Errorf("解析 VPK 失败: %w", err)
 	}
 
 	archiveFiles := make(map[string]*vpk.File, len(archive.Files))
@@ -530,7 +535,19 @@ func GetMapGlobalScriptContents(mapName string) ([]GlobalScriptContent, error) {
 		result = append(result, item)
 	}
 
-	return result, nil
+	afterInfo, err := os.Stat(vpkPath)
+	if err != nil {
+		return nil, "", err
+	}
+	if afterInfo.Size() != info.Size() || afterInfo.ModTime().UnixNano() != info.ModTime().UnixNano() {
+		return nil, "", ErrMapInspectionStale
+	}
+
+	return result, mapVPKRevision(info), nil
+}
+
+func mapVPKRevision(info os.FileInfo) string {
+	return fmt.Sprintf("%x-%x", uint64(info.Size()), uint64(info.ModTime().UnixNano()))
 }
 
 func decodeGlobalScriptContent(data []byte, truncated bool) (string, string) {
