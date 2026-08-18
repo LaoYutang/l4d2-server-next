@@ -50,6 +50,15 @@ const (
 	GlobalScriptsStatusNotChecked GlobalScriptsInspectionStatus = "not_checked"
 )
 
+type ScriptOverridesInspectionStatus string
+
+const (
+	ScriptOverridesStatusClean      ScriptOverridesInspectionStatus = "clean"
+	ScriptOverridesStatusDetected   ScriptOverridesInspectionStatus = "detected"
+	ScriptOverridesStatusUnreadable ScriptOverridesInspectionStatus = "unreadable"
+	ScriptOverridesStatusNotChecked ScriptOverridesInspectionStatus = "not_checked"
+)
+
 type DictionaryChapterInspection struct {
 	BSPPath       string                  `json:"bsp_path"`
 	ChapterCode   string                  `json:"chapter_code"`
@@ -69,13 +78,19 @@ type GlobalScriptsInspection struct {
 	Files  []string                      `json:"files"`
 }
 
-type MapVPKInspection struct {
-	CheckedAt     string                  `json:"checked_at,omitempty"`
-	Dictionary    DictionaryInspection    `json:"dictionary"`
-	GlobalScripts GlobalScriptsInspection `json:"global_scripts"`
+type ScriptOverridesInspection struct {
+	Status ScriptOverridesInspectionStatus `json:"status"`
+	Files  []string                        `json:"files"`
 }
 
-type GlobalScriptContent struct {
+type MapVPKInspection struct {
+	CheckedAt       string                    `json:"checked_at,omitempty"`
+	Dictionary      DictionaryInspection      `json:"dictionary"`
+	GlobalScripts   GlobalScriptsInspection   `json:"global_scripts"`
+	ScriptOverrides ScriptOverridesInspection `json:"script_overrides"`
+}
+
+type MapScriptContent struct {
 	Path      string `json:"path"`
 	Size      int64  `json:"size"`
 	Encoding  string `json:"encoding"`
@@ -84,11 +99,15 @@ type GlobalScriptContent struct {
 	Error     string `json:"error,omitempty"`
 }
 
+type GlobalScriptContent = MapScriptContent
+type ScriptOverrideContent = MapScriptContent
+
 var (
 	ErrMapInspectionNotFound = errors.New("地图尚未检测")
 	ErrMapInspectionStale    = errors.New("地图检测结果已失效")
 	ErrMapRecordNotFound     = errors.New("地图记录不存在")
 	ErrNoGlobalScripts       = errors.New("地图不存在全局脚本")
+	ErrNoScriptOverrides     = errors.New("地图不存在脚本覆盖")
 )
 
 const (
@@ -133,6 +152,10 @@ func newNotCheckedMapVPKInspection() MapVPKInspection {
 			Status: GlobalScriptsStatusNotChecked,
 			Files:  []string{},
 		},
+		ScriptOverrides: ScriptOverridesInspection{
+			Status: ScriptOverridesStatusNotChecked,
+			Files:  []string{},
+		},
 	}
 }
 
@@ -149,6 +172,20 @@ func isGlobalScriptEntryPath(name string) bool {
 	return ok
 }
 
+func isScriptOverrideEntryPath(name string) bool {
+	name = normalizeVPKEntryPath(name)
+	if name == "scripts/gamemodes.txt" {
+		return true
+	}
+	if pathpkg.Dir(name) != "scripts" {
+		return false
+	}
+	base := pathpkg.Base(name)
+	return strings.HasPrefix(base, "weapon_") &&
+		strings.HasSuffix(base, ".txt") &&
+		len(base) > len("weapon_.txt")
+}
+
 func InspectMapVPK(vpkPath string) MapVPKInspection {
 	result := MapVPKInspection{
 		CheckedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -160,6 +197,10 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 			Status: GlobalScriptsStatusClean,
 			Files:  []string{},
 		},
+		ScriptOverrides: ScriptOverridesInspection{
+			Status: ScriptOverridesStatusClean,
+			Files:  []string{},
+		},
 	}
 
 	opener := vpk.Single(vpkPath)
@@ -169,6 +210,7 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 	if err != nil {
 		result.Dictionary.Status = DictionaryStatusUnreadable
 		result.GlobalScripts.Status = GlobalScriptsStatusUnreadable
+		result.ScriptOverrides.Status = ScriptOverridesStatusUnreadable
 		return result
 	}
 
@@ -178,6 +220,7 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 	}
 	bspFiles := make([]bspEntry, 0)
 	seenScripts := make(map[string]struct{}, len(globalScriptEntryPaths))
+	seenOverrides := make(map[string]struct{})
 
 	for i := range archive.Files {
 		archiveFile := &archive.Files[i]
@@ -189,6 +232,12 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 				result.GlobalScripts.Files = append(result.GlobalScripts.Files, normalizedPath)
 			}
 		}
+		if isScriptOverrideEntryPath(normalizedPath) {
+			if _, exists := seenOverrides[normalizedPath]; !exists {
+				seenOverrides[normalizedPath] = struct{}{}
+				result.ScriptOverrides.Files = append(result.ScriptOverrides.Files, normalizedPath)
+			}
+		}
 		if strings.HasPrefix(normalizedPath, "maps/") && strings.HasSuffix(normalizedPath, ".bsp") {
 			bspFiles = append(bspFiles, bspEntry{name: entryPath, file: archiveFile})
 		}
@@ -197,6 +246,10 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 	sort.Strings(result.GlobalScripts.Files)
 	if len(result.GlobalScripts.Files) > 0 {
 		result.GlobalScripts.Status = GlobalScriptsStatusDetected
+	}
+	sort.Strings(result.ScriptOverrides.Files)
+	if len(result.ScriptOverrides.Files) > 0 {
+		result.ScriptOverrides.Status = ScriptOverridesStatusDetected
 	}
 	sort.Slice(bspFiles, func(i, j int) bool {
 		return strings.ToLower(bspFiles[i].name) < strings.ToLower(bspFiles[j].name)
@@ -450,6 +503,34 @@ func GetMapGlobalScriptContents(mapName string) ([]GlobalScriptContent, error) {
 }
 
 func GetMapGlobalScriptContentsWithRevision(mapName string) ([]GlobalScriptContent, string, error) {
+	return getMapInspectedScriptContents(
+		mapName,
+		func(inspection MapVPKInspection) ([]string, bool) {
+			return inspection.GlobalScripts.Files, inspection.GlobalScripts.Status == GlobalScriptsStatusDetected
+		},
+		isGlobalScriptEntryPath,
+		ErrNoGlobalScripts,
+	)
+}
+
+func GetMapScriptOverrideContents(mapName string) ([]ScriptOverrideContent, error) {
+	scripts, _, err := getMapInspectedScriptContents(
+		mapName,
+		func(inspection MapVPKInspection) ([]string, bool) {
+			return inspection.ScriptOverrides.Files, inspection.ScriptOverrides.Status == ScriptOverridesStatusDetected
+		},
+		isScriptOverrideEntryPath,
+		ErrNoScriptOverrides,
+	)
+	return scripts, err
+}
+
+func getMapInspectedScriptContents(
+	mapName string,
+	selectFiles func(MapVPKInspection) ([]string, bool),
+	isAllowedPath func(string) bool,
+	noScriptsError error,
+) ([]MapScriptContent, string, error) {
 	mapName, err := NormalizeMapVPKName(mapName)
 	if err != nil {
 		return nil, "", err
@@ -481,8 +562,9 @@ func GetMapGlobalScriptContentsWithRevision(mapName string) ([]GlobalScriptConte
 	if record.Size != info.Size() || record.ModTimeNS != info.ModTime().UnixNano() {
 		return nil, "", ErrMapInspectionStale
 	}
-	if record.Inspection.GlobalScripts.Status != GlobalScriptsStatusDetected || len(record.Inspection.GlobalScripts.Files) == 0 {
-		return nil, "", ErrNoGlobalScripts
+	recordedFiles, detected := selectFiles(record.Inspection)
+	if !detected || len(recordedFiles) == 0 {
+		return nil, "", noScriptsError
 	}
 
 	opener := vpk.Single(vpkPath)
@@ -496,18 +578,18 @@ func GetMapGlobalScriptContentsWithRevision(mapName string) ([]GlobalScriptConte
 	for i := range archive.Files {
 		archiveFile := &archive.Files[i]
 		name := normalizeVPKEntryPath(archiveFile.Name())
-		if isGlobalScriptEntryPath(name) {
+		if isAllowedPath(name) {
 			archiveFiles[name] = archiveFile
 		}
 	}
 
-	result := make([]GlobalScriptContent, 0, len(record.Inspection.GlobalScripts.Files))
-	for _, scriptPath := range record.Inspection.GlobalScripts.Files {
+	result := make([]MapScriptContent, 0, len(recordedFiles))
+	for _, scriptPath := range recordedFiles {
 		scriptPath = normalizeVPKEntryPath(scriptPath)
-		if !isGlobalScriptEntryPath(scriptPath) {
+		if !isAllowedPath(scriptPath) {
 			continue
 		}
-		item := GlobalScriptContent{Path: scriptPath, Encoding: "unknown"}
+		item := MapScriptContent{Path: scriptPath, Encoding: "unknown"}
 		archiveFile, exists := archiveFiles[scriptPath]
 		if !exists {
 			item.Error = "脚本文件不存在，请刷新地图列表"
@@ -646,11 +728,18 @@ func cloneMapVPKInspection(source MapVPKInspection) MapVPKInspection {
 	clone := source
 	clone.Dictionary.Chapters = append([]DictionaryChapterInspection(nil), source.Dictionary.Chapters...)
 	clone.GlobalScripts.Files = append([]string(nil), source.GlobalScripts.Files...)
+	clone.ScriptOverrides.Files = append([]string(nil), source.ScriptOverrides.Files...)
 	if clone.Dictionary.Chapters == nil {
 		clone.Dictionary.Chapters = []DictionaryChapterInspection{}
 	}
 	if clone.GlobalScripts.Files == nil {
 		clone.GlobalScripts.Files = []string{}
+	}
+	if clone.ScriptOverrides.Status == "" {
+		clone.ScriptOverrides.Status = ScriptOverridesStatusNotChecked
+	}
+	if clone.ScriptOverrides.Files == nil {
+		clone.ScriptOverrides.Files = []string{}
 	}
 	return clone
 }

@@ -235,6 +235,10 @@ export interface MapVPKInspection {
     status: 'clean' | 'detected' | 'unreadable' | 'not_checked';
     files: string[];
   };
+  script_overrides: {
+    status: 'clean' | 'detected' | 'unreadable' | 'not_checked';
+    files: string[];
+  };
 }
 
 export type MapGlobalScriptEncoding = 'utf-8' | 'gbk' | 'unknown';
@@ -252,6 +256,13 @@ export interface MapGlobalScriptsResponse {
   map: string;
   revision: string;
   scripts: MapGlobalScriptContent[];
+}
+
+export type MapScriptOverrideContent = MapGlobalScriptContent;
+
+export interface MapScriptOverridesResponse {
+  map: string;
+  scripts: MapScriptOverrideContent[];
 }
 
 export interface MapGlobalScriptUpdateResponse {
@@ -806,6 +817,12 @@ class ApiService {
 
   async getMapGlobalScripts(mapName: string): Promise<MapGlobalScriptsResponse> {
     const response = await this.postJson('/maps/inspection/global-scripts', { map: mapName });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getMapScriptOverrides(mapName: string): Promise<MapScriptOverridesResponse> {
+    const response = await this.postJson('/maps/inspection/script-overrides', { map: mapName });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

@@ -67,6 +67,7 @@ declare module 'vue' {
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
     MapGlobalScriptsModal: typeof import('./components/MapGlobalScriptsModal.vue')['default']
     MapHotReloadSetting: typeof import('./components/settings/MapHotReloadSetting.vue')['default']
+    MapScriptOverridesModal: typeof import('./components/MapScriptOverridesModal.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
     PluginConfigModal: typeof import('./components/PluginConfigModal.vue')['default']
     PluginDetailModal: typeof import('./components/PluginDetailModal.vue')['default']

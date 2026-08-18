@@ -11,6 +11,7 @@
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
   import MapGlobalScriptsModal from '../components/MapGlobalScriptsModal.vue';
+  import MapScriptOverridesModal from '../components/MapScriptOverridesModal.vue';
   import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import { message, Modal } from 'ant-design-vue';
@@ -52,6 +53,8 @@
   const detailCampaigns = ref<MapMissionCampaign[]>([]);
   const globalScriptsVisible = ref(false);
   const globalScriptsMapName = ref('');
+  const scriptOverridesVisible = ref(false);
+  const scriptOverridesMapName = ref('');
   const hotReloading = ref(false);
   const hotReloadConfigVisible = ref(false);
   const detailCampaignTitle = computed(() =>
@@ -860,6 +863,12 @@
     return globalScriptsInspection.files?.length || 0;
   };
 
+  const getScriptOverrideCount = (name: string) => {
+    const scriptOverridesInspection = getMapInspection(name)?.script_overrides;
+    if (scriptOverridesInspection?.status !== 'detected') return 0;
+    return scriptOverridesInspection.files?.length || 0;
+  };
+
   const getChapterDisplayName = (chapter: MapDictionaryChapterInspection) => {
     const campaignTitle = chapter.campaign_title?.trim();
     const chapterTitle = chapter.chapter_title?.trim();
@@ -881,6 +890,11 @@
   const openGlobalScripts = (mapName: string) => {
     globalScriptsMapName.value = mapName;
     globalScriptsVisible.value = true;
+  };
+
+  const openScriptOverrides = (mapName: string) => {
+    scriptOverridesMapName.value = mapName;
+    scriptOverridesVisible.value = true;
   };
 
   const handleGlobalScriptsUpdated = (mapName: string) => {
@@ -1121,6 +1135,19 @@
                       >
                         存在全局脚本 {{ getGlobalScriptCount(record.name) }}
                       </a-tag>
+
+                      <a-tag
+                        v-if="getScriptOverrideCount(record.name) > 0"
+                        color="red"
+                        class="clickable-risk-tag"
+                        role="button"
+                        tabindex="0"
+                        @click="openScriptOverrides(record.name)"
+                        @keydown.enter.prevent.stop="openScriptOverrides(record.name)"
+                        @keydown.space.prevent.stop="openScriptOverrides(record.name)"
+                      >
+                        脚本覆盖 {{ getScriptOverrideCount(record.name) }}
+                      </a-tag>
                     </div>
                   </div>
                 </div>
@@ -1321,6 +1348,11 @@
           v-model:open="globalScriptsVisible"
           :map-name="globalScriptsMapName"
           @updated="handleGlobalScriptsUpdated"
+        />
+
+        <MapScriptOverridesModal
+          v-model:open="scriptOverridesVisible"
+          :map-name="scriptOverridesMapName"
         />
       </a-tab-pane>
 

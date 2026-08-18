@@ -20,7 +20,7 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
-func TestInspectMapVPKDetectsDictionaryStateAndExactGlobalScripts(t *testing.T) {
+func TestInspectMapVPKDetectsDictionaryStateAndRiskScripts(t *testing.T) {
 	vpkPath := filepath.Join(t.TempDir(), "inspection.vpk")
 	writeMapInspectionTestVPK(t, vpkPath, map[string][]byte{
 		"maps/C1M1_Present.bsp":                        makeMapInspectionTestBSP(t, true),
@@ -35,6 +35,11 @@ func TestInspectMapVPKDetectsDictionaryStateAndExactGlobalScripts(t *testing.T) 
 		"scripts/vscripts/mapspawn_addon.nut.disabled": []byte("disabled"),
 		"scripts/vscripts/sub/scriptedmode_addon.nut":  []byte("nested"),
 		"scripts/vscripts/sub/director_base_addon.nut": []byte("nested"),
+		"Scripts/WEAPON_RIFLE.TXT":                     []byte("weapon"),
+		"scripts/gamemodes.txt":                        []byte("gamemodes"),
+		"scripts/weapon_.txt":                          []byte("empty name"),
+		"scripts/weapon_rifle.txt.disabled":            []byte("disabled"),
+		"scripts/sub/weapon_smg.txt":                   []byte("nested"),
 	})
 
 	inspection := InspectMapVPK(vpkPath)
@@ -75,6 +80,17 @@ func TestInspectMapVPKDetectsDictionaryStateAndExactGlobalScripts(t *testing.T) 
 	if !reflect.DeepEqual(inspection.GlobalScripts.Files, wantScripts) {
 		t.Fatalf("global scripts = %#v, want %#v", inspection.GlobalScripts.Files, wantScripts)
 	}
+
+	wantOverrides := []string{
+		"scripts/gamemodes.txt",
+		"scripts/weapon_rifle.txt",
+	}
+	if inspection.ScriptOverrides.Status != ScriptOverridesStatusDetected {
+		t.Fatalf("script overrides status = %q, want %q", inspection.ScriptOverrides.Status, ScriptOverridesStatusDetected)
+	}
+	if !reflect.DeepEqual(inspection.ScriptOverrides.Files, wantOverrides) {
+		t.Fatalf("script overrides = %#v, want %#v", inspection.ScriptOverrides.Files, wantOverrides)
+	}
 }
 
 func TestInspectMapVPKDictionaryAggregateStates(t *testing.T) {
@@ -90,6 +106,9 @@ func TestInspectMapVPKDictionaryAggregateStates(t *testing.T) {
 		}
 		if inspection.GlobalScripts.Status != GlobalScriptsStatusClean {
 			t.Fatalf("global scripts status = %q, want clean", inspection.GlobalScripts.Status)
+		}
+		if inspection.ScriptOverrides.Status != ScriptOverridesStatusClean {
+			t.Fatalf("script overrides status = %q, want clean", inspection.ScriptOverrides.Status)
 		}
 	})
 
@@ -114,6 +133,9 @@ func TestInspectMapVPKDictionaryAggregateStates(t *testing.T) {
 		inspection := InspectMapVPK(vpkPath)
 		if inspection.Dictionary.Status != DictionaryStatusUnreadable {
 			t.Fatalf("dictionary status = %q, want unreadable", inspection.Dictionary.Status)
+		}
+		if inspection.ScriptOverrides.Status != ScriptOverridesStatusClean {
+			t.Fatalf("script overrides status = %q, want clean", inspection.ScriptOverrides.Status)
 		}
 	})
 }
@@ -209,6 +231,73 @@ func TestMapVPKInspectionPersistenceAndGlobalScriptContents(t *testing.T) {
 	}
 }
 
+func TestMapVPKInspectionPersistenceAndScriptOverrideContents(t *testing.T) {
+	addonsPath := setupMapVPKInspectionTestPaths(t)
+	mapName := "overrides.vpk"
+	vpkPath := filepath.Join(addonsPath, mapName)
+
+	utf8Content := []byte("WeaponData\n{\n\t// 地图武器覆盖\n}\n")
+	gbkContent, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("GameModes\n{\n\t// 中文模式配置\n}\n"))
+	if err != nil {
+		t.Fatalf("encode GBK: %v", err)
+	}
+	largeContent := bytes.Repeat([]byte("x"), maxGlobalScriptContentBytes+19)
+	writeMapInspectionTestVPK(t, vpkPath, map[string][]byte{
+		"scripts/weapon_rifle.txt": utf8Content,
+		"SCRIPTS/GAMEMODES.TXT":    gbkContent,
+		"scripts/weapon_smg.txt":   largeContent,
+		"scripts/readme.txt":       []byte("ignored"),
+	})
+	if err := os.WriteFile(consts.MapListFilePath, []byte(mapName+"\n"), 0644); err != nil {
+		t.Fatalf("write maplist: %v", err)
+	}
+
+	if err := InspectAndStoreMapVPK(mapName, vpkPath); err != nil {
+		t.Fatalf("InspectAndStoreMapVPK() error = %v", err)
+	}
+
+	stored, err := os.ReadFile(consts.MapVPKInspectionsPath)
+	if err != nil {
+		t.Fatalf("read persisted inspection: %v", err)
+	}
+	if bytes.Contains(stored, []byte("WeaponData")) {
+		t.Fatalf("persisted inspection unexpectedly contains override content: %s", stored)
+	}
+
+	scripts, err := GetMapScriptOverrideContents(mapName)
+	if err != nil {
+		t.Fatalf("GetMapScriptOverrideContents() error = %v", err)
+	}
+	if len(scripts) != 3 {
+		t.Fatalf("script count = %d, want 3", len(scripts))
+	}
+	byPath := make(map[string]ScriptOverrideContent, len(scripts))
+	for _, script := range scripts {
+		byPath[script.Path] = script
+	}
+
+	utf8Script := byPath["scripts/weapon_rifle.txt"]
+	if utf8Script.Encoding != "utf-8" || utf8Script.Content != string(utf8Content) || utf8Script.Truncated {
+		t.Fatalf("UTF-8 override = %+v", utf8Script)
+	}
+	gbkScript := byPath["scripts/gamemodes.txt"]
+	if gbkScript.Encoding != "gbk" || !strings.Contains(gbkScript.Content, "中文模式配置") || gbkScript.Truncated {
+		t.Fatalf("GBK override = %+v", gbkScript)
+	}
+	largeScript := byPath["scripts/weapon_smg.txt"]
+	if !largeScript.Truncated || largeScript.Size != int64(len(largeContent)) || len(largeScript.Content) != maxGlobalScriptContentBytes {
+		t.Fatalf("large override metadata = size:%d truncated:%v content:%d", largeScript.Size, largeScript.Truncated, len(largeScript.Content))
+	}
+
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(vpkPath, future, future); err != nil {
+		t.Fatalf("change map mtime: %v", err)
+	}
+	if _, err := GetMapScriptOverrideContents(mapName); !errors.Is(err, ErrMapInspectionStale) {
+		t.Fatalf("stale read error = %v, want ErrMapInspectionStale", err)
+	}
+}
+
 func TestGetMapGlobalScriptContentsIsolatesMissingItemAndRejectsNonWhitelistPath(t *testing.T) {
 	addonsPath := setupMapVPKInspectionTestPaths(t)
 	mapName := "isolated.vpk"
@@ -249,6 +338,50 @@ func TestGetMapGlobalScriptContentsIsolatesMissingItemAndRejectsNonWhitelistPath
 	for _, script := range scripts {
 		if script.Path == "scripts/vscripts/not_whitelisted.nut" {
 			t.Fatalf("non-whitelisted path was returned: %+v", script)
+		}
+	}
+}
+
+func TestGetMapScriptOverrideContentsIsolatesMissingItemAndRejectsUnmatchedPath(t *testing.T) {
+	addonsPath := setupMapVPKInspectionTestPaths(t)
+	mapName := "override-isolated.vpk"
+	vpkPath := filepath.Join(addonsPath, mapName)
+	writeMapInspectionTestVPK(t, vpkPath, map[string][]byte{
+		"scripts/weapon_rifle.txt": []byte("valid override"),
+	})
+	if err := os.WriteFile(consts.MapListFilePath, []byte(mapName+"\n"), 0644); err != nil {
+		t.Fatalf("write maplist: %v", err)
+	}
+	if err := InspectAndStoreMapVPK(mapName, vpkPath); err != nil {
+		t.Fatalf("InspectAndStoreMapVPK() error = %v", err)
+	}
+
+	mapVPKInspectionMu.Lock()
+	record := mapVPKInspectionRecords[mapName]
+	record.Inspection.ScriptOverrides.Files = append(
+		record.Inspection.ScriptOverrides.Files,
+		"scripts/weapon_smg.txt",
+		"scripts/readme.txt",
+	)
+	mapVPKInspectionRecords[mapName] = record
+	mapVPKInspectionMu.Unlock()
+
+	scripts, err := GetMapScriptOverrideContents(mapName)
+	if err != nil {
+		t.Fatalf("GetMapScriptOverrideContents() error = %v", err)
+	}
+	if len(scripts) != 2 {
+		t.Fatalf("script count = %d, want valid and missing matched entries only: %+v", len(scripts), scripts)
+	}
+	if scripts[0].Error != "" {
+		t.Fatalf("valid override error = %q", scripts[0].Error)
+	}
+	if scripts[1].Path != "scripts/weapon_smg.txt" || scripts[1].Error == "" {
+		t.Fatalf("missing override result = %+v", scripts[1])
+	}
+	for _, script := range scripts {
+		if script.Path == "scripts/readme.txt" {
+			t.Fatalf("unmatched path was returned: %+v", script)
 		}
 	}
 }
@@ -316,7 +449,9 @@ func TestMapVPKInspectionRecordLifecycle(t *testing.T) {
 		t.Fatalf("stat legacy map: %v", err)
 	}
 	legacyInspection := GetMapVPKInspection("legacy.vpk", legacyInfo)
-	if legacyInspection.Dictionary.Status != DictionaryStatusNotChecked || legacyInspection.GlobalScripts.Status != GlobalScriptsStatusNotChecked {
+	if legacyInspection.Dictionary.Status != DictionaryStatusNotChecked ||
+		legacyInspection.GlobalScripts.Status != GlobalScriptsStatusNotChecked ||
+		legacyInspection.ScriptOverrides.Status != ScriptOverridesStatusNotChecked {
 		t.Fatalf("legacy inspection = %+v, want not_checked", legacyInspection)
 	}
 
@@ -341,7 +476,7 @@ func TestMapVPKInspectionRecordLifecycle(t *testing.T) {
 		t.Fatalf("stat renamed map: %v", err)
 	}
 	renamedInspection := GetMapVPKInspection(newName, newInfo)
-	if renamedInspection.Dictionary.Status != DictionaryStatusNotApplicable {
+	if renamedInspection.Dictionary.Status != DictionaryStatusNotApplicable || renamedInspection.ScriptOverrides.Status != ScriptOverridesStatusClean {
 		t.Fatalf("renamed inspection = %+v", renamedInspection)
 	}
 	if err := DeleteMapVPKInspection(newName); err != nil {
