@@ -595,6 +595,44 @@
     });
   };
 
+  const loadPluginImmediately = (plugin: Plugin) => {
+    AModal.confirm({
+      title: '确定要立即加载这个插件吗？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        const hide = message.loading('正在立即加载插件...', 0);
+        try {
+          await api.loadPlugin(plugin.name);
+          message.success('插件立即加载成功');
+        } catch (error: any) {
+          message.error('立即加载插件失败: ' + error.message);
+        } finally {
+          hide();
+        }
+      },
+    });
+  };
+
+  const unloadPluginImmediately = (plugin: Plugin) => {
+    AModal.confirm({
+      title: '确定要立即卸载这个插件吗？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        const hide = message.loading('正在立即卸载插件...', 0);
+        try {
+          await api.unloadPlugin(plugin.name);
+          message.success('插件立即卸载成功');
+        } catch (error: any) {
+          message.error('立即卸载插件失败: ' + error.message);
+        } finally {
+          hide();
+        }
+      },
+    });
+  };
+
   const deletePlugin = async (plugin: Plugin) => {
     if (plugin.status === 'enabled') {
       message.warning('请先禁用插件');
@@ -1268,6 +1306,9 @@
                           <a-menu-item key="unload" @click="hotTogglePlugin(record as Plugin)">
                             禁用并立即卸载 smx
                           </a-menu-item>
+                          <a-menu-item key="load" @click="loadPluginImmediately(record as Plugin)">
+                            立即加载 smx
+                          </a-menu-item>
                         </a-menu>
                       </template>
                     </a-dropdown>
@@ -1477,6 +1518,12 @@
                         <a-menu>
                           <a-menu-item key="load" @click="hotTogglePlugin(record as Plugin)">
                             启用并立即加载 smx
+                          </a-menu-item>
+                          <a-menu-item
+                            key="unload"
+                            @click="unloadPluginImmediately(record as Plugin)"
+                          >
+                            立即卸载 smx
                           </a-menu-item>
                         </a-menu>
                       </template>

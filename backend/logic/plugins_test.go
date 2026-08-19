@@ -138,6 +138,141 @@ func TestEnableAndLoadPluginRollsBackOnLoadFailure(t *testing.T) {
 	}
 }
 
+func TestLoadPluginLoadsEnabledSMXWithoutChangingStatus(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "alpha.smx"), "smx")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "nested", "beta.smx"), "smx")
+
+	if err := EnablePlugin("PluginHot"); err != nil {
+		t.Fatalf("EnablePlugin() error = %v", err)
+	}
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	if err := LoadPlugin("PluginHot"); err != nil {
+		t.Fatalf("LoadPlugin() error = %v", err)
+	}
+
+	wantCommands := []string{
+		`sm plugins load "alpha"`,
+		`sm plugins load "nested/beta"`,
+	}
+	if !reflect.DeepEqual(*commands, wantCommands) {
+		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
+	}
+
+	plugins, err := GetPlugins()
+	if err != nil {
+		t.Fatalf("GetPlugins() error = %v", err)
+	}
+	found := false
+	for _, plugin := range plugins {
+		if plugin.Name == "PluginHot" {
+			found = true
+			if plugin.Status != "enabled" {
+				t.Fatalf("PluginHot status = %s, want enabled", plugin.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("PluginHot is missing from plugin list")
+	}
+}
+
+func TestLoadPluginRejectsDisabledPlugin(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "hot.smx"), "smx")
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	err := LoadPlugin("PluginHot")
+	if err == nil || !strings.Contains(err.Error(), "is not enabled") {
+		t.Fatalf("LoadPlugin() error = %v, want disabled plugin error", err)
+	}
+	if len(*commands) != 0 {
+		t.Fatalf("commands = %v, want none", *commands)
+	}
+}
+
+func TestUnloadPluginUnloadsDisabledSMXWithoutChangingStatus(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "alpha.smx"), "smx")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "nested", "beta.smx"), "smx")
+
+	if err := EnablePlugin("PluginHot"); err != nil {
+		t.Fatalf("EnablePlugin() error = %v", err)
+	}
+	if err := DisablePlugin("PluginHot"); err != nil {
+		t.Fatalf("DisablePlugin() error = %v", err)
+	}
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	if err := UnloadPlugin("PluginHot"); err != nil {
+		t.Fatalf("UnloadPlugin() error = %v", err)
+	}
+
+	wantCommands := []string{
+		`sm plugins unload "nested/beta"`,
+		`sm plugins unload "alpha"`,
+	}
+	if !reflect.DeepEqual(*commands, wantCommands) {
+		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
+	}
+
+	plugins, err := GetPlugins()
+	if err != nil {
+		t.Fatalf("GetPlugins() error = %v", err)
+	}
+	found := false
+	for _, plugin := range plugins {
+		if plugin.Name == "PluginHot" {
+			found = true
+			if plugin.Status != "disabled" {
+				t.Fatalf("PluginHot status = %s, want disabled", plugin.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("PluginHot is missing from plugin list")
+	}
+}
+
+func TestUnloadPluginRejectsEnabledPlugin(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "hot.smx"), "smx")
+
+	if err := EnablePlugin("PluginHot"); err != nil {
+		t.Fatalf("EnablePlugin() error = %v", err)
+	}
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	err := UnloadPlugin("PluginHot")
+	if err == nil || !strings.Contains(err.Error(), "is not disabled") {
+		t.Fatalf("UnloadPlugin() error = %v, want enabled plugin error", err)
+	}
+	if len(*commands) != 0 {
+		t.Fatalf("commands = %v, want none", *commands)
+	}
+}
+
 func TestDisableAndUnloadPluginRollsBackOnUnloadFailure(t *testing.T) {
 	storePath, gamePath := setupPluginTestPaths(t)
 

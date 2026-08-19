@@ -594,6 +594,16 @@ class ApiService {
     if (!response.ok) throw new Error(await response.text());
   }
 
+  async loadPlugin(name: string) {
+    const response = await this.post('/plugins/load', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
+  async unloadPlugin(name: string) {
+    const response = await this.post('/plugins/unload', { name });
+    if (!response.ok) throw new Error(await response.text());
+  }
+
   async enablePlugins(names: string[]) {
     const response = await this.postJson('/plugins/enable-batch', { names });
     if (!response.ok) throw new Error(await response.text());

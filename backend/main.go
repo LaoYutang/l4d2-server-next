@@ -207,6 +207,8 @@ func main() {
 		plugins.POST("/export-all/cancel", controller.CancelExportAllPlugins)
 		plugins.POST("/enable", controller.EnablePlugin)
 		plugins.POST("/enable-and-load", controller.EnableAndLoadPlugin)
+		plugins.POST("/load", controller.LoadPlugin)
+		plugins.POST("/unload", controller.UnloadPlugin)
 		plugins.POST("/enable-batch", controller.EnablePlugins)
 		plugins.POST("/disable", controller.DisablePlugin)
 		plugins.POST("/disable-and-unload", controller.DisableAndUnloadPlugin)
