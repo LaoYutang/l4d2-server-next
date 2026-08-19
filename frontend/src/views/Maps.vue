@@ -1024,7 +1024,7 @@
                     </span>
                     <span
                       v-else-if="getMapSummaryTitle(record.name)"
-                      class="text-xs text-gray-500 dark:text-gray-400 truncate"
+                      class="block max-w-[480px] truncate text-xs text-gray-500 dark:text-gray-400"
                       :title="getMapSummaryTitle(record.name)"
                     >
                       {{ getMapSummaryTitle(record.name) }}
