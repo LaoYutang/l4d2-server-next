@@ -13,6 +13,7 @@ readonly INSTANCE_DIR="${CONFIG_DIR}/instances"
 readonly MIRROR_CONF="${CONFIG_DIR}/mirror.conf"
 readonly COMPOSE_FILE="${BASE_DIR}/docker-compose.yaml"
 readonly PROJECT_NAME="l4d2"
+readonly DEFAULT_MIRROR="docker.cnb.cool"
 readonly IMAGE_GAME="laoyutang/l4d2-pure:latest"
 readonly IMAGE_MANAGER="laoyutang/l4d2-manager-next:latest"
 readonly DEFAULT_GAME_PORT=27015
@@ -209,7 +210,7 @@ save_instance_config() {
 
 # 加载镜像加速源配置
 load_mirror() {
-    MIRROR_URL="docker.1ms.run"
+    MIRROR_URL="$DEFAULT_MIRROR"
     if [[ -f "$MIRROR_CONF" ]]; then
         # shellcheck source=/dev/null
         source "$MIRROR_CONF"

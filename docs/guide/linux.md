@@ -18,6 +18,8 @@ bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/mas
 
 脚本会生成 Docker Compose 配置，并持久化游戏数据、插件目录和管理器数据。
 
+脚本默认从 `docker.cnb.cool` 拉取项目镜像；已有镜像源配置仍会继续使用。如需改用 Docker Hub 官方源，可以在“镜像管理 → 设置镜像加速源”中留空并保存。
+
 安装完成后，请在系统防火墙和云服务器安全组中放行你在脚本中填写的游戏端口和管理后台端口。游戏端口需要 TCP/UDP，管理后台端口需要 TCP。
 
 ## 完整部署：Docker Compose
