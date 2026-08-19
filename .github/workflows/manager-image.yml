@@ -22,11 +22,20 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Login to CNB
+        uses: docker/login-action@v3
+        with:
+          registry: docker.cnb.cool
+          username: cnb
+          password: ${{ secrets.CNB_TOKEN }}
+
       - name: Extract metadata for manager
         id: meta-manager
         uses: docker/metadata-action@v5
         with:
-          images: laoyutang/l4d2-manager-next
+          images: |
+            laoyutang/l4d2-manager-next
+            docker.cnb.cool/laoyutang/l4d2-manager-next
           tags: |
             type=raw,value=latest
             type=ref,event=tag
