@@ -47,8 +47,8 @@ http://服务器IP:27020
 
 <div align="center">
   <img src="https://images.laoyutang.cn/2026/06/99465f674d128e3a406d294753147479.png" alt="首页" width="45%" />
-  <img src="https://images.laoyutang.cn/2026/06/3dbe0462012ca01b6971e6744655da95.png" alt="插件管理" width="45%" />
-  <br/>
-  <img src="https://images.laoyutang.cn/2026/06/5a9cc014b0552f975dd39b2b1844d221.png" alt="地图管理" width="45%" />
   <img src="https://images.laoyutang.cn/2026/06/2868050dbad60124dcb313a23d422685.png" alt="性能监控" width="45%" />
+  <br/>
+  <img src="https://images.laoyutang.cn/2026/06/3dbe0462012ca01b6971e6744655da95.png" alt="插件管理" width="45%" />
+  <img src="https://images.laoyutang.cn/2026/06/5a9cc014b0552f975dd39b2b1844d221.png" alt="地图管理" width="45%" />
 </div>
