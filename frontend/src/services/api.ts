@@ -153,6 +153,21 @@ export interface GameBanListResponse {
   warnings: string[];
 }
 
+export interface ServerConfigResponse {
+  hidden: boolean;
+  lobby_connect_only: boolean;
+  steam_group: string;
+  custom_config: string[];
+  fixed_config: string;
+}
+
+export interface ServerConfigUpdate {
+  hidden: boolean;
+  lobby_connect_only: boolean;
+  steam_group: string;
+  custom_config: string[];
+}
+
 export class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -1675,18 +1690,13 @@ class ApiService {
     return response.json();
   }
 
-  async getServerConfig() {
+  async getServerConfig(): Promise<ServerConfigResponse> {
     const response = await this.post('/server-config/get');
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
 
-  async updateServerConfig(data: {
-    hidden: boolean;
-    lobby_connect_only: boolean;
-    steam_group: string;
-    custom_config: string[];
-  }) {
+  async updateServerConfig(data: ServerConfigUpdate) {
     const response = await this.postJson('/server-config/update', data);
     if (!response.ok) throw new Error(await response.text());
     return response.json();

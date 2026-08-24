@@ -616,31 +616,25 @@ func captureServerConfig() *BackupServerConfig {
 	}
 	content := string(contentBytes)
 	lines := strings.Split(content, "\n")
-	inCustomBlock := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		if strings.Contains(line, ServerCustomConfigMarker) {
-			inCustomBlock = true
+		if trimmed == ServerCustomConfigMarker {
 			continue
 		}
 
-		isManaged := false
 		if strings.HasPrefix(trimmed, "sv_tags") {
-			isManaged = true
 			args := strings.TrimSpace(strings.TrimPrefix(trimmed, "sv_tags"))
 			args = strings.Trim(args, "\"")
 			if strings.Contains(args, "hidden") {
 				cfg.Hidden = true
 			}
 		} else if strings.HasPrefix(trimmed, "sm_cvar") && strings.Contains(trimmed, "sv_allow_lobby_connect_only") {
-			isManaged = true
 			if strings.Contains(trimmed, "\"1\"") {
 				cfg.LobbyConnectOnly = true
 			}
 		} else if strings.HasPrefix(trimmed, "sv_steamgroup") {
-			isManaged = true
 			// Extract value between quotes
 			start := strings.Index(trimmed, "\"")
 			end := strings.LastIndex(trimmed, "\"")
@@ -648,11 +642,8 @@ func captureServerConfig() *BackupServerConfig {
 				cfg.SteamGroup = trimmed[start+1 : end]
 			}
 		}
-
-		if inCustomBlock && trimmed != "" && !isManaged {
-			cfg.CustomConfig = append(cfg.CustomConfig, line)
-		}
 	}
+	cfg.CustomConfig = ExtractServerCustomConfig(content)
 
 	return cfg
 }
@@ -667,8 +658,14 @@ func restoreServerConfig(cfg *BackupServerConfig) {
 	syncFiles := []string{"server.cfg.128tick", "server.cfg.100tick", "server.cfg.60tick", "server.cfg.30tick"}
 	for _, fname := range syncFiles {
 		fpath := filepath.Join(consts.GamePath, "cfg", fname)
-		if _, err := os.Stat(fpath); err == nil {
-			applyServerConfigToFile(fpath, cfg)
+		if _, err := os.Stat(fpath); err != nil {
+			if !os.IsNotExist(err) {
+				fmt.Printf("Warning: failed to inspect %s: %v\n", fname, err)
+			}
+			continue
+		}
+		if err := applyServerConfigToFile(fpath, cfg); err != nil {
+			fmt.Printf("Warning: failed to restore %s: %v\n", fname, err)
 		}
 	}
 	if err := EnsureGameBanPersistenceConfig(); err != nil {
@@ -677,88 +674,12 @@ func restoreServerConfig(cfg *BackupServerConfig) {
 }
 
 func applyServerConfigToFile(configPath string, cfg *BackupServerConfig) error {
-	contentBytes, err := os.ReadFile(configPath)
-	var lines []string
-	if err == nil {
-		lines = strings.Split(string(contentBytes), "\n")
-	}
-
-	// Extract original tags
-	originalTags := []string{}
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "sv_tags") {
-			args := strings.TrimSpace(strings.TrimPrefix(trimmed, "sv_tags"))
-			args = strings.Trim(args, "\"")
-			if args != "" {
-				parts := strings.Split(args, ",")
-				for _, p := range parts {
-					t := strings.TrimSpace(p)
-					if t != "" && t != "hidden" {
-						originalTags = append(originalTags, t)
-					}
-				}
-			}
-		}
-	}
-
-	var newLines []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(line, ServerCustomConfigMarker) {
-			break
-		}
-		if strings.HasPrefix(trimmed, "sv_tags") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "sm_cvar") && strings.Contains(trimmed, "sv_allow_lobby_connect_only") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "sv_steamgroup") {
-			continue
-		}
-		newLines = append(newLines, line)
-	}
-
-	for len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
-		newLines = newLines[:len(newLines)-1]
-	}
-
-	newLines = append(newLines, "")
-	newLines = append(newLines, ServerCustomConfigMarker)
-
-	if cfg.Hidden {
-		originalTags = append(originalTags, "hidden")
-	}
-	if len(originalTags) > 0 {
-		seen := make(map[string]bool)
-		var uniqueTags []string
-		for _, t := range originalTags {
-			if !seen[t] {
-				uniqueTags = append(uniqueTags, t)
-				seen[t] = true
-			}
-		}
-		newLines = append(newLines, fmt.Sprintf("sv_tags \"%s\"", strings.Join(uniqueTags, ",")))
-	}
-
-	val := "0"
-	if cfg.LobbyConnectOnly {
-		val = "1"
-	}
-	newLines = append(newLines, fmt.Sprintf("sm_cvar sv_allow_lobby_connect_only \"%s\"", val))
-
-	if cfg.SteamGroup != "" {
-		newLines = append(newLines, fmt.Sprintf("sv_steamgroup \"%s\"", cfg.SteamGroup))
-	}
-
-	for _, customLine := range cfg.CustomConfig {
-		if strings.TrimSpace(customLine) != "" {
-			newLines = append(newLines, customLine)
-		}
-	}
-
-	return os.WriteFile(configPath, []byte(strings.Join(newLines, "\n")), 0644)
+	return UpdateServerConfigFile(configPath, ServerConfigSettings{
+		Hidden:           cfg.Hidden,
+		LobbyConnectOnly: cfg.LobbyConnectOnly,
+		SteamGroup:       cfg.SteamGroup,
+		CustomConfig:     cfg.CustomConfig,
+	})
 }
 
 func GetBackupServerConfigDetail(name string) (*BackupServerConfig, error) {
