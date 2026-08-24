@@ -123,7 +123,7 @@
 
                 <div class="min-w-0">
                   <code
-                    class="block rounded-md bg-gray-900 dark:bg-black px-3 py-2 text-sm leading-6 text-emerald-300 whitespace-pre-wrap break-all"
+                    class="block rounded-md border border-gray-200 bg-white px-3 py-2 text-sm leading-6 text-emerald-700 whitespace-pre-wrap break-all dark:border-gray-800 dark:bg-black dark:text-emerald-300"
                     >{{ item.entry.command }}</code
                   >
                 </div>

@@ -232,12 +232,53 @@ func splitInlineServerConfigComment(line string) (string, string, bool) {
 		if inQuotes || line[index] != '/' || line[index+1] != '/' {
 			continue
 		}
-		if index > 0 && line[index-1] != ' ' && line[index-1] != '\t' {
+		if isServerConfigURLSlash(line, index) {
 			continue
 		}
 		return strings.TrimSpace(line[:index]), strings.TrimSpace(line[index+2:]), true
 	}
 	return line, "", false
+}
+
+func isServerConfigURLSlash(line string, slashIndex int) bool {
+	tokenStart := slashIndex
+	for tokenStart > 0 && line[tokenStart-1] != ' ' && line[tokenStart-1] != '\t' {
+		tokenStart--
+	}
+	tokenPrefix := line[tokenStart:slashIndex]
+	if strings.Contains(tokenPrefix, `"`) {
+		return false
+	}
+	colonIndex := strings.LastIndex(tokenPrefix, "://")
+	if colonIndex < 0 {
+		if !strings.HasSuffix(tokenPrefix, ":") {
+			return false
+		}
+		colonIndex = len(tokenPrefix) - 1
+	}
+
+	schemeStart := colonIndex
+	for schemeStart > 0 && isServerConfigURLSchemeByte(tokenPrefix[schemeStart-1]) {
+		schemeStart--
+	}
+	scheme := tokenPrefix[schemeStart:colonIndex]
+	if len(scheme) == 0 || !isASCIIAlpha(scheme[0]) {
+		return false
+	}
+	for index := 1; index < len(scheme); index++ {
+		if !isServerConfigURLSchemeByte(scheme[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func isServerConfigURLSchemeByte(value byte) bool {
+	return isASCIIAlpha(value) || value >= '0' && value <= '9' || value == '+' || value == '-' || value == '.'
+}
+
+func isASCIIAlpha(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
 }
 
 func isEscapedServerConfigByte(value string, index int) bool {

@@ -14,8 +14,11 @@ func TestNormalizeServerCustomConfig(t *testing.T) {
 		"// 第一行注释",
 		"// 第二行注释",
 		`sm_cvar welcome "http://example.com/a//b" // 行尾注释`,
-		`sm_cvar endpoint http://example.com/path`,
+		`sm_cvar endpoint http://example.com/a//b`,
+		`sm_cvar secure_endpoint https://example.com/a//b`,
 		`sm_cvar quoted "value // literal"`,
+		`sm_cvar quoted_url "http://example.com/a//b"//网址说明`,
+		`sm_weapon weapon_smg_silenced damage "26"//消音冲锋枪攻击伤害【默认25】`,
 		"",
 	}
 
@@ -28,8 +31,13 @@ func TestNormalizeServerCustomConfig(t *testing.T) {
 		"// 第二行注释",
 		"// 行尾注释",
 		`sm_cvar welcome "http://example.com/a//b"`,
-		`sm_cvar endpoint http://example.com/path`,
+		`sm_cvar endpoint http://example.com/a//b`,
+		`sm_cvar secure_endpoint https://example.com/a//b`,
 		`sm_cvar quoted "value // literal"`,
+		"// 网址说明",
+		`sm_cvar quoted_url "http://example.com/a//b"`,
+		"// 消音冲锋枪攻击伤害【默认25】",
+		`sm_weapon weapon_smg_silenced damage "26"`,
 	}
 	if strings.Join(normalized, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("normalized config:\n%s\nwant:\n%s", strings.Join(normalized, "\n"), strings.Join(want, "\n"))

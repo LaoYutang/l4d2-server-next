@@ -79,7 +79,7 @@ const splitInlineComment = (line: string) => {
       continue;
     }
     if (inQuotes || line[index] !== '/' || line[index + 1] !== '/') continue;
-    if (index > 0 && line[index - 1] !== ' ' && line[index - 1] !== '\t') continue;
+    if (isUrlSlash(line, index)) continue;
     return {
       command: line.slice(0, index).trim(),
       comment: line.slice(index + 2).trim(),
@@ -87,6 +87,27 @@ const splitInlineComment = (line: string) => {
     };
   }
   return { command: line, comment: '', hasComment: false };
+};
+
+const isUrlSlash = (line: string, slashIndex: number) => {
+  let tokenStart = slashIndex;
+  while (tokenStart > 0 && line[tokenStart - 1] !== ' ' && line[tokenStart - 1] !== '\t') {
+    tokenStart -= 1;
+  }
+  const tokenPrefix = line.slice(tokenStart, slashIndex);
+  if (tokenPrefix.includes('"')) return false;
+  let colonIndex = tokenPrefix.lastIndexOf('://');
+  if (colonIndex < 0) {
+    if (!tokenPrefix.endsWith(':')) return false;
+    colonIndex = tokenPrefix.length - 1;
+  }
+
+  let schemeStart = colonIndex;
+  while (schemeStart > 0 && /[A-Za-z0-9+.-]/.test(tokenPrefix[schemeStart - 1] ?? '')) {
+    schemeStart -= 1;
+  }
+  const scheme = tokenPrefix.slice(schemeStart, colonIndex);
+  return /^[A-Za-z][A-Za-z0-9+.-]*$/.test(scheme);
 };
 
 const isEscaped = (value: string, index: number) => {
