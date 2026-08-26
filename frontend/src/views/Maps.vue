@@ -7,6 +7,7 @@
     type MapDictionaryChapterInspection,
     type MapMissionCampaign,
     type MapSummaryItem,
+    type MapUploadProgressEvent,
     type ParsedDownloadItem,
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
@@ -30,7 +31,15 @@
     EditOutlined,
     CompressOutlined,
     SettingOutlined,
+    LoadingOutlined,
   } from '@ant-design/icons-vue';
+
+  type MapUploadPhase = 'initializing' | 'uploading' | 'processing';
+
+  interface MapUploadFailure {
+    stage: MapUploadPhase;
+    message: string;
+  }
 
   const authStore = useAuthStore();
   const isAdmin = computed(() => authStore.isAdmin);
@@ -70,6 +79,8 @@
   const uploadStates = ref<Record<string, { uploadId: string }>>({});
   const uploadControllers = ref<Record<string, AbortController>>({});
   const uploadPercents = ref<Record<string, number>>({});
+  const uploadPhases = ref<Record<string, MapUploadPhase>>({});
+  const uploadFailures = ref<Record<string, MapUploadFailure>>({});
   const newTaskUrl = ref('');
   const addingTask = ref(false);
   const addTaskVisible = ref(false);
@@ -83,6 +94,34 @@
   const selectedParsedItemKeys = ref<string[]>([]);
   const downloadConfigVisible = ref(false);
   let downloadRefreshInterval: number | null = null;
+
+  const normalizeUploadErrorMessage = (error: unknown, fallback: string) => {
+    const messageText =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+    return (messageText || fallback).replace(/\s+/g, ' ').trim() || fallback;
+  };
+
+  const getUploadFailureTitle = (stage: MapUploadPhase) => {
+    if (stage === 'processing') return '处理失败';
+    if (stage === 'uploading') return '上传中断';
+    return '上传失败';
+  };
+
+  const getUploadErrorSummary = (messageText: string) => {
+    const characters = Array.from(messageText);
+    return characters.length > 80 ? `${characters.slice(0, 80).join('')}…` : messageText;
+  };
+
+  const getUploadFailureLabel = (failure?: MapUploadFailure) =>
+    failure
+      ? `${getUploadFailureTitle(failure.stage)}：${getUploadErrorSummary(failure.message)}`
+      : '上传失败';
+
+  const getUploadFailureTooltip = (failure?: MapUploadFailure) =>
+    failure ? `${getUploadFailureTitle(failure.stage)}：${failure.message}` : '上传失败';
+
+  const getTrackedUploadPhase = (fileName: string, fallback: MapUploadPhase): MapUploadPhase =>
+    uploadPhases.value[fileName] || fallback;
 
   // Local Maps Logic
   const loadMaps = async () => {
@@ -173,88 +212,144 @@
 
   const customRequest = async (options: any) => {
     const { file, onSuccess, onError, onProgress } = options;
-    const previousState = uploadStates.value[file.name];
+    const fileName = file.name;
+    const previousState = uploadStates.value[fileName];
+
+    if (uploadPhases.value[fileName] === 'processing') {
+      const error = new Error('同名文件正在服务端处理中，请等待完成后再上传');
+      message.warning(`${fileName} 上传失败：${error.message}`);
+      onError(error);
+      if (file.uid !== undefined) {
+        fileList.value = fileList.value.filter((item: any) => item.uid !== file.uid);
+      }
+      return;
+    }
 
     // 取消同文件的上一次上传（如果有）
-    const existingController = uploadControllers.value[file.name];
+    const existingController = uploadControllers.value[fileName];
     if (existingController) {
       existingController.abort();
-      if (uploadControllers.value[file.name] === existingController) {
-        delete uploadControllers.value[file.name];
+      if (uploadControllers.value[fileName] === existingController) {
+        delete uploadControllers.value[fileName];
       }
     }
     if (previousState) {
-      delete uploadStates.value[file.name];
+      delete uploadStates.value[fileName];
       try {
         await api.cancelUpload(previousState.uploadId);
       } catch (e: any) {
-        message.warning(`清理 ${file.name} 的上一次上传失败，将由服务器定时清理: ${e.message}`);
+        message.warning(`清理 ${fileName} 的上一次上传失败，将由服务器定时清理: ${e.message}`);
       }
     }
 
+    if (file.uid !== undefined) {
+      fileList.value = fileList.value.filter(
+        (item: any) => item.uid === file.uid || item.name !== fileName
+      );
+    }
+
     const controller = new AbortController();
-    uploadControllers.value[file.name] = controller;
+    uploadControllers.value[fileName] = controller;
     let currentUploadId = '';
+    let currentStage: MapUploadPhase = 'initializing';
+    const isCurrentUpload = () => uploadControllers.value[fileName] === controller;
+
+    uploadPhases.value[fileName] = currentStage;
+    delete uploadFailures.value[fileName];
+    delete uploadSpeeds.value[fileName];
+    delete uploadPercents.value[fileName];
 
     try {
       const result = await api.uploadMap(
         file,
-        ({ percent, speed }: { percent: number; speed: string }) => {
-          uploadSpeeds.value[file.name] = speed;
-          uploadPercents.value[file.name] = percent;
-          onProgress({ percent });
+        (event: MapUploadProgressEvent) => {
+          if (!isCurrentUpload()) return;
+          currentStage = event.phase;
+          uploadPhases.value[fileName] = event.phase;
+          uploadPercents.value[fileName] = event.percent;
+          if (event.phase === 'uploading') {
+            uploadSpeeds.value[fileName] = event.speed;
+          } else {
+            delete uploadSpeeds.value[fileName];
+          }
+          onProgress({ percent: event.percent });
         },
         controller.signal,
         (uploadId: string) => {
+          if (!isCurrentUpload()) return;
           currentUploadId = uploadId;
-          uploadStates.value[file.name] = { uploadId };
+          currentStage = 'uploading';
+          uploadPhases.value[fileName] = currentStage;
+          uploadStates.value[fileName] = { uploadId };
         }
       );
-      delete uploadSpeeds.value[file.name];
-      if (uploadControllers.value[file.name] === controller) {
-        delete uploadControllers.value[file.name];
+
+      if (!isCurrentUpload()) {
+        onError(new Error('上传任务已被新的同名上传替换'));
+        return;
       }
-      if ('success' in result && result.success) {
-        if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
-          delete uploadStates.value[file.name];
+
+      delete uploadSpeeds.value[fileName];
+      delete uploadControllers.value[fileName];
+      if (result.success) {
+        if (uploadStates.value[fileName]?.uploadId === currentUploadId) {
+          delete uploadStates.value[fileName];
         }
-        delete uploadPercents.value[file.name];
-        message.success(`${file.name} 上传成功`);
+        delete uploadPhases.value[fileName];
+        delete uploadFailures.value[fileName];
+        delete uploadPercents.value[fileName];
+        message.success(`${fileName} 上传成功`);
         onSuccess('Ok');
         loadMaps();
       } else {
-        const failed = result as { success: false; uploadId: string; uploadedChunks: number[] };
-        uploadStates.value[file.name] = { uploadId: failed.uploadId };
-        const currentPercent = uploadPercents.value[file.name] || file.percent || 0;
-        message.warning(`${file.name} 上传中断，可点击继续上传恢复`);
+        const errorMessage = normalizeUploadErrorMessage(result.error, '分片上传失败');
+        uploadStates.value[fileName] = { uploadId: result.uploadId };
+        uploadPhases.value[fileName] = 'uploading';
+        uploadFailures.value[fileName] = { stage: 'uploading', message: errorMessage };
+        const currentPercent = uploadPercents.value[fileName] || file.percent || 0;
+        message.warning(`${fileName} 上传中断：${errorMessage}；可点击继续上传恢复`);
         onProgress({ percent: currentPercent });
-        onError(new Error('Upload interrupted'));
+        onError(new Error(errorMessage));
       }
-    } catch (e: any) {
-      delete uploadSpeeds.value[file.name];
-      if (uploadControllers.value[file.name] === controller) {
-        delete uploadControllers.value[file.name];
-      }
-      const currentPercent = uploadPercents.value[file.name] || file.percent || 0;
-      if (e.message === '上传已取消') {
-        if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
-          delete uploadStates.value[file.name];
-        }
-        onProgress({ percent: currentPercent });
-        onError(e);
+    } catch (error: unknown) {
+      const uploadError =
+        error instanceof Error
+          ? error
+          : new Error(normalizeUploadErrorMessage(error, '上传失败'));
+      if (!isCurrentUpload()) {
+        onError(uploadError);
         return;
       }
-      if (uploadStates.value[file.name]?.uploadId === currentUploadId) {
-        delete uploadStates.value[file.name];
+
+      delete uploadSpeeds.value[fileName];
+      delete uploadControllers.value[fileName];
+      const currentPercent = uploadPercents.value[fileName] || file.percent || 0;
+      const errorMessage = normalizeUploadErrorMessage(uploadError, '上传失败');
+      if (controller.signal.aborted || errorMessage === '上传已取消') {
+        if (uploadStates.value[fileName]?.uploadId === currentUploadId) {
+          delete uploadStates.value[fileName];
+        }
+        delete uploadPhases.value[fileName];
+        delete uploadFailures.value[fileName];
+        delete uploadPercents.value[fileName];
+        onProgress({ percent: currentPercent });
+        onError(uploadError);
+        return;
       }
-      message.error(`上传 ${file.name} 失败: ${e.message}`);
+      if (uploadStates.value[fileName]?.uploadId === currentUploadId) {
+        delete uploadStates.value[fileName];
+      }
+      uploadPhases.value[fileName] = currentStage;
+      uploadFailures.value[fileName] = { stage: currentStage, message: errorMessage };
+      message.error(`${fileName} ${getUploadFailureTitle(currentStage)}：${errorMessage}`);
       onProgress({ percent: currentPercent });
-      onError(e);
+      onError(uploadError);
     }
   };
 
   const resumeUpload = async (fileItem: any) => {
-    const state = uploadStates.value[fileItem.name];
+    const fileName = fileItem.name;
+    const state = uploadStates.value[fileName];
     if (!state) return;
 
     const targetFile = fileList.value.find((f: any) => f.uid === fileItem.uid);
@@ -265,44 +360,77 @@
     }
 
     const controller = new AbortController();
-    uploadControllers.value[fileItem.name] = controller;
+    uploadControllers.value[fileName] = controller;
+    let currentStage: MapUploadPhase = 'uploading';
+    const isCurrentUpload = () => uploadControllers.value[fileName] === controller;
+
+    uploadPhases.value[fileName] = currentStage;
+    delete uploadFailures.value[fileName];
+    delete uploadSpeeds.value[fileName];
 
     try {
       const fileObj = fileItem.originFileObj || fileItem;
       await api.resumeUpload(
         state.uploadId,
         fileObj,
-        ({ percent, speed }: { percent: number; speed: string }) => {
-          uploadSpeeds.value[fileItem.name] = speed;
-          uploadPercents.value[fileItem.name] = percent;
+        (event: MapUploadProgressEvent) => {
+          if (!isCurrentUpload()) return;
+          currentStage = event.phase;
+          uploadPhases.value[fileName] = event.phase;
+          uploadPercents.value[fileName] = event.percent;
+          if (event.phase === 'uploading') {
+            uploadSpeeds.value[fileName] = event.speed;
+          } else {
+            delete uploadSpeeds.value[fileName];
+          }
           if (targetFile) {
-            targetFile.percent = percent;
+            targetFile.percent = event.percent;
           }
         },
         controller.signal
       );
-      delete uploadSpeeds.value[fileItem.name];
-      delete uploadStates.value[fileItem.name];
-      delete uploadControllers.value[fileItem.name];
-      delete uploadPercents.value[fileItem.name];
-      message.success(`${fileItem.name} 上传成功`);
+
+      if (!isCurrentUpload()) {
+        if (targetFile) targetFile.status = 'error';
+        return;
+      }
+
+      delete uploadSpeeds.value[fileName];
+      delete uploadStates.value[fileName];
+      delete uploadControllers.value[fileName];
+      delete uploadPercents.value[fileName];
+      delete uploadPhases.value[fileName];
+      delete uploadFailures.value[fileName];
+      message.success(`${fileName} 上传成功`);
       if (targetFile) {
         targetFile.status = 'done';
         targetFile.percent = 100;
       }
       loadMaps();
-    } catch (e: any) {
-      delete uploadSpeeds.value[fileItem.name];
-      delete uploadControllers.value[fileItem.name];
-      const failedPercent = uploadPercents.value[fileItem.name] || currentPercent;
-      if (e.message === '上传已取消') {
+    } catch (error: unknown) {
+      if (!isCurrentUpload()) {
+        if (targetFile) targetFile.status = 'error';
+        return;
+      }
+
+      delete uploadSpeeds.value[fileName];
+      delete uploadControllers.value[fileName];
+      const failedPercent = uploadPercents.value[fileName] || currentPercent;
+      const errorMessage = normalizeUploadErrorMessage(error, '续传失败');
+      if (controller.signal.aborted || errorMessage === '上传已取消') {
         if (targetFile) {
           targetFile.status = 'error';
           targetFile.percent = failedPercent;
         }
         return;
       }
-      message.error(`续传 ${fileItem.name} 失败: ${e.message}`);
+      const failureStage = getTrackedUploadPhase(fileName, currentStage);
+      if (failureStage === 'processing' && uploadStates.value[fileName]?.uploadId === state.uploadId) {
+        delete uploadStates.value[fileName];
+      }
+      uploadPhases.value[fileName] = failureStage;
+      uploadFailures.value[fileName] = { stage: failureStage, message: errorMessage };
+      message.error(`${fileName} ${getUploadFailureTitle(failureStage)}：${errorMessage}`);
       if (targetFile) {
         targetFile.status = 'error';
         targetFile.percent = failedPercent;
@@ -314,6 +442,11 @@
     const file = fileList.value.find((f: any) => f.uid === uid);
     if (!file) return;
     const state = uploadStates.value[file.name];
+
+    if (file.status === 'uploading' && uploadPhases.value[file.name] === 'processing') {
+      message.info('服务端正在处理该文件，暂时无法取消');
+      return;
+    }
 
     // 如果有正在进行的上传，先取消
     const controller = uploadControllers.value[file.name];
@@ -328,6 +461,8 @@
     delete uploadStates.value[file.name];
     delete uploadSpeeds.value[file.name];
     delete uploadPercents.value[file.name];
+    delete uploadPhases.value[file.name];
+    delete uploadFailures.value[file.name];
 
     fileList.value = fileList.value.filter((f: any) => f.uid !== uid);
 
@@ -1381,19 +1516,33 @@
               class="flex flex-col gap-1 p-2 rounded border border-gray-200 dark:border-gray-700"
             >
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex flex-1 items-center gap-2 min-w-0">
                   <span class="text-sm truncate" :title="file.name">{{ file.name }}</span>
                   <span
-                    v-if="file.status === 'uploading' && uploadSpeeds[file.name]"
+                    v-if="file.status === 'uploading' && uploadPhases[file.name] === 'processing'"
+                    class="flex items-center gap-1 text-xs text-blue-500 whitespace-nowrap"
+                  >
+                    <loading-outlined spin />
+                    服务端处理中
+                  </span>
+                  <span
+                    v-else-if="file.status === 'uploading' && uploadSpeeds[file.name]"
                     class="text-xs text-gray-500 whitespace-nowrap"
                   >
                     {{ uploadSpeeds[file.name] }}
                   </span>
-                  <span
-                    v-if="file.status === 'error'"
-                    class="text-xs text-red-500 whitespace-nowrap"
+                  <a-tooltip
+                    v-if="file.status === 'error' && uploadFailures[file.name]"
+                    :title="getUploadFailureTooltip(uploadFailures[file.name])"
                   >
-                    上传中断
+                    <span
+                      class="inline-block max-w-[240px] truncate align-bottom text-xs text-red-500 md:max-w-[420px]"
+                    >
+                      {{ getUploadFailureLabel(uploadFailures[file.name]) }}
+                    </span>
+                  </a-tooltip>
+                  <span v-else-if="file.status === 'error'" class="text-xs text-red-500 whitespace-nowrap">
+                    上传失败
                   </span>
                 </div>
                 <a-space>
@@ -1408,7 +1557,7 @@
                     继续上传
                   </a-button>
                   <a-button
-                    v-if="file.status === 'uploading'"
+                    v-if="file.status === 'uploading' && uploadPhases[file.name] !== 'processing'"
                     type="text"
                     size="small"
                     danger
@@ -1417,7 +1566,7 @@
                     取消
                   </a-button>
                   <a-button
-                    v-else
+                    v-else-if="file.status !== 'uploading'"
                     type="text"
                     size="small"
                     danger

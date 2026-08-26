@@ -4,6 +4,21 @@ export interface LogStream {
   close: () => void;
 }
 
+export type MapUploadProgressEvent =
+  | {
+      phase: 'uploading';
+      percent: number;
+      speed: string;
+    }
+  | {
+      phase: 'processing';
+      percent: 100;
+    };
+
+export type MapUploadResult =
+  | { success: true }
+  | { success: false; uploadId: string; uploadedChunks: number[]; error: string };
+
 export type SourceModLogCategory = 'L' | 'errors' | 'other';
 
 export interface SourceModLogFile {
@@ -912,6 +927,16 @@ class ApiService {
     }
   };
 
+  private getErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+    if (typeof error === 'string' && error.trim()) {
+      return error.trim();
+    }
+    return fallback;
+  }
+
   private uploadChunkWithSignal(
     uploadId: string,
     chunkIndex: number,
@@ -999,7 +1024,7 @@ class ApiService {
     pendingIndices: number[],
     totalChunks: number,
     completedCount: number,
-    onProgress?: (data: { percent: number; speed: string }) => void,
+    onProgress?: (event: MapUploadProgressEvent) => void,
     signal?: AbortSignal
   ): Promise<number[]> {
     const chunkSize = 5 * 1024 * 1024;
@@ -1050,7 +1075,7 @@ class ApiService {
                 // 已上传字节数：已完成分片 * chunkSize（最后一个是近似值）
                 const bytesUploaded = Math.min(doneCount * chunkSize, file.size);
                 const speed = elapsed > 0 ? this.formatSpeed(bytesUploaded / elapsed) : this.formatSpeed(0);
-                onProgress({ percent, speed });
+                onProgress({ phase: 'uploading', percent, speed });
               }
 
               tryNext();
@@ -1072,10 +1097,10 @@ class ApiService {
 
   async uploadMap(
     file: File,
-    onProgress?: (data: { percent: number; speed: string }) => void,
+    onProgress?: (event: MapUploadProgressEvent) => void,
     signal?: AbortSignal,
     onInitialized?: (uploadId: string) => void
-  ): Promise<{ success: true } | { success: false; uploadId: string; uploadedChunks: number[] }> {
+  ): Promise<MapUploadResult> {
     const chunkSize = 5 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
 
@@ -1107,15 +1132,21 @@ class ApiService {
 
     try {
       await this.uploadChunks(uploadId, file, pendingIndices, totalChunks, 0, onProgress, signal);
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (signal?.aborted) {
         throw new Error('上传已取消');
       }
       // 超时或网络错误：返回 uploadId 供续传使用
-      return { success: false, uploadId, uploadedChunks: [] };
+      return {
+        success: false,
+        uploadId,
+        uploadedChunks: [],
+        error: this.getErrorMessage(e, '分片上传失败'),
+      };
     }
 
     // 3. merge
+    onProgress?.({ phase: 'processing', percent: 100 });
     const mergeResponse = await this.post('/upload/merge', {
       uploadId,
       filename: file.name,
@@ -1127,7 +1158,7 @@ class ApiService {
   async resumeUpload(
     uploadId: string,
     file: File,
-    onProgress?: (data: { percent: number; speed: string }) => void,
+    onProgress?: (event: MapUploadProgressEvent) => void,
     signal?: AbortSignal
   ) {
     const chunkSize = 5 * 1024 * 1024;
@@ -1146,6 +1177,7 @@ class ApiService {
 
     if (pendingIndices.length === 0) {
       // 所有分片都已上传，直接 merge
+      onProgress?.({ phase: 'processing', percent: 100 });
       const mergeResponse = await this.post('/upload/merge', {
         uploadId,
         filename: file.name,
@@ -1159,6 +1191,7 @@ class ApiService {
     await this.uploadChunks(uploadId, file, pendingIndices, totalChunks, completedCount, onProgress, signal);
 
     // 3. merge
+    onProgress?.({ phase: 'processing', percent: 100 });
     const mergeResponse = await this.post('/upload/merge', {
       uploadId,
       filename: file.name,
