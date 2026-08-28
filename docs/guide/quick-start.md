@@ -2,6 +2,11 @@
 
 这页适合从零开始搭建一台 L4D2 服务器，并同时启用 Web 管理后台。你只需要一台 Linux 服务器、Docker 环境和一个准备暴露给玩家的游戏端口。
 
+## 视频教程
+
+- [一键安装脚本教程视频](https://www.bilibili.com/video/BV1p5tw6UEoi)
+- [面板功能介绍视频](https://www.bilibili.com/video/BV1BN846UEQS)
+
 ## 选择部署方式
 
 | 场景 | 推荐方式 | 说明 |

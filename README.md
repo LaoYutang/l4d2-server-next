@@ -13,6 +13,10 @@
 
 [https://l4d2-manage-docs.laoyutang.cn/](https://l4d2-manage-docs.laoyutang.cn/)
 
+## 视频教程
+
+- [一键安装脚本教程视频](https://www.bilibili.com/video/BV1p5tw6UEoi)
+- [面板功能介绍视频](https://www.bilibili.com/video/BV1BN846UEQS)
 
 ## 快速部署
 
