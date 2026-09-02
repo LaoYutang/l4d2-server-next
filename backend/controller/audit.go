@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 	"net/http"
 	"strings"
 
@@ -23,7 +24,7 @@ type AuditListRequest struct {
 
 func ListAuditLogs(c *gin.Context) {
 	role, _ := c.Get("role")
-	if role != "admin" {
+	if role != middlewares.RoleAdmin {
 		c.String(http.StatusForbidden, "需要管理员权限")
 		return
 	}
@@ -50,7 +51,7 @@ func ListAuditLogs(c *gin.Context) {
 		c.String(http.StatusBadRequest, "无效的时间范围")
 		return
 	}
-	if req.Role != "" && req.Role != "admin" && req.Role != "guest" {
+	if req.Role != "" && req.Role != middlewares.RoleAdmin && req.Role != middlewares.RoleGuest && req.Role != middlewares.RoleMapUploader {
 		c.String(http.StatusBadRequest, "无效的角色")
 		return
 	}

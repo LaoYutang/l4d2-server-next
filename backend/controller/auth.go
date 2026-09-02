@@ -1,15 +1,22 @@
 package controller
 
 import (
+	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"l4d2-manager-next/logic"
 	"l4d2-manager-next/middlewares"
 
-	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+)
+
+const (
+	tempAccessTypeTemporary   = "temporary"
+	tempAccessTypeMapUploader = "map_upload_only"
 )
 
 func Auth(c *gin.Context) {
@@ -29,7 +36,27 @@ func Auth(c *gin.Context) {
 
 func GetTempAuthCode(c *gin.Context) {
 	expiredStr := c.PostForm("expired")
-	defer LogOp(c, "获取临时授权码，过期时间: "+expiredStr)()
+	accessType := strings.TrimSpace(c.PostForm("access_type"))
+	if accessType == "" {
+		accessType = tempAccessTypeTemporary
+	}
+	defer LogOp(c, fmt.Sprintf("获取临时授权码，权限类型: %s，过期时间: %s 小时", accessType, expiredStr))()
+
+	role, _ := c.Get("role")
+	if role != middlewares.RoleAdmin {
+		FailWithError(c, 403, "需要管理员权限")
+		return
+	}
+
+	mapUploadOnly := false
+	switch accessType {
+	case tempAccessTypeTemporary:
+	case tempAccessTypeMapUploader:
+		mapUploadOnly = true
+	default:
+		FailWithError(c, 400, "无效的授权类型")
+		return
+	}
 
 	privateKey, exist := c.Get("privateKey")
 	if !exist {
@@ -37,15 +64,20 @@ func GetTempAuthCode(c *gin.Context) {
 		return
 	}
 
-	expired := 1 // 默认1小时
-	if c.PostForm("expired") != "" {
-		ex, err := convertor.ToInt(c.PostForm("expired"))
-		if err == nil {
-			expired = int(ex)
+	expired := 1
+	if expiredStr != "" {
+		value, err := strconv.Atoi(expiredStr)
+		if err != nil || value <= 0 || value > 168 {
+			FailWithError(c, 400, "有效期必须是 1 到 168 小时之间的整数")
+			return
 		}
+		expired = value
 	}
-	claims := jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expired) * time.Hour)),
+	claims := middlewares.TempAuthClaims{
+		MapUploadOnly: mapUploadOnly,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expired) * time.Hour)),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -139,7 +171,7 @@ func GenerateSelfServiceCode(c *gin.Context) {
 
 func SetSelfServiceConfig(c *gin.Context) {
 	role, _ := c.Get("role")
-	if role != "admin" {
+	if role != middlewares.RoleAdmin {
 		FailWithError(c, 403, "需要管理员权限")
 		return
 	}

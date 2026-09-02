@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 const MainLayout = () => import('../layouts/MainLayout.vue');
 const Login = () => import('../views/Login.vue');
+const MapUploadOnly = () => import('../views/MapUploadOnly.vue');
 const Home = () => import('../views/Home.vue');
 const Maps = () => import('../views/Maps.vue');
 const Rcon = () => import('../views/Rcon.vue');
@@ -25,6 +26,12 @@ const router = createRouter({
       name: 'Login',
       component: Login,
       meta: { requiresAuth: false },
+    },
+    {
+      path: '/map-upload',
+      name: 'MapUploadOnly',
+      component: MapUploadOnly,
+      meta: { requiresAuth: true, requiresMapUploader: true },
     },
     {
       path: '/',
@@ -119,6 +126,10 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login');
   } else if (to.path === '/login' && authStore.isAuthenticated) {
+    next(authStore.defaultRoute);
+  } else if (authStore.isMapUploader && to.path !== '/map-upload') {
+    next('/map-upload');
+  } else if (to.meta.requiresMapUploader && !authStore.isMapUploader) {
     next('/');
   } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     next('/');

@@ -18,7 +18,7 @@
 
   const filters = reactive<{
     timeRange?: [string, string];
-    role: '' | 'admin' | 'guest';
+    role: '' | 'admin' | 'guest' | 'map_uploader';
     ip: string;
     path: string;
     success: SuccessFilter;
@@ -144,6 +144,7 @@
             <a-select-option value="">全部角色</a-select-option>
             <a-select-option value="admin">admin</a-select-option>
             <a-select-option value="guest">guest</a-select-option>
+            <a-select-option value="map_uploader">map_uploader</a-select-option>
           </a-select>
           <a-select v-model:value="filters.success" class="w-full" placeholder="全部状态">
             <a-select-option value="all">全部状态</a-select-option>

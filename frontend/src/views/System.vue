@@ -22,7 +22,7 @@
     CloudUploadOutlined,
     ReloadOutlined,
   } from '@ant-design/icons-vue';
-  import { api } from '../services/api';
+  import { api, type TempAccessType } from '../services/api';
   import { useAuthStore } from '../stores/auth';
   import { useMonitorStore } from '../stores/monitor';
   import { copyToClipboard } from '../utils/clipboard';
@@ -41,6 +41,8 @@
   const aboutSection = ref<HTMLElement | null>(null);
 
   const expiredHours = ref(1);
+  const accessType = ref<TempAccessType>('temporary');
+  const generatedAccessType = ref<TempAccessType>('temporary');
   const generating = ref(false);
   const generatedCode = ref('');
   const expirationTime = ref('');
@@ -55,6 +57,9 @@
   const settingMonitorHistory = ref(false);
   const enableVpkTrim = ref(false);
   const settingVpkTrim = ref(false);
+  const generatedAccessTypeLabel = computed(() =>
+    generatedAccessType.value === 'map_upload_only' ? '仅地图上传' : '临时权限'
+  );
   let sectionUpdateFrame: number | null = null;
   let pendingSection: SettingsSection | null = null;
   let sectionNavigationTimer: number | null = null;
@@ -196,7 +201,8 @@
     copied.value = false;
 
     try {
-      generatedCode.value = await api.generateTempAuthCode(expiredHours.value);
+      generatedCode.value = await api.generateTempAuthCode(expiredHours.value, accessType.value);
+      generatedAccessType.value = accessType.value;
 
       const date = new Date();
       date.setHours(date.getHours() + Number(expiredHours.value));
@@ -467,20 +473,35 @@
                 <div class="mb-4">
                   <div class="setting-title">手动生成（管理员专用）</div>
                   <div class="setting-description">
-                    选择有效期并直接生成授权码，不受自助授权冷却时间限制。
+                    选择权限类型和有效期并直接生成授权码，不受自助授权冷却时间限制。
                   </div>
                 </div>
 
-                <div class="flex flex-col gap-3 sm:flex-row">
-                  <a-select v-model:value="expiredHours" class="min-w-0 flex-1">
-                    <a-select-option :value="1">1 小时</a-select-option>
-                    <a-select-option :value="6">6 小时</a-select-option>
-                    <a-select-option :value="12">12 小时</a-select-option>
-                    <a-select-option :value="24">24 小时（1 天）</a-select-option>
-                    <a-select-option :value="72">72 小时（3 天）</a-select-option>
-                    <a-select-option :value="168">168 小时（7 天）</a-select-option>
-                  </a-select>
-                  <a-button type="primary" :loading="generating" @click="generateCode">
+                <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">权限类型</span>
+                    <a-select v-model:value="accessType" class="w-full">
+                      <a-select-option value="temporary">临时权限（默认）</a-select-option>
+                      <a-select-option value="map_upload_only">仅地图上传</a-select-option>
+                    </a-select>
+                  </label>
+                  <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">有效期</span>
+                    <a-select v-model:value="expiredHours" class="w-full">
+                      <a-select-option :value="1">1 小时</a-select-option>
+                      <a-select-option :value="6">6 小时</a-select-option>
+                      <a-select-option :value="12">12 小时</a-select-option>
+                      <a-select-option :value="24">24 小时（1 天）</a-select-option>
+                      <a-select-option :value="72">72 小时（3 天）</a-select-option>
+                      <a-select-option :value="168">168 小时（7 天）</a-select-option>
+                    </a-select>
+                  </label>
+                  <a-button
+                    type="primary"
+                    :loading="generating"
+                    class="sm:self-end"
+                    @click="generateCode"
+                  >
                     {{ generating ? '生成中' : '生成授权码' }}
                   </a-button>
                 </div>
@@ -496,7 +517,7 @@
                     生成成功
                   </div>
                   <div class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-                    有效期至：{{ expirationTime }}
+                    权限：{{ generatedAccessTypeLabel }} · 有效期至：{{ expirationTime }}
                   </div>
                   <div class="flex flex-col gap-2 sm:flex-row">
                     <a-input

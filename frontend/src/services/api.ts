@@ -1,4 +1,6 @@
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore, type AuthRole } from '../stores/auth';
+
+export type TempAccessType = 'temporary' | 'map_upload_only';
 
 export interface LogStream {
   close: () => void;
@@ -72,7 +74,7 @@ export interface SourceModLogDeleteResult {
 
 export interface AuditLogItem {
   time: number;
-  role: 'admin' | 'guest';
+  role: AuthRole;
   ip: string;
   location: string;
   path: string;
@@ -85,7 +87,7 @@ export interface AuditListParams {
   page_size: number;
   start_time: number;
   end_time: number;
-  role: '' | 'admin' | 'guest';
+  role: '' | AuthRole;
   ip: string;
   path: string;
   success: boolean | null;
@@ -518,9 +520,10 @@ class ApiService {
     return response;
   }
 
-  async generateTempAuthCode(expiredHours: number) {
+  async generateTempAuthCode(expiredHours: number, accessType: TempAccessType = 'temporary') {
     const fd = new FormData();
     fd.append('expired', expiredHours.toString());
+    fd.append('access_type', accessType);
 
     const response = await fetch('/auth/getTempAuthCode', {
       method: 'POST',

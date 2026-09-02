@@ -42,7 +42,7 @@
     const success = await authStore.login(password.value);
 
     if (success) {
-      router.push('/');
+      router.push(authStore.defaultRoute);
     } else {
       error.value = '鉴权失败，请检查密码或授权码';
     }

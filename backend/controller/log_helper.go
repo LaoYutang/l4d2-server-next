@@ -26,9 +26,9 @@ func LogOp(c *gin.Context, detail string) func() {
 	path := c.Request.URL.Path
 
 	roleVal, exists := c.Get("role")
-	role := "guest"
+	role := middlewares.RoleGuest
 	if exists {
-		if r, ok := roleVal.(string); ok && (r == "admin" || r == "guest") {
+		if r, ok := roleVal.(string); ok && (r == middlewares.RoleAdmin || r == middlewares.RoleGuest || r == middlewares.RoleMapUploader) {
 			role = r
 		}
 	}
