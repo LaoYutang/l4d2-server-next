@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	tempAccessTypeTemporary   = "temporary"
-	tempAccessTypeMapUploader = "map_upload_only"
+	tempAccessTypeTemporary    = "temporary"
+	tempAccessTypeMapUploader  = "map_upload_only"
+	tempAuthMaxExpirationHours = 30 * 24
 )
 
 func Auth(c *gin.Context) {
@@ -67,8 +68,8 @@ func GetTempAuthCode(c *gin.Context) {
 	expired := 1
 	if expiredStr != "" {
 		value, err := strconv.Atoi(expiredStr)
-		if err != nil || value <= 0 || value > 168 {
-			FailWithError(c, 400, "有效期必须是 1 到 168 小时之间的整数")
+		if err != nil || value <= 0 || value > tempAuthMaxExpirationHours {
+			FailWithError(c, 400, "有效期必须是 1 到 %d 小时之间的整数", tempAuthMaxExpirationHours)
 			return
 		}
 		expired = value

@@ -494,6 +494,7 @@
                       <a-select-option :value="24">24 小时（1 天）</a-select-option>
                       <a-select-option :value="72">72 小时（3 天）</a-select-option>
                       <a-select-option :value="168">168 小时（7 天）</a-select-option>
+                      <a-select-option :value="720">720 小时（30 天）</a-select-option>
                     </a-select>
                   </label>
                   <a-button

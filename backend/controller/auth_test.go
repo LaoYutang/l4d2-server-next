@@ -106,9 +106,15 @@ func TestGetTempAuthCodeValidatesRoleAccessTypeAndExpiration(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "expiration above maximum",
+			name:       "thirty day expiration",
 			role:       middlewares.RoleAdmin,
-			values:     url.Values{"expired": {"169"}},
+			values:     url.Values{"expired": {"720"}},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "expiration above thirty days",
+			role:       middlewares.RoleAdmin,
+			values:     url.Values{"expired": {"721"}},
 			wantStatus: http.StatusBadRequest,
 		},
 	}
