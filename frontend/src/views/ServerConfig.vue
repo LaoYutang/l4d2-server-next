@@ -67,6 +67,9 @@
                 placeholder="输入 Steam 组 ID，留空则删除该设置"
                 :disabled="!isAdmin"
               />
+              <span v-if="!isAdmin" class="text-xs text-gray-500 dark:text-gray-400">
+                Steam 组 ID 已由服务端脱敏，访客无法查看原值。
+              </span>
             </div>
           </div>
         </div>

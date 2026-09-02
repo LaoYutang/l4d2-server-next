@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -173,10 +174,18 @@ func GetBackupServerConfigDetail(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{})
 		return
 	}
-	c.JSON(http.StatusOK, cfg)
+	response := *cfg
+	response.SteamGroup = maskSteamGroupForResponse(c, response.SteamGroup)
+	c.JSON(http.StatusOK, &response)
 }
 
 func ExportBackup(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != middlewares.RoleAdmin {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
 	name := c.PostForm("name")
 	if name == "" {
 		FailWithError(c, http.StatusBadRequest, "备份名称不能为空")
@@ -192,6 +201,12 @@ func ExportBackup(c *gin.Context) {
 }
 
 func ExportAllBackups(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != middlewares.RoleAdmin {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
 	data, err := logic.ExportAllBackups()
 	if err != nil {
 		FailWithError(c, http.StatusInternalServerError, "导出备份失败: %v", err)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"l4d2-manager-next/consts"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 	"log"
 	"net/http"
 	"os"
@@ -29,7 +30,18 @@ type UpdateServerConfigRequest struct {
 	CustomConfig     []string `json:"custom_config"`
 }
 
-const CustomConfigMarker = logic.ServerCustomConfigMarker
+const (
+	CustomConfigMarker    = logic.ServerCustomConfigMarker
+	serverConfigValueMask = "********"
+)
+
+func maskSteamGroupForResponse(c *gin.Context, steamGroup string) string {
+	role, _ := c.Get("role")
+	if steamGroup != "" && role != middlewares.RoleAdmin {
+		return serverConfigValueMask
+	}
+	return steamGroup
+}
 
 func GetServerConfig(c *gin.Context) {
 	configPath := filepath.Join(consts.GamePath, "cfg", "server.cfg")
@@ -88,6 +100,7 @@ func GetServerConfig(c *gin.Context) {
 			}
 		}
 	}
+	resp.SteamGroup = maskSteamGroupForResponse(c, resp.SteamGroup)
 
 	c.JSON(http.StatusOK, resp)
 }

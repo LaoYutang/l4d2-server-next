@@ -88,6 +88,61 @@ func TestGameBanPersistenceBlockIsHiddenFromServerCustomConfig(t *testing.T) {
 	}
 }
 
+func TestGetServerConfigMasksSteamGroupForGuest(t *testing.T) {
+	oldGamePath := consts.GamePath
+	gamePath := t.TempDir()
+	consts.GamePath = gamePath
+	t.Cleanup(func() { consts.GamePath = oldGamePath })
+	cfgDir := filepath.Join(gamePath, "cfg")
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	const steamGroup = "123456789"
+	if err := os.WriteFile(
+		filepath.Join(cfgDir, "server.cfg"),
+		[]byte(`sv_steamgroup "`+steamGroup+`"`+"\n"),
+		0644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		role string
+		want string
+	}{
+		{name: "guest is masked", role: "guest", want: serverConfigValueMask},
+		{name: "admin sees value", role: "admin", want: steamGroup},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set("role", test.role)
+				c.Next()
+			})
+			router.POST("/server-config/get", GetServerConfig)
+			request := httptest.NewRequest(http.MethodPost, "/server-config/get", nil)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d; body=%s", recorder.Code, recorder.Body.String())
+			}
+
+			var response ServerConfigResponse
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.SteamGroup != test.want {
+				t.Fatalf("steam_group = %q, want %q", response.SteamGroup, test.want)
+			}
+			if test.role != "admin" && strings.Contains(recorder.Body.String(), steamGroup) {
+				t.Fatalf("guest response leaked Steam group: %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestUpdateServerConfigNormalizesCommentsAndSyncsTickFiles(t *testing.T) {
 	oldGamePath := consts.GamePath
 	gamePath := t.TempDir()
