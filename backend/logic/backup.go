@@ -31,8 +31,9 @@ type BackupPluginConfig struct {
 }
 
 type BackupPlugin struct {
-	Name    string               `yaml:"name" json:"name"`
-	Configs []BackupPluginConfig `yaml:"configs" json:"configs"`
+	Name        string               `yaml:"name" json:"name"`
+	Configs     []BackupPluginConfig `yaml:"configs" json:"configs"`
+	TextConfigs []PluginTextBackup   `yaml:"text_configs,omitempty" json:"text_configs,omitempty"`
 }
 
 type BackupAdmin struct {
@@ -201,6 +202,14 @@ func CreateBackup(name string) error {
 		if p.Status != "enabled" {
 			continue
 		}
+		if p.Type == "nut" {
+			configs, err := capturePluginTextConfigs(p.Name)
+			if err != nil {
+				return fmt.Errorf("备份 NUT 配置 %s: %w", p.Name, err)
+			}
+			backupPlugins = append(backupPlugins, BackupPlugin{Name: p.Name, TextConfigs: configs})
+			continue
+		}
 
 		cfgFiles, err := GetPluginConfigs(p.Name)
 		if err != nil {
@@ -301,9 +310,21 @@ func RestoreBackup(name string) (*RestoreResult, error) {
 	var skipped []string
 	var validPlugins []BackupPlugin
 	for _, p := range target.Plugins {
+		if err := validatePluginName(p.Name); err != nil {
+			return nil, err
+		}
 		if _, err := os.Stat(filepath.Join(storePath, p.Name)); os.IsNotExist(err) {
 			skipped = append(skipped, p.Name)
 		} else {
+			if len(p.TextConfigs) > 0 {
+				m, _, err := scanPlugin(p.Name)
+				if err != nil {
+					return nil, err
+				}
+				if err := validatePluginTextBackup(&m, p.TextConfigs); err != nil {
+					return nil, fmt.Errorf("备份中的 NUT 配置无效 %s: %w", p.Name, err)
+				}
+			}
 			validPlugins = append(validPlugins, p)
 		}
 	}
@@ -351,6 +372,11 @@ func RestoreBackup(name string) (*RestoreResult, error) {
 
 	// Apply configs
 	for _, p := range validPlugins {
+		if len(p.TextConfigs) > 0 {
+			if err := restorePluginTextConfigs(p.Name, p.TextConfigs); err != nil {
+				return nil, fmt.Errorf("恢复 NUT 配置 %s: %w", p.Name, err)
+			}
+		}
 		for _, cfg := range p.Configs {
 			cfgPath := filepath.Join(consts.GamePath, "cfg", "sourcemod", cfg.Name)
 			if err := os.MkdirAll(filepath.Join(consts.GamePath, "cfg", "sourcemod"), 0755); err != nil {

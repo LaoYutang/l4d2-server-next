@@ -14,7 +14,8 @@
     ReloadOutlined,
     SaveOutlined as SaveFilled,
   } from '@ant-design/icons-vue';
-  import { api } from '../services/api';
+  import { api, type PluginTextBackup, type TextConfigDocument } from '../services/api';
+  import TextFileEditorModal from '../components/TextFileEditorModal.vue';
   import { useAuthStore } from '../stores/auth';
 
   interface BackupInfo {
@@ -34,6 +35,7 @@
   interface BackupPlugin {
     name: string;
     configs: BackupPluginConfig[];
+    text_configs?: PluginTextBackup[];
   }
 
   interface BackupAdmin {
@@ -97,6 +99,14 @@
   // Plugin config detail (2nd level modal)
   const pluginCfgOpen = ref(false);
   const pluginCfgName = ref('');
+  const textConfigOpen = ref(false);
+  const textConfigs = ref<PluginTextBackup[]>([]);
+  const listTextConfigs = async () => textConfigs.value.map(file => ({ path: file.path, size: 0, editable: false }));
+  const readTextConfig = async (path: string): Promise<TextConfigDocument> => {
+    const file = textConfigs.value.find(file => file.path === path);
+    if (!file) throw new Error('备份中不存在此文件');
+    return { ...file, size: 0, editable: false, bom: file.bom || false, newline: file.newline || 'lf', revision: '' };
+  };
   const pluginCfgRows = ref<{ file: string; cvar: string; current: string; default: string }[]>([]);
 
   const pluginCfgColumns = [
@@ -113,6 +123,11 @@
 
   const openPluginCfg = (plugin: BackupPlugin) => {
     pluginCfgName.value = plugin.name;
+    textConfigs.value = plugin.text_configs || [];
+    if (textConfigs.value.length && !plugin.configs?.length) {
+      textConfigOpen.value = true;
+      return;
+    }
     const rows: { file: string; cvar: string; current: string; default: string }[] = [];
     for (const cfg of plugin.configs || []) {
       for (const [cvarName, cvar] of Object.entries(cfg.cvars || {})) {
@@ -751,12 +766,12 @@
             <template #bodyCell="{ column, record: plugin }">
               <template v-if="column.key === 'configs'">
                 <a-button
-                  v-if="plugin.configs && plugin.configs.length > 0"
+                  v-if="plugin.configs?.length || plugin.text_configs?.length"
                   type="link"
                   size="small"
                   class="!p-0 !h-auto"
                   @click="openPluginCfg(plugin as BackupPlugin)"
-                  >存在修改</a-button
+                  >{{ plugin.text_configs?.length ? '查看配置' : '存在修改' }}</a-button
                 >
                 <span v-else class="text-gray-400">-</span>
               </template>
@@ -821,6 +836,12 @@
       </template>
     </a-modal>
 
+    <TextFileEditorModal
+      v-model:open="textConfigOpen" :title="pluginCfgName + ' — 文本配置备份'"
+      description="此处展示备份中的配置全文，恢复备份后写入游戏服务器。"
+      :list-files="listTextConfigs" :read-file="readTextConfig"
+    />
+
     <!-- Plugin Config Detail Modal -->
     <a-modal
       :open="pluginCfgOpen"
@@ -837,6 +858,7 @@
         size="small"
         :scroll="{ x: 480 }"
       />
+      <a-button v-if="textConfigs.length" class="mt-3" @click="textConfigOpen = true">查看文本配置</a-button>
     </a-modal>
   </div>
 </template>

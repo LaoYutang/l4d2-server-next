@@ -318,7 +318,7 @@ func collectPluginExportFiles(storePath string) ([]pluginExportFile, error) {
 		}
 
 		name := entry.Name()
-		if name == DownloadTempDir || name == ExportTempDir {
+		if strings.HasPrefix(name, ".") {
 			continue
 		}
 

@@ -4,17 +4,12 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
-	"l4d2-manager-next/consts"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
-	"github.com/panjf2000/ants/v2"
-	"github.com/spf13/viper"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
@@ -28,13 +23,6 @@ const (
 	SMXPluginRelDir    = "addons/sourcemod/plugins"
 )
 
-var (
-	pluginMutex sync.Mutex
-	configViper *viper.Viper
-	// fileRefs 仅驻留内存，不落文件。进程启动后首次使用时从 enabled_plugins 重建。
-	fileRefs map[string][]string
-)
-
 type Plugin struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"` // "enabled" or "disabled"
@@ -42,16 +30,18 @@ type Plugin struct {
 	Source      string `json:"source"` // "panel", "store", or "upload"
 	HasSMX      bool   `json:"has_smx"`
 	HasConfig   bool   `json:"has_config"`
+	Type        string `json:"type"`
+	ConfigMode  string `json:"config_mode"`
+	TypeError   string `json:"type_error,omitempty"`
 }
 
 type PluginConfig struct {
-	Name  string   `mapstructure:"name"`
-	Files []string `mapstructure:"files"`
-}
-
-func init() {
-	configViper = viper.New()
-	configViper.SetConfigType("yaml")
+	Name           string         `yaml:"name"`
+	Files          []string       `yaml:"files"`
+	DeploymentMode string         `yaml:"deployment_mode,omitempty"`
+	VPKFile        string         `yaml:"vpk_file,omitempty"`
+	ConfigFiles    []string       `yaml:"config_files,omitempty"`
+	Extra          map[string]any `yaml:",inline"`
 }
 
 func getStorePath() string {
@@ -79,102 +69,64 @@ func getConfigPath() string {
 	return filepath.Join(getStorePath(), ConfigFileName)
 }
 
-func loadConfig() error {
-	configViper.SetConfigFile(getConfigPath())
-	// Create file if not exists
-	if _, err := os.Stat(getConfigPath()); os.IsNotExist(err) {
-		os.MkdirAll(filepath.Dir(getConfigPath()), 0755)
-		os.Create(getConfigPath())
-	}
-	return configViper.ReadInConfig()
-}
-
 func GetPlugins() ([]Plugin, error) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	if err := loadConfig(); err != nil {
-		// It's okay if config doesn't exist or is empty initially
-		// fmt.Println("Error loading config:", err)
-	}
-
-	storePath := getStorePath()
-	entries, err := os.ReadDir(storePath)
+	defer acquirePluginOperation()()
+	state, failures, err := initPluginMetadataLocked()
 	if err != nil {
-		// Check if it's just not existing
-		if os.IsNotExist(err) {
-			return []Plugin{}, nil
-		}
 		return nil, err
 	}
-
-	// Use list structure to avoid key issues with dots and case sensitivity
-	var enabledPlugins []PluginConfig
-	if err := configViper.UnmarshalKey(PluginsKey, &enabledPlugins); err != nil {
-		// fallback or ignore error?
+	entries, err := os.ReadDir(getStorePath())
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
 	}
-
-	enabledMap := make(map[string]bool)
-	for _, p := range enabledPlugins {
-		enabledMap[p.Name] = true
+	names, enabled := map[string]bool{}, map[string]bool{}
+	for _, p := range state.Enabled {
+		names[p.Name], enabled[p.Name] = true, true
 	}
-
-	// Read plugin sources map
-	sources := configViper.GetStringMapString("plugin_sources")
-
-	pluginMap := make(map[string]Plugin)
-
-	// Add enabled plugins from config
-	for _, p := range enabledPlugins {
-		source := sources[p.Name]
-		if source == "" {
-			source = "panel"
-		}
-		pluginMap[p.Name] = Plugin{
-			Name:        p.Name,
-			Status:      "enabled",
-			Description: "Source missing", // Default description if not found on disk
-			Source:      source,
-			HasSMX:      pluginHasSMX(p.Name),
-			HasConfig:   pluginHasConfig(p.Name),
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			names[e.Name()] = true
 		}
 	}
-
-	// Add/Update from disk
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	result := make([]Plugin, 0, len(names))
+	for name := range names {
+		p := Plugin{Name: name, Status: "disabled", Source: "panel", Type: "unknown", ConfigMode: "none"}
+		if enabled[name] {
+			p.Status = "enabled"
 		}
-		name := entry.Name()
-		if name == DownloadTempDir || name == ExportTempDir {
-			continue
+		if source, ok := state.Sources[name].(string); ok && source != "" {
+			p.Source = source
 		}
-		// Exact match check
-		status := "disabled"
-		if enabledMap[name] {
-			status = "enabled"
+		if m := state.metadata(name); m != nil && validPluginType(m.Type) {
+			p.Type = m.Type
 		}
-
-		source := sources[name]
-		if source == "" {
-			source = "panel"
+		p.TypeError = failures[name]
+		root, err := openPluginRoot(name)
+		if err != nil {
+			p.Description = "Source missing"
+		} else {
+			root.Close()
 		}
-
-		pluginMap[name] = Plugin{
-			Name:        name,
-			Status:      status,
-			Description: "",
-			Source:      source,
-			HasSMX:      pluginHasSMX(name),
-			HasConfig:   pluginHasConfig(name),
+		p.HasSMX = pluginHasSMX(name)
+		if p.Type == "nut" {
+			if enabled[name] {
+				if files, err := listPluginTextConfigsLocked(state, name); err == nil {
+					p.HasConfig = len(files) > 0
+				}
+			}
+			if p.HasConfig {
+				p.ConfigMode = "text"
+			}
+		} else {
+			p.HasConfig = pluginHasConfig(name)
+			if p.HasConfig {
+				p.ConfigMode = "sm"
+			}
 		}
+		result = append(result, p)
 	}
-
-	plugins := make([]Plugin, 0, 64)
-	for _, p := range pluginMap {
-		plugins = append(plugins, p)
-	}
-	return plugins, nil
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result, nil
 }
 
 func pluginHasSMX(name string) bool {
@@ -183,6 +135,9 @@ func pluginHasSMX(name string) bool {
 }
 
 func listPluginSMXIDs(name string) ([]string, error) {
+	if err := validatePluginName(name); err != nil {
+		return nil, err
+	}
 	root := filepath.Join(getStorePath(), name, "left4dead2", filepath.FromSlash(SMXPluginRelDir))
 	if _, err := os.Stat(root); err != nil {
 		if os.IsNotExist(err) {
@@ -242,8 +197,7 @@ func decodeZipName(name string) string {
 }
 
 func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
+	defer acquirePluginOperation()()
 
 	zipReader, err := zip.NewReader(file, size)
 	if err != nil {
@@ -262,6 +216,12 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 
 		if isJunkFile(decodedName) {
 			continue
+		}
+		if _, err := cleanPluginPath(strings.TrimSuffix(decodedName, "/")); err != nil {
+			return err
+		}
+		if f.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("插件 ZIP 不支持符号链接")
 		}
 		decodedNames[f] = decodedName
 		validFiles = append(validFiles, f)
@@ -296,6 +256,9 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 
 	if isSinglePlugin {
 		pluginName := strings.TrimSuffix(filename, filepath.Ext(filename))
+		if err := validatePluginName(pluginName); err != nil {
+			return err
+		}
 		destDir := filepath.Join(storePath, pluginName)
 
 		if _, err := os.Stat(destDir); !os.IsNotExist(err) {
@@ -303,9 +266,13 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 		}
 
 		if err := extractFiles(validFiles, destDir, "", decodedNames); err != nil {
+			rollbackUploadedPlugin(pluginName)
 			return err
 		}
-		writePluginSource(pluginName, "upload")
+		if err := registerPluginLocked(pluginName, "upload"); err != nil {
+			rollbackUploadedPlugin(pluginName)
+			return err
+		}
 		return nil
 	}
 
@@ -327,6 +294,9 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 
 	// Validate each plugin dir
 	for rootDir, files := range pluginDirs {
+		if err := validatePluginName(rootDir); err != nil {
+			return err
+		}
 		// Strict check: every file must be inside rootDir/left4dead2/ or be a markdown doc in the plugin root.
 		expectedPrefix := rootDir + "/left4dead2/"
 
@@ -375,9 +345,13 @@ func UploadPlugin(file io.ReaderAt, size int64, filename string) error {
 	for rootDir, files := range pluginDirs {
 		destDir := filepath.Join(storePath, rootDir)
 		if err := extractFiles(files, destDir, rootDir+"/", decodedNames); err != nil {
+			rollbackUploadedPlugin(rootDir)
 			return err
 		}
-		writePluginSource(rootDir, "upload")
+		if err := registerPluginLocked(rootDir, "upload"); err != nil {
+			rollbackUploadedPlugin(rootDir)
+			return err
+		}
 	}
 
 	return nil
@@ -451,240 +425,21 @@ func extractFiles(files []*zip.File, destDir string, stripPrefix string, decoded
 	return nil
 }
 
-func writePluginSource(name, source string) {
-	loadConfig()
-	sources := configViper.GetStringMapString("plugin_sources")
-	if sources == nil {
-		sources = make(map[string]string)
+func rollbackUploadedPlugin(name string) {
+	root, err := os.OpenRoot(getStorePath())
+	if err != nil {
+		return
 	}
-	sources[name] = source
-	configViper.Set("plugin_sources", sources)
-	configViper.WriteConfig()
+	defer root.Close()
+	_ = root.RemoveAll(name)
 }
 
-// normalizeRelPath 统一路径分隔符并转小写，用于 fileRefs 的 key
 func normalizeRelPath(relPath string) string {
 	return strings.ToLower(strings.ReplaceAll(relPath, "\\", "/"))
 }
 
-// rebuildFileRefs 从 enabled_plugins 重建 fileRefs
-func rebuildFileRefs(enabledPlugins []PluginConfig) map[string][]string {
-	refs := make(map[string][]string)
-	for _, p := range enabledPlugins {
-		for _, f := range p.Files {
-			normPath := normalizeRelPath(f)
-			found := false
-			for _, existing := range refs[normPath] {
-				if existing == p.Name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				refs[normPath] = append(refs[normPath], p.Name)
-			}
-		}
-	}
-	return refs
-}
-
-// ensureFileRefs 确保 fileRefs 已初始化；调用前须持有 pluginMutex
-func ensureFileRefs(enabledPlugins []PluginConfig) {
-	if fileRefs == nil {
-		fileRefs = rebuildFileRefs(enabledPlugins)
-	}
-}
-
-func EnablePlugin(name string) error {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	if err := loadConfig(); err != nil {
-		// ignore
-	}
-
-	var enabledPlugins []PluginConfig
-	if err := configViper.UnmarshalKey(PluginsKey, &enabledPlugins); err != nil {
-		// ignore
-	}
-
-	for _, p := range enabledPlugins {
-		if p.Name == name {
-			return fmt.Errorf("plugin %s is already enabled", name)
-		}
-	}
-
-	ensureFileRefs(enabledPlugins)
-
-	storePath := getStorePath()
-	pluginDir := filepath.Join(storePath, name, "left4dead2")
-	if _, err := os.Stat(pluginDir); os.IsNotExist(err) {
-		return fmt.Errorf("plugin directory not found or invalid structure")
-	}
-
-	gamePath := consts.GamePath
-
-	// Initialize plugin config
-	newPlugin := PluginConfig{
-		Name:  name,
-		Files: []string{},
-	}
-	enabledPlugins = append(enabledPlugins, newPlugin)
-
-	// Save initial state
-	configViper.Set(PluginsKey, enabledPlugins)
-	if err := configViper.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to save initial config: %v", err)
-	}
-
-	// Create a goroutine pool
-	pool, err := ants.NewPool(runtime.NumCPU())
-	if err != nil {
-		return fmt.Errorf("failed to create goroutine pool: %v", err)
-	}
-	defer pool.Release()
-
-	var wg sync.WaitGroup
-	var configLock sync.Mutex
-	var firstErr error
-	var errOnce sync.Once
-
-	walkErr := filepath.Walk(pluginDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(pluginDir, path)
-		if relErr != nil {
-			return relErr
-		}
-
-		destPath := filepath.Join(gamePath, relPath)
-
-		wg.Add(1)
-		submitErr := pool.Submit(func() {
-			defer wg.Done()
-
-			// Create dir (mkdirAll is thread safe enough for OS usually, or we can ignore errors if it exists)
-			if mkdirErr := os.MkdirAll(filepath.Dir(destPath), 0755); mkdirErr != nil {
-				errOnce.Do(func() { firstErr = mkdirErr })
-				return
-			}
-
-			// Copy file
-			if copyErr := copyFile(path, destPath); copyErr != nil {
-				errOnce.Do(func() { firstErr = copyErr })
-				return
-			}
-
-			// Update config safely
-			configLock.Lock()
-			defer configLock.Unlock()
-			for i := range enabledPlugins {
-				if enabledPlugins[i].Name == name {
-					enabledPlugins[i].Files = append(enabledPlugins[i].Files, relPath)
-					break
-				}
-			}
-			// 将本插件加入该文件的内存引用列表
-			normPath := normalizeRelPath(relPath)
-			alreadyRef := false
-			for _, p := range fileRefs[normPath] {
-				if p == name {
-					alreadyRef = true
-					break
-				}
-			}
-			if !alreadyRef {
-				fileRefs[normPath] = append(fileRefs[normPath], name)
-			}
-		})
-
-		if submitErr != nil {
-			wg.Done() // Decrement if submit fails
-			return submitErr
-		}
-
-		return nil
-	})
-
-	wg.Wait()
-
-	if walkErr != nil {
-		return walkErr
-	}
-
-	if firstErr != nil {
-		return firstErr
-	}
-
-	// Save final config once
-	configLock.Lock()
-	defer configLock.Unlock()
-	configViper.Set(PluginsKey, enabledPlugins)
-	return configViper.WriteConfig()
-}
-
-func DisablePlugin(name string) error {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	if err := loadConfig(); err != nil {
-		return err
-	}
-
-	var enabledPlugins []PluginConfig
-	if err := configViper.UnmarshalKey(PluginsKey, &enabledPlugins); err != nil {
-		return err
-	}
-
-	var targetPlugin *PluginConfig
-	targetIndex := -1
-
-	for i, p := range enabledPlugins {
-		if p.Name == name {
-			targetPlugin = &enabledPlugins[i]
-			targetIndex = i
-			break
-		}
-	}
-
-	if targetPlugin == nil {
-		return fmt.Errorf("plugin %s is not enabled", name)
-	}
-
-	gamePath := consts.GamePath
-
-	ensureFileRefs(enabledPlugins)
-
-	for _, relPath := range targetPlugin.Files {
-		normPath := normalizeRelPath(relPath)
-		// 从引用列表中移除本插件
-		newRefs := make([]string, 0, len(fileRefs[normPath]))
-		for _, p := range fileRefs[normPath] {
-			if p != name {
-				newRefs = append(newRefs, p)
-			}
-		}
-		if len(newRefs) == 0 {
-			// 没有其他插件引用此文件，安全删除
-			destPath := filepath.Join(gamePath, relPath)
-			os.Remove(destPath)
-			delete(fileRefs, normPath)
-		} else {
-			fileRefs[normPath] = newRefs
-		}
-	}
-
-	// Remove from list
-	enabledPlugins = append(enabledPlugins[:targetIndex], enabledPlugins[targetIndex+1:]...)
-	configViper.Set(PluginsKey, enabledPlugins)
-
-	return configViper.WriteConfig()
-}
+func EnablePlugin(name string) error  { return deployPlugin(name) }
+func DisablePlugin(name string) error { return undeployPlugin(name) }
 
 func EnableAndLoadPlugin(name string) error {
 	smxPlugins, err := listPluginSMXIDs(name)
@@ -750,20 +505,13 @@ func LoadPlugin(name string) error {
 }
 
 func isPluginEnabled(name string) (bool, error) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	if err := loadConfig(); err != nil {
+	defer acquirePluginOperation()()
+	state, err := readPluginState()
+	if err != nil {
 		return false, err
 	}
-
-	var enabledPlugins []PluginConfig
-	if err := configViper.UnmarshalKey(PluginsKey, &enabledPlugins); err != nil {
-		return false, err
-	}
-
-	for _, plugin := range enabledPlugins {
-		if plugin.Name == name {
+	for _, p := range state.Enabled {
+		if p.Name == name {
 			return true, nil
 		}
 	}
@@ -929,6 +677,9 @@ func rollbackUnloadedSMXPlugins(pluginIDs []string) error {
 }
 
 func appendRollbackError(existing error, next error) error {
+	if next == nil {
+		return existing
+	}
 	if existing == nil {
 		return next
 	}
@@ -936,38 +687,42 @@ func appendRollbackError(existing error, next error) error {
 }
 
 func DeletePlugin(name string) error {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	if err := loadConfig(); err != nil {
-		// ignore
+	defer acquirePluginOperation()()
+	if err := validatePluginName(name); err != nil {
+		return err
 	}
-
-	var enabledPlugins []PluginConfig
-	if err := configViper.UnmarshalKey(PluginsKey, &enabledPlugins); err != nil {
-		// ignore
+	state, err := readPluginState()
+	if err != nil {
+		return err
 	}
-
-	for _, p := range enabledPlugins {
+	for _, p := range state.Enabled {
 		if p.Name == name {
 			return fmt.Errorf("cannot delete enabled plugin, disable it first")
 		}
 	}
-
-	storePath := getStorePath()
-	pluginDir := filepath.Join(storePath, name)
-
-	if err := os.RemoveAll(pluginDir); err != nil {
+	root, err := os.OpenRoot(getStorePath())
+	if err != nil {
 		return err
 	}
-
-	// Clean up source record
-	sources := configViper.GetStringMapString("plugin_sources")
-	delete(sources, name)
-	configViper.Set("plugin_sources", sources)
-	configViper.WriteConfig()
-
-	return nil
+	defer root.Close()
+	tombstone := ".delete-" + name
+	if _, err := root.Lstat(tombstone); !os.IsNotExist(err) {
+		return fmt.Errorf("上次删除尚未清理: %s", tombstone)
+	}
+	if err := root.Rename(name, tombstone); err != nil {
+		return err
+	}
+	for i, m := range state.Metadata {
+		if m.Name == name {
+			state.Metadata = append(state.Metadata[:i], state.Metadata[i+1:]...)
+			break
+		}
+	}
+	delete(state.Sources, name)
+	if err := state.save(); err != nil {
+		return appendRollbackError(err, root.Rename(tombstone, name))
+	}
+	return root.RemoveAll(tombstone)
 }
 
 func EnablePlugins(names []string) error {

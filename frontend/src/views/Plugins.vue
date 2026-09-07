@@ -46,8 +46,9 @@
     FileTextOutlined,
     DownOutlined,
   } from '@ant-design/icons-vue';
-  import { api, type PluginExportProgress } from '../services/api';
+  import { api, type Plugin, type PluginExportProgress } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
+  import TextFileEditorModal from '../components/TextFileEditorModal.vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
   import PluginDetailModal from '../components/PluginDetailModal.vue';
   import { useAuthStore } from '../stores/auth';
@@ -84,15 +85,6 @@
   const drawerWidth = computed(() => {
     return isMobile.value ? '100%' : 800;
   });
-
-  interface Plugin {
-    name: string;
-    status: 'enabled' | 'disabled';
-    description?: string;
-    source: 'panel' | 'store' | 'upload';
-    has_smx: boolean;
-    has_config: boolean;
-  }
 
   interface StorePlugin {
     name: string;
@@ -559,7 +551,7 @@
       } else {
         await api.enablePlugin(plugin.name);
       }
-      message.success(`插件${actionText}成功`);
+      message.success(`插件${actionText}成功${plugin.type === 'nut' ? '，请重启游戏服务器使脚本变更生效' : ''}`);
       fetchPlugins();
     } catch (error: any) {
       message.error(`${actionText}插件失败: ` + error.message);
@@ -924,7 +916,7 @@
     const hide = message.loading('正在批量启用插件...', 0);
     try {
       await api.enablePlugins(selectedRowKeys.value);
-      message.success(`成功启用 ${selectedRowKeys.value.length} 个插件`);
+      message.success(`成功启用 ${selectedRowKeys.value.length} 个插件${plugins.value.some(p => p.type === 'nut' && selectedRowKeys.value.includes(p.name)) ? '，NUT 脚本变更请重启游戏服务器' : ''}`);
       selectedRowKeys.value = [];
       fetchPlugins();
     } catch (error: any) {
@@ -941,7 +933,7 @@
     const hide = message.loading('正在批量禁用插件...', 0);
     try {
       await api.disablePlugins(selectedRowKeys.value);
-      message.success(`成功禁用 ${selectedRowKeys.value.length} 个插件`);
+      message.success(`成功禁用 ${selectedRowKeys.value.length} 个插件${plugins.value.some(p => p.type === 'nut' && selectedRowKeys.value.includes(p.name)) ? '，NUT 脚本变更请重启游戏服务器' : ''}`);
       selectedRowKeys.value = [];
       fetchPlugins();
     } catch (error: any) {
@@ -985,13 +977,22 @@
     selectedRowKeys.value = keys;
   };
 
+  const textConfigOpen = ref(false);
+  const listTextConfigs = () => api.listPluginTextConfigs(currentConfigPlugin.value);
+  const readTextConfig = (path: string) => api.readPluginTextConfig(currentConfigPlugin.value, path);
+  const saveTextConfig = (path: string, content: string, revision: string) => api.updatePluginTextConfig(currentConfigPlugin.value, path, content, revision);
+  const typeLabel = (type: string) => ({ nut: 'NUT', sm: 'SM', mix: 'MIX', other: '其他', unknown: '待识别' }[type] || '待识别');
+  const typeColor = (type: string) => ({ nut: 'purple', sm: 'blue', mix: 'orange' }[type]);
+
   const openConfig = async (plugin: Plugin) => {
+    if (plugin.config_mode === 'text' && !authStore.isAdmin) return;
     if (!plugin.has_config) {
       message.info('该插件暂无可配置项');
       return;
     }
     currentConfigPlugin.value = plugin.name;
-    configModalVisible.value = true;
+    if (plugin.config_mode === 'text') textConfigOpen.value = true;
+    else configModalVisible.value = true;
   };
 
   const openDetail = (pluginName: string, isStore: boolean = false) => {
@@ -1017,6 +1018,11 @@
         sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
       },
       {
+        title: '类型',
+        key: 'type',
+        width: 84,
+      },
+      {
         title: '来源',
         key: 'source',
         width: 80,
@@ -1027,7 +1033,7 @@
         width: 260,
       },
     ];
-    return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
+    return isMobile.value ? cols.filter((c) => c.key !== 'source' && c.key !== 'type') : cols;
   });
 
   const disabledColumns = computed(() => {
@@ -1039,6 +1045,11 @@
         sorter: (a: Plugin, b: Plugin) => a.name.localeCompare(b.name),
       },
       {
+        title: '类型',
+        key: 'type',
+        width: 84,
+      },
+      {
         title: '来源',
         key: 'source',
         width: 80,
@@ -1049,7 +1060,7 @@
         width: 260,
       },
     ];
-    return isMobile.value ? cols.filter((c) => c.key !== 'source') : cols;
+    return isMobile.value ? cols.filter((c) => c.key !== 'source' && c.key !== 'type') : cols;
   });
 
   const storeColumns = computed(() => {
@@ -1249,11 +1260,17 @@
                   <a-tag v-if="isMobile" :color="sourceColor(record.source)" class="!mr-1">{{
                     sourceLabel(record.source)
                   }}</a-tag
-                  >{{ record.name }}
+                  >
+                  <a-tag v-if="isMobile" :color="typeColor(record.type)" class="!mr-1" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
+                  {{ record.name }}
                 </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
+              </template>
+
+              <template v-else-if="column.key === 'type'">
+                <a-tag :color="typeColor(record.type)" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
               </template>
 
               <template v-else-if="column.key === 'source'">
@@ -1322,7 +1339,7 @@
                         type="default"
                         size="small"
                         class="!flex !items-center !justify-center"
-                        :disabled="!(record as Plugin).has_config"
+                        :disabled="!(record as Plugin).has_config || ((record as Plugin).config_mode === 'text' && !authStore.isAdmin)"
                         @click="openConfig(record as Plugin)"
                       >
                         <template #icon><SettingOutlined /></template>
@@ -1460,11 +1477,17 @@
                   <a-tag v-if="isMobile" :color="sourceColor(record.source)" class="!mr-1">{{
                     sourceLabel(record.source)
                   }}</a-tag
-                  >{{ record.name }}
+                  >
+                  <a-tag v-if="isMobile" :color="typeColor(record.type)" class="!mr-1" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
+                  {{ record.name }}
                 </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
                 </div>
+              </template>
+
+              <template v-else-if="column.key === 'type'">
+                <a-tag :color="typeColor(record.type)" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
               </template>
 
               <template v-else-if="column.key === 'source'">
@@ -1917,6 +1940,12 @@
     </a-modal>
 
     <PluginConfigModal v-model:open="configModalVisible" :plugin-name="currentConfigPlugin" />
+
+    <TextFileEditorModal
+      v-model:open="textConfigOpen" :title="'配置插件: ' + currentConfigPlugin"
+      save-success-message="配置已保存。配置何时生效由插件决定，必要时重启游戏服务器。"
+      :list-files="listTextConfigs" :read-file="readTextConfig" :save-file="saveTextConfig"
+    />
 
     <PluginDetailModal
       v-model:open="detailModalVisible"

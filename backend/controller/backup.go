@@ -124,6 +124,11 @@ func GetBackupPluginsDetail(c *gin.Context) {
 		FailWithError(c, http.StatusNotFound, "获取备份插件详情失败: %v", err)
 		return
 	}
+	if role, _ := c.Get("role"); role != "admin" {
+		for i := range plugins {
+			plugins[i].TextConfigs = nil
+		}
+	}
 	c.JSON(http.StatusOK, plugins)
 }
 

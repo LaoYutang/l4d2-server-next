@@ -76,5 +76,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SteamCDNSetting: typeof import('./components/settings/SteamCDNSetting.vue')['default']
+    TextFileEditorModal: typeof import('./components/TextFileEditorModal.vue')['default']
   }
 }

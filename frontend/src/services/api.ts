@@ -185,6 +185,42 @@ export interface ServerConfigUpdate {
   custom_config: string[];
 }
 
+export interface Plugin {
+  name: string;
+  status: 'enabled' | 'disabled';
+  description?: string;
+  source: 'panel' | 'store' | 'upload';
+  type: 'nut' | 'sm' | 'mix' | 'other' | 'unknown';
+  type_error?: string;
+  config_mode: 'sm' | 'text' | 'none';
+  has_smx: boolean;
+  has_config: boolean;
+}
+
+export interface TextConfigFile {
+  path: string;
+  size: number;
+  editable: boolean;
+  error?: string;
+  shared_by?: string[];
+}
+
+export interface PluginTextBackup {
+  path: string;
+  content: string;
+  encoding: string;
+  bom?: boolean;
+  newline?: string;
+}
+
+export interface TextConfigDocument extends TextConfigFile {
+  content: string;
+  encoding: string;
+  bom: boolean;
+  newline: string;
+  revision: string;
+}
+
 export class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -575,7 +611,7 @@ class ApiService {
     return response.text();
   }
 
-  async getPlugins() {
+  async getPlugins(): Promise<Plugin[]> {
     const response = await this.post('/plugins/list');
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
@@ -674,6 +710,24 @@ class ApiService {
       updates,
     });
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async listPluginTextConfigs(name: string): Promise<TextConfigFile[]> {
+    const response = await this.postJson('/plugins/text-config/list', { name });
+    if (!response.ok) throw new ApiRequestError(response.status, '', await response.text());
+    return response.json();
+  }
+
+  async readPluginTextConfig(name: string, path: string): Promise<TextConfigDocument> {
+    const response = await this.postJson('/plugins/text-config/read', { name, path });
+    if (!response.ok) throw new ApiRequestError(response.status, '', await response.text());
+    return response.json();
+  }
+
+  async updatePluginTextConfig(name: string, path: string, content: string, revision: string): Promise<TextConfigDocument> {
+    const response = await this.postJson('/plugins/text-config/update', { name, path, content, expected_revision: revision });
+    if (!response.ok) throw new ApiRequestError(response.status, '', await response.text());
     return response.json();
   }
 

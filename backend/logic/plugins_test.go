@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/spf13/viper"
 )
 
 func TestGetPluginsHasSMX(t *testing.T) {
@@ -329,22 +327,10 @@ func setupPluginTestPaths(t *testing.T) (string, string) {
 	gamePath := t.TempDir()
 	t.Setenv(PluginStorePathEnv, storePath)
 
-	pluginMutex.Lock()
-	oldConfigViper := configViper
-	oldFileRefs := fileRefs
-	configViper = viper.New()
-	configViper.SetConfigType("yaml")
-	fileRefs = nil
-	pluginMutex.Unlock()
-
 	oldGamePath := consts.GamePath
 	consts.GamePath = gamePath
 
 	t.Cleanup(func() {
-		pluginMutex.Lock()
-		configViper = oldConfigViper
-		fileRefs = oldFileRefs
-		pluginMutex.Unlock()
 		consts.GamePath = oldGamePath
 	})
 

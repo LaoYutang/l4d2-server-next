@@ -17,6 +17,9 @@ import (
 )
 
 func main() {
+	if err := logic.InitPluginMetadata(); err != nil {
+		log.Printf("plugin metadata initialization: %v", err)
+	}
 	// Initialize DB if enabled
 	db.InitDB()
 	db.InitPlayerStatsDB()
@@ -216,6 +219,9 @@ func main() {
 		plugins.POST("/delete", controller.DeletePlugin)
 		plugins.POST("/config", controller.GetPluginConfig)
 		plugins.POST("/config/update", controller.UpdatePluginConfig)
+		plugins.POST("/text-config/list", controller.ListPluginTextConfigs)
+		plugins.POST("/text-config/read", controller.ReadPluginTextConfig)
+		plugins.POST("/text-config/update", controller.UpdatePluginTextConfig)
 		plugins.POST("/presets", controller.GetPresets)
 		plugins.POST("/apply-preset", controller.ApplyPreset)
 		plugins.POST("/readme", controller.GetPluginReadme)

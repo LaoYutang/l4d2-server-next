@@ -461,13 +461,16 @@ func (t *storePluginDownloadTask) run() {
 		t.setStatus(StorePluginDownloadStatusFailed, fmt.Sprintf("插件 %s 已存在，请先删除", t.name))
 		return
 	}
-	if err := os.Rename(t.tempDir, t.finalDir); err != nil {
+	if err := commitDownloadedPlugin(t.ctx, t.tempDir, t.name); err != nil {
 		os.RemoveAll(t.tempDir)
+		if t.ctx.Err() != nil {
+			t.setStatus(StorePluginDownloadStatusCancelled, "下载已取消")
+			return
+		}
 		t.setStatus(StorePluginDownloadStatusFailed, fmt.Sprintf("提交插件目录失败: %v", err))
 		return
 	}
 
-	writePluginSource(t.name, "store")
 	t.setStatus(StorePluginDownloadStatusCompleted, "插件下载成功")
 }
 
