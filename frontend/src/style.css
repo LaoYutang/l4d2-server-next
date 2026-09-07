@@ -78,12 +78,18 @@ body {
 }
 
 :root.dark .markdown-body code {
+  background: #374151;
   color: #f472b6;
 }
 
 :root.dark .markdown-body pre {
   background: #1e1e1e;
   color: #d4d4d4;
+}
+
+:root.dark .markdown-body pre code {
+  background: transparent;
+  color: inherit;
 }
 
 :root.dark .markdown-body blockquote {
