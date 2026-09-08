@@ -9,19 +9,32 @@ import (
 
 var executePluginRconCommand = ExecuteRconCommand
 
-func ExecuteRconCommand(cmd string) (string, error) {
+type rconSession interface {
+	Execute(string) (string, error)
+	Close() error
+}
+
+func openRconSession() (rconSession, error) {
 	url := os.Getenv("L4D2_RCON_URL")
 	if url == "" {
-		return "", fmt.Errorf("服务端未配置RCON链接")
+		return nil, fmt.Errorf("服务端未配置RCON链接")
 	}
-	pwd := os.Getenv("L4D2_RCON_PASSWORD")
-	if pwd == "" {
-		return "", fmt.Errorf("服务端未配置RCON密码")
+	password := os.Getenv("L4D2_RCON_PASSWORD")
+	if password == "" {
+		return nil, fmt.Errorf("服务端未配置RCON密码")
 	}
 
-	conn, err := rcon.Dial(url, pwd)
+	conn, err := rcon.Dial(url, password)
 	if err != nil {
-		return "", fmt.Errorf("RCON连接失败: %v", err)
+		return nil, fmt.Errorf("RCON连接失败: %v", err)
+	}
+	return conn, nil
+}
+
+func ExecuteRconCommand(cmd string) (string, error) {
+	conn, err := openRconSession()
+	if err != nil {
+		return "", err
 	}
 	defer conn.Close()
 

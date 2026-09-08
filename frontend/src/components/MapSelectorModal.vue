@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref, computed, watch, h } from 'vue';
   import { api } from '../services/api';
-  import { officialMaps } from '../data/officialMaps';
+  import { buildMapCatalog, type MapCatalogCampaign } from '../utils/mapCatalog';
   import { message, Modal } from 'ant-design-vue';
   import { ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 
@@ -19,7 +19,7 @@
   const changingMapCode = ref('');
   const searchText = ref('');
   const showOfficial = ref(true);
-  const allMaps = ref<any[]>([]);
+  const allMaps = ref<MapCatalogCampaign[]>([]);
   const activeKey = ref<string[]>([]); // For collapse
 
   const fetchMaps = async () => {
@@ -35,45 +35,7 @@
   };
 
   const mergeMapData = (serverMaps: any) => {
-    // Start with official maps marked as not custom
-    const maps = officialMaps.map((officialMap) => ({
-      ...officialMap,
-      IsCustom: false,
-      VpkName: null,
-    }));
-
-    const processServerMap = (serverCampaign: any) => {
-      // Check if it's an official map
-      const isOfficialCampaign = officialMaps.some(
-        (officialMap) =>
-          officialMap.Chapters &&
-          serverCampaign.Chapters &&
-          serverCampaign.Chapters.some((serverChapter: any) =>
-            officialMap.Chapters.some(
-              (officialChapter) => officialChapter.Code === serverChapter.Code
-            )
-          )
-      );
-
-      if (!isOfficialCampaign) {
-        maps.push({
-          Title: serverCampaign.Title || 'Unknown Campaign',
-          Chapters: serverCampaign.Chapters || [],
-          IsCustom: true,
-          VpkName: serverCampaign.VpkName,
-        });
-      }
-    };
-
-    if (Array.isArray(serverMaps)) {
-      serverMaps.forEach(processServerMap);
-    } else if (typeof serverMaps === 'object' && serverMaps !== null) {
-      if (Array.isArray(serverMaps.campaigns)) {
-        serverMaps.campaigns.forEach(processServerMap);
-      }
-    }
-
-    allMaps.value = maps;
+    allMaps.value = buildMapCatalog(serverMaps);
   };
 
   const filteredMaps = computed(() => {

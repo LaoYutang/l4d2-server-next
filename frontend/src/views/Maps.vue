@@ -15,6 +15,7 @@
   import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import MapHotReloadButton from '../components/MapHotReloadButton.vue';
+  import MapQueueButton from '../components/MapQueueButton.vue';
   import MapUploadPanel from '../components/MapUploadPanel.vue';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
@@ -756,6 +757,7 @@
                   <template #icon><setting-outlined /></template>
                 </a-button>
               </a-button-group>
+              <MapQueueButton />
               <a-button
                 danger
                 @click="confirmClearMaps"

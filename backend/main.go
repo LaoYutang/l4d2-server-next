@@ -136,6 +136,18 @@ func main() {
 	router.POST("/maps/inspection/script-overrides", middlewares.Auth(privateKey), controller.GetMapScriptOverrides)
 	router.POST("/maps/inspection/global-scripts/update", middlewares.Auth(privateKey), controller.UpdateMapGlobalScript)
 	router.POST("/maps/trim", middlewares.Auth(privateKey), controller.TrimMap)
+
+	// Map Queue Group
+	mapQueue := router.Group("/maps/queue", middlewares.Auth(privateKey))
+	{
+		mapQueue.POST("/snapshot", controller.GetMapQueueSnapshot)
+		mapQueue.POST("/add", controller.AddMapQueueItem)
+		mapQueue.POST("/remove", controller.RemoveMapQueueItems)
+		mapQueue.POST("/start", controller.StartMapQueue)
+		mapQueue.POST("/skip", controller.SkipMapQueueItem)
+		mapQueue.POST("/clear", controller.ClearMapQueue)
+	}
+
 	router.POST("/remove", middlewares.Auth(privateKey), controller.Remove)
 	router.POST("/rename", middlewares.Auth(privateKey), controller.RenameMap)
 	router.POST("/getUserPlaytime", middlewares.Auth(privateKey), controller.GetUserPlaytime)

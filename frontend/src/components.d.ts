@@ -68,6 +68,8 @@ declare module 'vue' {
     MapGlobalScriptsModal: typeof import('./components/MapGlobalScriptsModal.vue')['default']
     MapHotReloadButton: typeof import('./components/MapHotReloadButton.vue')['default']
     MapHotReloadSetting: typeof import('./components/settings/MapHotReloadSetting.vue')['default']
+    MapQueueButton: typeof import('./components/MapQueueButton.vue')['default']
+    MapQueueModal: typeof import('./components/MapQueueModal.vue')['default']
     MapScriptOverridesModal: typeof import('./components/MapScriptOverridesModal.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
     MapUploadPanel: typeof import('./components/MapUploadPanel.vue')['default']

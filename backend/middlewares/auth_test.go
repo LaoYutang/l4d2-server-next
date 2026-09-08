@@ -76,7 +76,7 @@ func TestAuthRecognizesAdministratorAndTemporaryTokenRoles(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response, role := runAuthTestRequest(t, privateKey, http.MethodPost, "/list", test.credential)
+			response, role := runAuthTestRequest(t, privateKey, http.MethodPost, "/maps/queue/snapshot", test.credential)
 			if response.Code != http.StatusOK {
 				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 			}
@@ -126,6 +126,12 @@ func TestMapUploaderTokenAllowsOnlyExplicitRequests(t *testing.T) {
 		"/remove",
 		"/maps/hot-reload/config",
 		"/maps/hot-reload/config/update",
+		"/maps/queue/snapshot",
+		"/maps/queue/add",
+		"/maps/queue/remove",
+		"/maps/queue/start",
+		"/maps/queue/skip",
+		"/maps/queue/clear",
 		"/rcon/getstatus",
 		"/download/list",
 		"/plugins/list",

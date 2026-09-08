@@ -277,6 +277,36 @@ export interface MapMissionDetail {
   campaigns: MapMissionCampaign[];
 }
 
+export type MapQueueRunState = 'stopped' | 'armed' | 'running' | 'delay';
+
+export interface MapQueueItem {
+  index: number;
+  active: boolean;
+  map: string;
+  mission: string;
+  mission_name: string;
+  chapter_name: string;
+  official: boolean;
+}
+
+export interface MapQueueSnapshot {
+  installed: boolean;
+  enabled: boolean;
+  supported: boolean;
+  state: MapQueueRunState | null;
+  active: MapQueueItem | null;
+  pending: MapQueueItem[];
+  schema: number;
+}
+
+export interface MapQueueActionResponse {
+  ok: true;
+  message: string;
+  map_change_expected: boolean;
+  snapshot?: MapQueueSnapshot;
+  refresh_error?: string;
+}
+
 export type MapDictionaryInspectionStatus =
   | 'present'
   | 'missing'
@@ -962,6 +992,45 @@ class ApiService {
 
   async setMapHotReloadConfig(command: string): Promise<{ status: string; command: string }> {
     const response = await this.postJson('/maps/hot-reload/config/update', { command });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getMapQueueSnapshot(): Promise<MapQueueSnapshot> {
+    const response = await this.post('/maps/queue/snapshot');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async addMapQueueItem(
+    map: string,
+    position: 'front' | 'back'
+  ): Promise<MapQueueActionResponse> {
+    const response = await this.postJson('/maps/queue/add', { map, position });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async removeMapQueueItems(map: string): Promise<MapQueueActionResponse> {
+    const response = await this.postJson('/maps/queue/remove', { map });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async startMapQueue(mode: 'now' | 'after_campaign'): Promise<MapQueueActionResponse> {
+    const response = await this.postJson('/maps/queue/start', { mode });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async skipMapQueueItem(): Promise<MapQueueActionResponse> {
+    const response = await this.post('/maps/queue/skip');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async clearMapQueue(): Promise<MapQueueActionResponse> {
+    const response = await this.post('/maps/queue/clear');
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
