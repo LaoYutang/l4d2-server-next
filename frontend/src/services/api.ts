@@ -277,7 +277,7 @@ export interface MapMissionDetail {
   campaigns: MapMissionCampaign[];
 }
 
-export type MapQueueRunState = 'stopped' | 'armed' | 'running' | 'delay';
+export type MapQueueRunState = 'stopped' | 'armed' | 'running' | 'delay' | 'paused';
 
 export interface MapQueueItem {
   index: number;
@@ -1019,6 +1019,12 @@ class ApiService {
 
   async startMapQueue(mode: 'now' | 'after_campaign'): Promise<MapQueueActionResponse> {
     const response = await this.postJson('/maps/queue/start', { mode });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async pauseMapQueue(): Promise<MapQueueActionResponse> {
+    const response = await this.post('/maps/queue/pause');
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

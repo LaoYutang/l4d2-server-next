@@ -144,6 +144,7 @@ func main() {
 		mapQueue.POST("/add", controller.AddMapQueueItem)
 		mapQueue.POST("/remove", controller.RemoveMapQueueItems)
 		mapQueue.POST("/start", controller.StartMapQueue)
+		mapQueue.POST("/pause", controller.PauseMapQueue)
 		mapQueue.POST("/skip", controller.SkipMapQueueItem)
 		mapQueue.POST("/clear", controller.ClearMapQueue)
 	}

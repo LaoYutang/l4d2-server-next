@@ -130,6 +130,7 @@ func TestMapUploaderTokenAllowsOnlyExplicitRequests(t *testing.T) {
 		"/maps/queue/add",
 		"/maps/queue/remove",
 		"/maps/queue/start",
+		"/maps/queue/pause",
 		"/maps/queue/skip",
 		"/maps/queue/clear",
 		"/rcon/getstatus",

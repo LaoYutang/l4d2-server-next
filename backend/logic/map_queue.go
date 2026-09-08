@@ -21,6 +21,7 @@ const (
 	MapQueueStateArmed   MapQueueRunState = "armed"
 	MapQueueStateRunning MapQueueRunState = "running"
 	MapQueueStateDelay   MapQueueRunState = "delay"
+	MapQueueStatePaused  MapQueueRunState = "paused"
 )
 
 type MapQueueItem struct {
@@ -59,6 +60,7 @@ const (
 	MapQueueActionRemove   MapQueueActionKind = "remove"
 	MapQueueActionRun      MapQueueActionKind = "run"
 	MapQueueActionRunAfter MapQueueActionKind = "run_after"
+	MapQueueActionPause    MapQueueActionKind = "pause"
 	MapQueueActionSkip     MapQueueActionKind = "skip"
 	MapQueueActionClear    MapQueueActionKind = "clear"
 )
@@ -96,7 +98,7 @@ func GetMapQueueErrorKind(err error) (MapQueueErrorKind, bool) {
 
 var (
 	mapQueueMapTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-	mapQueueStatusPattern   = regexp.MustCompile(`^\[MapQueue\] enabled=([01]) supported=([01]) state=(stopped|armed|running|delay) active=(-|[A-Za-z0-9_.-]+) pending=([0-9]+)$`)
+	mapQueueStatusPattern   = regexp.MustCompile(`^\[MapQueue\] enabled=([01]) supported=([01]) state=(stopped|armed|running|delay|paused) active=(-|[A-Za-z0-9_.-]+) pending=([0-9]+)$`)
 	dialMapQueueRCON        = openRconSession
 )
 
@@ -186,7 +188,8 @@ func ExecuteMapQueueAction(kind MapQueueActionKind, mapName string) (MapQueueAct
 		OK:      true,
 		Message: message,
 	}
-	if kind == MapQueueActionRun || (kind == MapQueueActionSkip && strings.Contains(message, "正在切换至")) {
+	if (kind == MapQueueActionRun && strings.Contains(message, "正在切换至")) ||
+		(kind == MapQueueActionSkip && strings.Contains(message, "正在切换至")) {
 		response.MapChangeExpected = true
 		return response, nil
 	}
@@ -234,6 +237,8 @@ func buildMapQueueCommand(kind MapQueueActionKind, mapName string) (string, erro
 		return "sm_mq run", nil
 	case MapQueueActionRunAfter:
 		return "sm_mq runafter", nil
+	case MapQueueActionPause:
+		return "sm_mq pause", nil
 	case MapQueueActionSkip:
 		return "sm_mq skip", nil
 	case MapQueueActionClear:
@@ -467,7 +472,7 @@ func validMapQueueSchema(schema *int) bool {
 
 func isValidMapQueueState(state MapQueueRunState) bool {
 	switch state {
-	case MapQueueStateStopped, MapQueueStateArmed, MapQueueStateRunning, MapQueueStateDelay:
+	case MapQueueStateStopped, MapQueueStateArmed, MapQueueStateRunning, MapQueueStateDelay, MapQueueStatePaused:
 		return true
 	default:
 		return false
@@ -508,9 +513,19 @@ func isMapQueueActionSuccess(kind MapQueueActionKind, mapName, message string) b
 		pattern := regexp.MustCompile(`^已删除地图 ` + regexp.QuoteMeta(mapName) + ` 的全部 [1-9][0-9]* 个待执行项。$`)
 		return pattern.MatchString(message)
 	case MapQueueActionRun:
-		return regexp.MustCompile(`^队列已启动，正在切换至 [A-Za-z0-9_.-]+。$`).MatchString(message)
+		return message == "队列已恢复，当前战役通关后将继续下一项。" ||
+			regexp.MustCompile(`^队列已启动，正在切换至 [A-Za-z0-9_.-]+。$`).MatchString(message)
 	case MapQueueActionRunAfter:
 		return message == "队列已等待，将在当前战役通关后执行。"
+	case MapQueueActionPause:
+		switch message {
+		case "队列已暂停；尚未进入的当前项已放回队首。",
+			"队列已暂停；当前战役继续，通关后不会进入下一项。",
+			"队列已暂停；后续待办已保留。":
+			return true
+		default:
+			return false
+		}
 	case MapQueueActionSkip:
 		return regexp.MustCompile(`^已跳过 [A-Za-z0-9_.-]+(?:，正在切换至 [A-Za-z0-9_.-]+|；下一项无效，队列已停止并保留该项)?。$`).MatchString(message)
 	case MapQueueActionClear:

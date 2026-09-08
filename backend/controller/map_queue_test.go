@@ -79,6 +79,7 @@ func TestMapQueueControllerActionMappings(t *testing.T) {
 		{name: "remove", path: "/maps/queue/remove", body: `{"map":"c1m1_hotel"}`, handler: RemoveMapQueueItems, wantKind: logic.MapQueueActionRemove, wantMap: "c1m1_hotel"},
 		{name: "start now", path: "/maps/queue/start", body: `{"mode":"now"}`, handler: StartMapQueue, wantKind: logic.MapQueueActionRun},
 		{name: "start after campaign", path: "/maps/queue/start", body: `{"mode":"after_campaign"}`, handler: StartMapQueue, wantKind: logic.MapQueueActionRunAfter},
+		{name: "pause", path: "/maps/queue/pause", handler: PauseMapQueue, wantKind: logic.MapQueueActionPause},
 		{name: "skip", path: "/maps/queue/skip", handler: SkipMapQueueItem, wantKind: logic.MapQueueActionSkip},
 		{name: "clear", path: "/maps/queue/clear", handler: ClearMapQueue, wantKind: logic.MapQueueActionClear},
 	}

@@ -92,6 +92,11 @@ func SkipMapQueueItem(c *gin.Context) {
 	performMapQueueAction(c, logic.MapQueueActionSkip, "")
 }
 
+func PauseMapQueue(c *gin.Context) {
+	defer LogOp(c, "暂停地图待办队列")()
+	performMapQueueAction(c, logic.MapQueueActionPause, "")
+}
+
 func ClearMapQueue(c *gin.Context) {
 	defer LogOp(c, "清空并停止地图待办队列")()
 	performMapQueueAction(c, logic.MapQueueActionClear, "")

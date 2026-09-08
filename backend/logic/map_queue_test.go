@@ -138,6 +138,14 @@ func TestGetMapQueueSnapshotStates(t *testing.T) {
 			},
 		},
 		{
+			name:  "paused",
+			state: MapQueueStatePaused, enabled: true, supported: true,
+			items: []MapQueueItem{
+				{Index: 0, Active: true, Map: "c1m2_streets", Mission: "L4D2C1", MissionName: "死亡中心", ChapterName: "街道", Official: true},
+				{Index: 1, Map: "c2m1_highway", Mission: "L4D2C2", MissionName: "黑色狂欢节", ChapterName: "高速公路", Official: true},
+			},
+		},
+		{
 			name:  "delay unsupported",
 			state: MapQueueStateDelay, enabled: false, supported: false,
 			items: []MapQueueItem{{Index: 0, Active: true, Map: "c2m1_highway", Mission: "L4D2C2", MissionName: "黑色狂欢节", ChapterName: "公路", Official: true}},
@@ -275,7 +283,9 @@ func TestMapQueueActionCommandsAndRefresh(t *testing.T) {
 		{name: "add front", kind: MapQueueActionAddFront, mapName: "c1m1_hotel", command: "sm_mq addfront c1m1_hotel", output: "[MapQueue] 已添加 1 个地图到队首。"},
 		{name: "add back", kind: MapQueueActionAddBack, mapName: "c1m1_hotel", command: "sm_mq add c1m1_hotel", output: "[MapQueue] 已添加 1 个地图到队尾。"},
 		{name: "remove", kind: MapQueueActionRemove, mapName: "c1m1_hotel", command: "sm_mq remove c1m1_hotel", output: "[MapQueue] 已删除地图 c1m1_hotel 的全部 2 个待执行项。"},
+		{name: "resume paused", kind: MapQueueActionRun, command: "sm_mq run", output: "[MapQueue] 队列已恢复，当前战役通关后将继续下一项。"},
 		{name: "run after", kind: MapQueueActionRunAfter, command: "sm_mq runafter", output: "[MapQueue] 队列已等待，将在当前战役通关后执行。"},
+		{name: "pause", kind: MapQueueActionPause, command: "sm_mq pause", output: "[MapQueue] 队列已暂停；当前战役继续，通关后不会进入下一项。"},
 		{name: "clear", kind: MapQueueActionClear, command: "sm_mq clear", output: "[MapQueue] 已清空地图待办并停止执行。"},
 		{name: "skip without map change", kind: MapQueueActionSkip, command: "sm_mq skip", output: "[MapQueue] 已跳过 c1m1_hotel。"},
 	}
@@ -301,6 +311,22 @@ func TestMapQueueActionCommandsAndRefresh(t *testing.T) {
 				t.Fatalf("commands = %#v, want %#v", session.commands, expected)
 			}
 		})
+	}
+}
+
+func TestMapQueuePauseSuccessReplies(t *testing.T) {
+	successReplies := []string{
+		"队列已暂停；尚未进入的当前项已放回队首。",
+		"队列已暂停；当前战役继续，通关后不会进入下一项。",
+		"队列已暂停；后续待办已保留。",
+	}
+	for _, reply := range successReplies {
+		if !isMapQueueActionSuccess(MapQueueActionPause, "", reply) {
+			t.Fatalf("pause reply was rejected: %q", reply)
+		}
+	}
+	if isMapQueueActionSuccess(MapQueueActionPause, "", "队列已经暂停。") {
+		t.Fatal("pause rejection was treated as success")
 	}
 }
 
@@ -370,7 +396,7 @@ func TestParseMapQueueStatusIsStrict(t *testing.T) {
 	tests := []string{
 		"[MapQueue] enabled=true supported=1 state=stopped active=- pending=0",
 		"prefix [MapQueue] enabled=1 supported=1 state=stopped active=- pending=0",
-		"[MapQueue] enabled=1 supported=1 state=paused active=- pending=0",
+		"[MapQueue] enabled=1 supported=1 state=unknown active=- pending=0",
 		"[MapQueue] enabled=1 supported=1 state=stopped active=- pending=0\nunexpected",
 	}
 	for _, raw := range tests {

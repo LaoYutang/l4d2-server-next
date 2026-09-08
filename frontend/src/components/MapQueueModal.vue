@@ -5,6 +5,7 @@
     ClearOutlined,
     ClockCircleOutlined,
     DeleteOutlined,
+    PauseCircleOutlined,
     PlayCircleOutlined,
     PlusOutlined,
     ReloadOutlined,
@@ -49,6 +50,7 @@
     armed: '等待通关',
     running: '执行中',
     delay: '等待切换',
+    paused: '已暂停',
   };
 
   const stateColors: Record<MapQueueRunState, string> = {
@@ -56,6 +58,7 @@
     armed: 'blue',
     running: 'green',
     delay: 'orange',
+    paused: 'orange',
   };
 
   const currentStateLabel = computed(() => {
@@ -82,8 +85,8 @@
     return (
       actionsAvailable.value &&
       Boolean(snapshot.value?.supported) &&
-      pendingCount.value > 0 &&
-      (state === 'stopped' || state === 'armed')
+      ((pendingCount.value > 0 && (state === 'stopped' || state === 'armed')) ||
+        (state === 'paused' && Boolean(snapshot.value?.active)))
     );
   });
   const canStartAfterCampaign = computed(
@@ -93,6 +96,13 @@
       pendingCount.value > 0 &&
       snapshot.value?.state === 'stopped'
   );
+  const canPause = computed(() => {
+    const state = snapshot.value?.state;
+    return (
+      actionsAvailable.value &&
+      Boolean(state && (state === 'armed' || state === 'running' || state === 'delay'))
+    );
+  });
   const canClear = computed(
     () => actionsAvailable.value && (queueHasContent.value || snapshot.value?.state !== 'stopped')
   );
@@ -223,6 +233,17 @@
   };
 
   const confirmStartNow = () => {
+    if (snapshot.value?.state === 'paused') {
+      Modal.confirm({
+        title: '恢复地图待办队列？',
+        content: '当前战役仍作为执行中项目，通关后将继续进入下一项。',
+        okText: '恢复队列',
+        cancelText: '取消',
+        onOk: () => runAction('start:now', () => api.startMapQueue('now')),
+      });
+      return;
+    }
+
     Modal.confirm({
       title: '立即启动队列？',
       content: '服务器将立即切换至队首地图，切图期间 RCON 会短暂断开。',
@@ -234,6 +255,8 @@
 
   const startAfterCampaign = () =>
     runAction('start:after_campaign', () => api.startMapQueue('after_campaign'));
+
+  const pauseQueue = () => runAction('pause', () => api.pauseMapQueue());
 
   const confirmClear = () => {
     Modal.confirm({
@@ -346,45 +369,12 @@
               </template>
             </div>
             <a-button
-              class="touch-button !flex !items-center !justify-center"
               :loading="snapshotLoading"
               :disabled="Boolean(actionKey)"
               @click="fetchSnapshot"
             >
               <template #icon><reload-outlined /></template>
               刷新
-            </a-button>
-          </div>
-
-          <div class="primary-actions mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <a-button
-              type="primary"
-              class="touch-button !flex !items-center !justify-center"
-              :disabled="!canStartNow"
-              :loading="actionKey === 'start:now'"
-              @click="confirmStartNow"
-            >
-              <template #icon><play-circle-outlined /></template>
-              立即启动队列
-            </a-button>
-            <a-button
-              class="touch-button !flex !items-center !justify-center"
-              :disabled="!canStartAfterCampaign"
-              :loading="actionKey === 'start:after_campaign'"
-              @click="startAfterCampaign"
-            >
-              <template #icon><clock-circle-outlined /></template>
-              通关后启动
-            </a-button>
-            <a-button
-              danger
-              class="touch-button !flex !items-center !justify-center"
-              :disabled="!canClear"
-              :loading="actionKey === 'clear'"
-              @click="confirmClear"
-            >
-              <template #icon><clear-outlined /></template>
-              清空并停止
             </a-button>
           </div>
         </section>
@@ -437,11 +427,20 @@
             <div v-else class="space-y-4">
               <section v-if="snapshot.active" class="active-section">
                 <div class="mb-2 flex items-center justify-between gap-2">
-                  <h3 class="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">执行中</h3>
-                  <a-tag color="green">当前地图</a-tag>
+                  <h3 class="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {{ snapshot.state === 'paused' ? '暂停中的当前地图' : '执行中' }}
+                  </h3>
+                  <a-tag :color="snapshot.state === 'paused' ? 'orange' : 'green'">
+                    {{ snapshot.state === 'paused' ? '队列已暂停' : '当前地图' }}
+                  </a-tag>
                 </div>
                 <div
-                  class="queue-card border-green-200 bg-green-50/70 dark:border-green-800 dark:bg-green-950/20"
+                  class="queue-card"
+                  :class="
+                    snapshot.state === 'paused'
+                      ? 'border-orange-200 bg-orange-50/70 dark:border-orange-800 dark:bg-orange-950/20'
+                      : 'border-green-200 bg-green-50/70 dark:border-green-800 dark:bg-green-950/20'
+                  "
                 >
                   <div class="min-w-0 flex-1">
                     <div class="truncate font-semibold text-gray-900 dark:text-gray-100">
@@ -456,7 +455,7 @@
                   </div>
                   <a-button
                     danger
-                    class="touch-button shrink-0 !flex !items-center !justify-center"
+                    class="shrink-0"
                     :disabled="!actionsAvailable"
                     :loading="actionKey === 'skip'"
                     @click="confirmSkip"
@@ -514,7 +513,7 @@
                     </div>
                     <a-button
                       danger
-                      class="touch-button shrink-0 !flex !items-center !justify-center"
+                      class="shrink-0"
                       :disabled="!actionsAvailable"
                       :loading="actionKey === `remove:${item.map}`"
                       @click="confirmRemove(item)"
@@ -541,8 +540,8 @@
                   </div>
                 </div>
                 <a-radio-group v-model:value="addPosition" button-style="solid" :disabled="!canAdd">
-                  <a-radio-button value="back" class="touch-radio">加入队尾</a-radio-button>
-                  <a-radio-button value="front" class="touch-radio">加入队首</a-radio-button>
+                  <a-radio-button value="back">加入队尾</a-radio-button>
+                  <a-radio-button value="front">加入队首</a-radio-button>
                 </a-radio-group>
               </div>
 
@@ -560,7 +559,6 @@
                   class="w-full sm:flex-1"
                 />
                 <a-button
-                  class="touch-button !flex !items-center !justify-center"
                   :loading="catalogLoading"
                   @click="fetchMapCatalog"
                 >
@@ -637,7 +635,7 @@
                         </div>
                         <a-button
                           type="primary"
-                          class="touch-button shrink-0 !flex !items-center !justify-center"
+                          class="shrink-0"
                           :disabled="!canAdd"
                           :loading="actionKey === `add:${chapter.Code}`"
                           @click="addMap(chapter.Code)"
@@ -653,6 +651,53 @@
             </div>
           </a-tab-pane>
         </a-tabs>
+
+        <div
+          class="queue-footer-actions mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 pt-3 dark:border-gray-700"
+        >
+          <a-button-group>
+            <a-button
+              type="primary"
+              :disabled="!canStartNow"
+              :loading="actionKey === 'start:now'"
+              @click="confirmStartNow"
+            >
+              <template #icon><play-circle-outlined /></template>
+              立即启动队列
+            </a-button>
+            <a-tooltip title="通关后启动" placement="top">
+              <a-button
+                type="primary"
+                class="queue-start-after-button"
+                aria-label="通关后启动"
+                :disabled="!canStartAfterCampaign"
+                :loading="actionKey === 'start:after_campaign'"
+                @click="startAfterCampaign"
+              >
+                <template #icon><clock-circle-outlined /></template>
+              </a-button>
+            </a-tooltip>
+          </a-button-group>
+
+          <a-button
+            :disabled="!canPause"
+            :loading="actionKey === 'pause'"
+            @click="pauseQueue"
+          >
+            <template #icon><pause-circle-outlined /></template>
+            暂停队列
+          </a-button>
+
+          <a-button
+            danger
+            :disabled="!canClear"
+            :loading="actionKey === 'clear'"
+            @click="confirmClear"
+          >
+            <template #icon><clear-outlined /></template>
+            清空并停止
+          </a-button>
+        </div>
       </template>
     </div>
   </a-modal>
@@ -699,17 +744,6 @@
     color: rgb(209 213 219);
   }
 
-  .touch-button,
-  .touch-radio {
-    min-height: 40px;
-  }
-
-  .touch-radio {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .chapter-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -726,6 +760,32 @@
     border-width: 1px;
     border-radius: 8px;
     padding: 12px;
+  }
+
+  .queue-modal-body :deep(.ant-btn) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .queue-modal-body :deep(.ant-btn .anticon) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .queue-modal-body :deep(.ant-btn .anticon > svg) {
+    display: block;
+  }
+
+  .queue-footer-actions :deep(.queue-start-after-button.ant-btn) {
+    border-start-end-radius: 6px !important;
+    border-end-end-radius: 6px !important;
+  }
+
+  .queue-footer-actions :deep(.queue-start-after-button.ant-btn-icon-only > .anticon) {
+    transform: none;
   }
 
   :deep(.ant-collapse-header) {
@@ -781,18 +841,14 @@
       flex-direction: column;
     }
 
-    .queue-card > .touch-button,
-    .chapter-card > .touch-button {
-      width: 100%;
+    .queue-card > .ant-btn,
+    .chapter-card > .ant-btn {
+      width: auto;
+      align-self: flex-end;
     }
 
     .chapter-grid {
       grid-template-columns: 1fr;
-    }
-
-    .touch-button,
-    .touch-radio {
-      min-height: 44px;
     }
 
     :deep(.queue-modal-body .ant-input-affix-wrapper),
