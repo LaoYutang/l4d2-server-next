@@ -606,6 +606,25 @@
     });
   };
 
+  const reloadPluginImmediately = (plugin: Plugin) => {
+    AModal.confirm({
+      title: '确定要立即重载这个插件吗？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        const hide = message.loading('正在立即重载插件...', 0);
+        try {
+          await api.reloadPlugin(plugin.name);
+          message.success('插件立即重载成功');
+        } catch (error: any) {
+          message.error('立即重载插件失败: ' + error.message);
+        } finally {
+          hide();
+        }
+      },
+    });
+  };
+
   const unloadPluginImmediately = (plugin: Plugin) => {
     AModal.confirm({
       title: '确定要立即卸载这个插件吗？',
@@ -1325,6 +1344,12 @@
                           </a-menu-item>
                           <a-menu-item key="load" @click="loadPluginImmediately(record as Plugin)">
                             立即加载 smx
+                          </a-menu-item>
+                          <a-menu-item
+                            key="reload"
+                            @click="reloadPluginImmediately(record as Plugin)"
+                          >
+                            立即重载 smx
                           </a-menu-item>
                         </a-menu>
                       </template>

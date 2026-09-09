@@ -504,6 +504,32 @@ func LoadPlugin(name string) error {
 	return nil
 }
 
+func ReloadPlugin(name string) error {
+	enabled, err := isPluginEnabled(name)
+	if err != nil {
+		return fmt.Errorf("failed to check plugin status: %v", err)
+	}
+	if !enabled {
+		return fmt.Errorf("plugin %s is not enabled", name)
+	}
+
+	smxPlugins, err := listPluginSMXIDs(name)
+	if err != nil {
+		return fmt.Errorf("failed to scan smx plugins: %v", err)
+	}
+	if len(smxPlugins) == 0 {
+		return fmt.Errorf("plugin %s does not contain smx files", name)
+	}
+
+	for _, pluginID := range smxPlugins {
+		if err := runSourceModPluginCommand("reload", pluginID); err != nil {
+			return fmt.Errorf("reload smx plugin %s failed: %v", pluginID, err)
+		}
+	}
+
+	return nil
+}
+
 func isPluginEnabled(name string) (bool, error) {
 	defer acquirePluginOperation()()
 	state, err := readPluginState()

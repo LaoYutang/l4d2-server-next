@@ -332,6 +332,27 @@ func LoadPlugin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "插件立即加载成功"})
 }
 
+func ReloadPlugin(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return
+	}
+
+	name := c.PostForm("name")
+	if name == "" {
+		FailWithError(c, http.StatusBadRequest, "插件名称不能为空")
+		return
+	}
+	defer LogOp(c, "立即重载插件: "+name)()
+
+	if err := logic.ReloadPlugin(name); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "立即重载插件失败: %v", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "插件立即重载成功"})
+}
+
 func UnloadPlugin(c *gin.Context) {
 	role, _ := c.Get("role")
 	if role != "admin" {

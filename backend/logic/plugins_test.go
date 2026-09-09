@@ -200,6 +200,63 @@ func TestLoadPluginRejectsDisabledPlugin(t *testing.T) {
 	}
 }
 
+func TestReloadPluginReloadsEnabledSMXWithoutChangingStatus(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "alpha.smx"), "smx")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "nested", "beta.smx"), "smx")
+
+	if err := EnablePlugin("PluginHot"); err != nil {
+		t.Fatalf("EnablePlugin() error = %v", err)
+	}
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	if err := ReloadPlugin("PluginHot"); err != nil {
+		t.Fatalf("ReloadPlugin() error = %v", err)
+	}
+
+	wantCommands := []string{
+		`sm plugins reload "alpha"`,
+		`sm plugins reload "nested/beta"`,
+	}
+	if !reflect.DeepEqual(*commands, wantCommands) {
+		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
+	}
+
+	plugins, err := GetPlugins()
+	if err != nil {
+		t.Fatalf("GetPlugins() error = %v", err)
+	}
+	for _, plugin := range plugins {
+		if plugin.Name == "PluginHot" && plugin.Status != "enabled" {
+			t.Fatalf("PluginHot status = %s, want enabled", plugin.Status)
+		}
+	}
+}
+
+func TestReloadPluginRejectsDisabledPlugin(t *testing.T) {
+	storePath, _ := setupPluginTestPaths(t)
+
+	writeTestFile(t, filepath.Join(storePath, ConfigFileName), "enabled_plugins: []\n")
+	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "hot.smx"), "smx")
+
+	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
+		return "[SM] OK", nil
+	})
+
+	err := ReloadPlugin("PluginHot")
+	if err == nil || !strings.Contains(err.Error(), "is not enabled") {
+		t.Fatalf("ReloadPlugin() error = %v, want disabled plugin error", err)
+	}
+	if len(*commands) != 0 {
+		t.Fatalf("commands = %v, want none", *commands)
+	}
+}
+
 func TestUnloadPluginUnloadsDisabledSMXWithoutChangingStatus(t *testing.T) {
 	storePath, _ := setupPluginTestPaths(t)
 
