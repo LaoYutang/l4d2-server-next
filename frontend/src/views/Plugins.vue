@@ -1049,7 +1049,9 @@
       {
         title: '操作',
         key: 'actions',
-        width: 260,
+        width: 280,
+        // 窄屏下表格需要横向滚动，固定操作列会挤掉插件名，仅在桌面端固定
+        ...(isMobile.value ? {} : { fixed: 'right' as const }),
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'source' && c.key !== 'type') : cols;
@@ -1076,7 +1078,8 @@
       {
         title: '操作',
         key: 'actions',
-        width: 260,
+        width: 280,
+        ...(isMobile.value ? {} : { fixed: 'right' as const }),
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'source' && c.key !== 'type') : cols;
@@ -1100,10 +1103,16 @@
         title: '操作',
         key: 'actions',
         width: 200,
+        fixed: 'right' as const,
       },
     ];
     return isMobile.value ? cols.filter((c) => c.key !== 'size') : cols;
   });
+
+  // 桌面端使用固定表格布局，超长插件名在列内截断，避免把操作列挤出可视区
+  const pluginListScroll = computed(() =>
+    isMobile.value ? { x: 'max-content' as const } : { x: 720 },
+  );
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -1269,7 +1278,7 @@
             :pagination="enabledPagination"
             @change="handleEnabledTableChange"
             row-key="name"
-            :scroll="{ x: 'max-content' }"
+            :scroll="pluginListScroll"
             :row-selection="rowSelection"
             :customRow="localPluginRow"
           >
@@ -1281,7 +1290,15 @@
                   }}</a-tag
                   >
                   <a-tag v-if="isMobile" :color="typeColor(record.type)" class="!mr-1" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
-                  {{ record.name }}
+                  <a-tooltip
+                    v-if="!isMobile"
+                    :title="record.name"
+                    placement="topLeft"
+                    :getPopupContainer="getBody"
+                  >
+                    <span class="block truncate">{{ record.name }}</span>
+                  </a-tooltip>
+                  <span v-else class="break-all">{{ record.name }}</span>
                 </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
@@ -1492,7 +1509,7 @@
             :pagination="disabledPagination"
             @change="handleDisabledTableChange"
             row-key="name"
-            :scroll="{ x: 'max-content' }"
+            :scroll="pluginListScroll"
             :row-selection="rowSelection"
             :customRow="localPluginRow"
           >
@@ -1504,7 +1521,15 @@
                   }}</a-tag
                   >
                   <a-tag v-if="isMobile" :color="typeColor(record.type)" class="!mr-1" :title="record.type_error">{{ typeLabel(record.type) }}</a-tag>
-                  {{ record.name }}
+                  <a-tooltip
+                    v-if="!isMobile"
+                    :title="record.name"
+                    placement="topLeft"
+                    :getPopupContainer="getBody"
+                  >
+                    <span class="block truncate">{{ record.name }}</span>
+                  </a-tooltip>
+                  <span v-else class="break-all">{{ record.name }}</span>
                 </div>
                 <div v-if="record.description" class="text-xs text-gray-400 dark:text-gray-500">
                   {{ record.description }}
