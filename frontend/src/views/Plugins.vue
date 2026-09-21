@@ -1618,6 +1618,7 @@
                     title="确定要删除这个插件吗？"
                     ok-text="确定"
                     cancel-text="取消"
+                    :get-popup-container="getBody"
                     @confirm="deletePlugin(record as Plugin)"
                   >
                     <a-button
