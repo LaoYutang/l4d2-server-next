@@ -114,7 +114,7 @@
             <div
               v-for="item in filteredCustomEntries"
               :key="item.entry.id"
-              class="relative rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-3 sm:p-4"
+              class="server-config-entry relative rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-3 sm:p-4"
             >
               <div class="min-w-0 flex flex-col gap-2 pr-20">
                 <div
@@ -151,6 +151,7 @@
                   title="确认删除该配置及其注释吗？"
                   ok-text="确定"
                   cancel-text="取消"
+                  :get-popup-container="getDeletePopupContainer"
                   :disabled="hasTrailingComments"
                   @confirm="removeCustomConfig(item.index)"
                 >
@@ -373,6 +374,9 @@
     customTextSource.value = serializeCustomConfigEntries(customEntries.value).join('\n');
   };
 
+  const getDeletePopupContainer = (triggerNode: HTMLElement) =>
+    triggerNode.closest<HTMLElement>('.server-config-entry') ?? document.body;
+
   const fetchData = async () => {
     try {
       loading.value = true;
@@ -523,5 +527,21 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  :deep(.ant-popconfirm-buttons) {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  :deep(.ant-popconfirm-buttons button) {
+    margin-left: 0 !important;
+  }
+
+  :deep(.ant-popconfirm-message) {
+    white-space: nowrap;
   }
 </style>
