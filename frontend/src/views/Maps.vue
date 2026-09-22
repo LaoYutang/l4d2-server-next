@@ -664,6 +664,11 @@
     (event.currentTarget as HTMLElement | null)?.click();
   };
 
+  // 表格单元格的浮层挂到 body：App 级 getPopupContainer 返回触发元素的父节点，
+  // 而该节点未定位、最近的定位祖先却是 position: relative 的 td，
+  // 会让气泡偏移到表头位置。
+  const getBody = () => document.body;
+
   const openGlobalScripts = (mapName: string) => {
     globalScriptsMapName.value = mapName;
     globalScriptsVisible.value = true;
@@ -820,6 +825,7 @@
                         trigger="click"
                         placement="bottomLeft"
                         overlayClassName="map-inspection-popover"
+                        :getPopupContainer="getBody"
                       >
                         <template #content>
                           <div class="map-inspection-list" role="list">
@@ -859,6 +865,7 @@
                         trigger="click"
                         placement="bottomLeft"
                         overlayClassName="map-inspection-popover"
+                        :getPopupContainer="getBody"
                       >
                         <template #content>
                           <div
