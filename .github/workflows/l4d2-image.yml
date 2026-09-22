@@ -42,6 +42,9 @@ jobs:
           context: .
           file: manifest/docker/l4d2.Dockerfile
           push: true
+          # CNB docker 制品库不接受 buildx 默认生成的 attestation manifest
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.meta.outputs.tags }}
             docker.cnb.cool/laoyutang/l4d2-pure:latest

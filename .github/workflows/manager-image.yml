@@ -50,6 +50,9 @@ jobs:
           context: .
           file: manifest/docker/manager.Dockerfile
           push: true
+          # CNB docker 制品库不接受 buildx 默认生成的 attestation manifest
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta-manager.outputs.tags }}
           labels: ${{ steps.meta-manager.outputs.labels }}
           build-args: |
