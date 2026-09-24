@@ -1,13 +1,15 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
+  import { onBeforeUnmount, ref } from 'vue';
   import { message } from 'ant-design-vue';
   import {
     CloseCircleOutlined,
+    ExclamationCircleOutlined,
     InboxOutlined,
     LoadingOutlined,
     PlayCircleOutlined,
   } from '@ant-design/icons-vue';
-  import { api, type MapUploadProgressEvent } from '../services/api';
+  import { api, DiskLimitError, type DiskLimitInfo, type MapUploadProgressEvent } from '../services/api';
+  import { formatBytes, formatPercent } from '../utils/format';
 
   type MapUploadPhase = 'initializing' | 'uploading' | 'processing';
 
@@ -27,6 +29,37 @@
   const uploadPercents = ref<Record<string, number>>({});
   const uploadPhases = ref<Record<string, MapUploadPhase>>({});
   const uploadFailures = ref<Record<string, MapUploadFailure>>({});
+
+  // 磁盘使用率超过限制时的二次确认状态。只有管理员会走到这里：
+  // 后端在 507 响应里用 can_force 标明当前角色能否确认。
+  const diskConfirmOpen = ref(false);
+  const diskConfirmFileName = ref('');
+  const diskConfirmFileSize = ref(0);
+  const diskConfirmInfo = ref<DiskLimitInfo | null>(null);
+  let resolveDiskConfirm: ((confirmed: boolean) => void) | null = null;
+
+  const askDiskConfirm = (fileName: string, fileSize: number, info: DiskLimitInfo) => {
+    // 同一时刻只处理一个超限确认，避免多个弹窗互相覆盖待决状态
+    if (resolveDiskConfirm) return Promise.resolve(false);
+
+    return new Promise<boolean>((resolve) => {
+      diskConfirmFileName.value = fileName;
+      diskConfirmFileSize.value = fileSize;
+      diskConfirmInfo.value = info;
+      resolveDiskConfirm = resolve;
+      diskConfirmOpen.value = true;
+    });
+  };
+
+  const settleDiskConfirm = (confirmed: boolean) => {
+    diskConfirmOpen.value = false;
+    const resolve = resolveDiskConfirm;
+    resolveDiskConfirm = null;
+    resolve?.(confirmed);
+  };
+
+  // 组件卸载时结束待决确认，避免上传流程挂起
+  onBeforeUnmount(() => settleDiskConfirm(false));
 
   const normalizeUploadErrorMessage = (error: unknown, fallback: string) => {
     const messageText =
@@ -105,56 +138,88 @@
     delete uploadPercents.value[fileName];
 
     try {
-      const result = await api.uploadMap(
-        file,
-        (event: MapUploadProgressEvent) => {
-          if (!isCurrentUpload()) return;
-          currentStage = event.phase;
-          uploadPhases.value[fileName] = event.phase;
-          uploadPercents.value[fileName] = event.percent;
-          if (event.phase === 'uploading') {
-            uploadSpeeds.value[fileName] = event.speed;
-          } else {
-            delete uploadSpeeds.value[fileName];
+      let force = false;
+      for (;;) {
+        try {
+          const result = await api.uploadMap(
+            file,
+            (event: MapUploadProgressEvent) => {
+              if (!isCurrentUpload()) return;
+              currentStage = event.phase;
+              uploadPhases.value[fileName] = event.phase;
+              uploadPercents.value[fileName] = event.percent;
+              if (event.phase === 'uploading') {
+                uploadSpeeds.value[fileName] = event.speed;
+              } else {
+                delete uploadSpeeds.value[fileName];
+              }
+              onProgress({ percent: event.percent });
+            },
+            controller.signal,
+            (uploadId: string) => {
+              if (!isCurrentUpload()) return;
+              currentUploadId = uploadId;
+              currentStage = 'uploading';
+              uploadPhases.value[fileName] = currentStage;
+              uploadStates.value[fileName] = { uploadId };
+            },
+            { force }
+          );
+
+          if (!isCurrentUpload()) {
+            onError(new Error('上传任务已被新的同名上传替换'));
+            return;
           }
-          onProgress({ percent: event.percent });
-        },
-        controller.signal,
-        (uploadId: string) => {
-          if (!isCurrentUpload()) return;
-          currentUploadId = uploadId;
-          currentStage = 'uploading';
-          uploadPhases.value[fileName] = currentStage;
-          uploadStates.value[fileName] = { uploadId };
-        }
-      );
 
-      if (!isCurrentUpload()) {
-        onError(new Error('上传任务已被新的同名上传替换'));
-        return;
-      }
+          delete uploadSpeeds.value[fileName];
+          delete uploadControllers.value[fileName];
+          if (result.success) {
+            if (uploadStates.value[fileName]?.uploadId === currentUploadId) {
+              delete uploadStates.value[fileName];
+            }
+            delete uploadPhases.value[fileName];
+            delete uploadFailures.value[fileName];
+            delete uploadPercents.value[fileName];
+            message.success(`${fileName} 上传成功`);
+            onSuccess('Ok');
+            emit('uploaded', fileName);
+          } else {
+            const errorMessage = normalizeUploadErrorMessage(result.error, '分片上传失败');
+            uploadStates.value[fileName] = { uploadId: result.uploadId };
+            uploadPhases.value[fileName] = 'uploading';
+            uploadFailures.value[fileName] = { stage: 'uploading', message: errorMessage };
+            const currentPercent = uploadPercents.value[fileName] || file.percent || 0;
+            message.warning(`${fileName} 上传中断：${errorMessage}；可点击继续上传恢复`);
+            onProgress({ percent: currentPercent });
+            onError(new Error(errorMessage));
+          }
+          return;
+        } catch (uploadFailure: unknown) {
+          const uploadError =
+            uploadFailure instanceof Error
+              ? uploadFailure
+              : new Error(normalizeUploadErrorMessage(uploadFailure, '上传失败'));
 
-      delete uploadSpeeds.value[fileName];
-      delete uploadControllers.value[fileName];
-      if (result.success) {
-        if (uploadStates.value[fileName]?.uploadId === currentUploadId) {
-          delete uploadStates.value[fileName];
+          // 使用率超过限制且后端允许确认（仅管理员）：确认后带上 force 重试一次。
+          // 预判空间不足（disk_space_insufficient）永远不会进入这里。
+          if (
+            !force &&
+            uploadError instanceof DiskLimitError &&
+            uploadError.info.code === 'disk_usage_exceeded' &&
+            uploadError.info.can_force &&
+            isCurrentUpload()
+          ) {
+            const confirmed = await askDiskConfirm(fileName, file.size, uploadError.info);
+            if (confirmed && isCurrentUpload() && !controller.signal.aborted) {
+              force = true;
+              currentStage = 'initializing';
+              uploadPhases.value[fileName] = currentStage;
+              continue;
+            }
+          }
+
+          throw uploadError;
         }
-        delete uploadPhases.value[fileName];
-        delete uploadFailures.value[fileName];
-        delete uploadPercents.value[fileName];
-        message.success(`${fileName} 上传成功`);
-        onSuccess('Ok');
-        emit('uploaded', fileName);
-      } else {
-        const errorMessage = normalizeUploadErrorMessage(result.error, '分片上传失败');
-        uploadStates.value[fileName] = { uploadId: result.uploadId };
-        uploadPhases.value[fileName] = 'uploading';
-        uploadFailures.value[fileName] = { stage: 'uploading', message: errorMessage };
-        const currentPercent = uploadPercents.value[fileName] || file.percent || 0;
-        message.warning(`${fileName} 上传中断：${errorMessage}；可点击继续上传恢复`);
-        onProgress({ percent: currentPercent });
-        onError(new Error(errorMessage));
       }
     } catch (error: unknown) {
       const uploadError =
@@ -417,6 +482,60 @@
         />
       </div>
     </div>
+
+    <a-modal
+      v-model:open="diskConfirmOpen"
+      title="磁盘使用率超过限制"
+      ok-text="仍然上传"
+      ok-type="danger"
+      cancel-text="取消"
+      centered
+      width="min(520px, 95vw)"
+      @ok="settleDiskConfirm(true)"
+      @cancel="settleDiskConfirm(false)"
+    >
+      <div v-if="diskConfirmInfo" class="space-y-3">
+        <div class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <ExclamationCircleOutlined class="mt-0.5 shrink-0 text-amber-500" />
+          <span>
+            服务器地图目录所在分区空间紧张，继续上传可能留下无法自动清理的临时文件。
+          </span>
+        </div>
+
+        <div class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-slate-700 dark:bg-slate-950/40">
+          <div class="flex items-center justify-between gap-3 text-sm">
+            <span class="text-gray-500 dark:text-gray-400">当前使用率</span>
+            <span class="font-medium text-gray-800 dark:text-gray-100">
+              {{ formatPercent(diskConfirmInfo.used_percent) }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-sm">
+            <span class="text-gray-500 dark:text-gray-400">使用率上限</span>
+            <span class="font-medium text-gray-800 dark:text-gray-100">
+              {{ diskConfirmInfo.limit_percent }}%
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-sm">
+            <span class="text-gray-500 dark:text-gray-400">剩余可用空间</span>
+            <span class="font-medium text-gray-800 dark:text-gray-100">
+              {{ formatBytes(diskConfirmInfo.free_bytes) }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-sm">
+            <span class="shrink-0 text-gray-500 dark:text-gray-400">本次文件</span>
+            <span class="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100" :title="diskConfirmFileName">
+              {{ diskConfirmFileName }}（{{ formatBytes(diskConfirmFileSize) }}）
+            </span>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+          <div>上传会先保存分片再合并或解压，峰值占用可能达到文件大小的 2 倍。</div>
+          <div>空间不足时上传会中途失败并留下临时文件，由服务器定时清理。</div>
+          <div>本次确认会记入操作审计日志。</div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 

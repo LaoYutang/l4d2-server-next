@@ -63,6 +63,7 @@ declare module 'vue' {
     ATooltip: typeof import('ant-design-vue/es')['Tooltip']
     AUploadDragger: typeof import('ant-design-vue/es')['UploadDragger']
     DifficultyModal: typeof import('./components/DifficultyModal.vue')['default']
+    DiskUsageLimitSetting: typeof import('./components/settings/DiskUsageLimitSetting.vue')['default']
     GameBlacklistTab: typeof import('./components/GameBlacklistTab.vue')['default']
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
     MapGlobalScriptsModal: typeof import('./components/MapGlobalScriptsModal.vue')['default']

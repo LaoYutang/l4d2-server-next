@@ -120,7 +120,6 @@ func TestMapUploaderTokenAllowsOnlyExplicitRequests(t *testing.T) {
 	}
 
 	denied := []string{
-		"/upload",
 		"/list",
 		"/clear",
 		"/remove",

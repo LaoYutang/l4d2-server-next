@@ -23,6 +23,8 @@ type ManagerConfig struct {
 	EnableVPKTrim        bool      `json:"enable_vpk_trim"`
 	MapHotReloadCommand  string    `json:"map_hot_reload_command"`
 	SteamCDNIP           string    `json:"steam_cdn_ip,omitempty"`
+	// DiskUsageLimitPercent 是地图上传与下载任务允许的磁盘使用率上限。
+	DiskUsageLimitPercent int `json:"disk_usage_limit_percent"`
 }
 
 var (
@@ -39,12 +41,13 @@ func LoadManagerConfig() {
 	defer managerConfigMutex.Unlock()
 
 	managerConfig = &ManagerConfig{
-		EnableSelfService:    false,
-		EnablePlayerStats:    true,
-		EnableMonitorHistory: true,
-		EnableVPKTrim:        true,
-		MapHotReloadCommand:  DefaultMapHotReloadCommand,
-		SteamCDNIP:           "",
+		EnableSelfService:     false,
+		EnablePlayerStats:     true,
+		EnableMonitorHistory:  true,
+		EnableVPKTrim:         true,
+		MapHotReloadCommand:   DefaultMapHotReloadCommand,
+		SteamCDNIP:            "",
+		DiskUsageLimitPercent: DefaultDiskUsageLimitPercent,
 	}
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
@@ -58,6 +61,10 @@ func LoadManagerConfig() {
 
 	if err := json.Unmarshal(data, managerConfig); err != nil {
 		return
+	}
+
+	if !IsDiskUsageLimitPercentValid(managerConfig.DiskUsageLimitPercent) {
+		managerConfig.DiskUsageLimitPercent = DefaultDiskUsageLimitPercent
 	}
 
 	normalizedIP, err := NormalizeSteamCDNIP(managerConfig.SteamCDNIP)

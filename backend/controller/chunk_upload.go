@@ -16,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/shirou/gopsutil/v3/disk"
 )
 
 const (
@@ -55,14 +54,6 @@ func removeUploadTempDir(uploadId string) error {
 
 // UploadInit 初始化分片上传
 func UploadInit(c *gin.Context) {
-	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "获取磁盘使用信息失败: %v", err)
-		return
-	} else if stat.UsedPercent > 90 {
-		FailWithError(c, http.StatusInternalServerError, "磁盘空间不足，当前使用率超过90%%")
-		return
-	}
-
 	filename := c.PostForm("filename")
 	fileSizeStr := c.PostForm("fileSize")
 	totalChunksStr := c.PostForm("totalChunks")
@@ -89,6 +80,11 @@ func UploadInit(c *gin.Context) {
 		return
 	}
 
+	ok, forced := ensureUploadDiskSpace(c, fileSize, true)
+	if !ok {
+		return
+	}
+
 	uploadId := uuid.New().String()
 	tempPath := getUploadTempPath(uploadId)
 	if err := os.MkdirAll(tempPath, 0755); err != nil {
@@ -105,8 +101,13 @@ func UploadInit(c *gin.Context) {
 		return
 	}
 
+	detailPrefix := "初始化分片上传"
+	if forced {
+		detailPrefix = "管理员确认磁盘超限后初始化分片上传"
+	}
 	defer LogOp(c, fmt.Sprintf(
-		"初始化分片上传: %s，大小: %d，分片数: %d，uploadId: %s",
+		"%s: %s，大小: %d，分片数: %d，uploadId: %s",
+		detailPrefix,
 		filename,
 		fileSize,
 		totalChunks,

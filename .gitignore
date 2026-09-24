@@ -19,6 +19,7 @@ __debug_*
 .codex
 .omo
 .codegraph
+.zcode
 node_modules/
 /docs/.vitepress/cache/
 /docs/.vitepress/dist/

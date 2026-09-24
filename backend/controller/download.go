@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shirou/gopsutil/v3/disk"
 )
 
 type DOWNLOAD_STATUS = uint8
@@ -684,11 +683,8 @@ func ParseWorkshopDownloadLink(c *gin.Context) {
 }
 
 func AddDownloadTask(c *gin.Context) {
-	if stat, err := disk.Usage(consts.AddonsBasePath); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "获取磁盘使用信息失败: %v", err)
-		return
-	} else if stat.UsedPercent > 90 {
-		FailWithError(c, http.StatusInsufficientStorage, "磁盘空间不足，当前使用率超过90%%")
+	// 下载任务创建时无法预知文件大小，只按使用率上限拦截，且不提供二次确认。
+	if ok, _ := ensureUploadDiskSpace(c, 0, false); !ok {
 		return
 	}
 

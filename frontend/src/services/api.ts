@@ -420,6 +420,46 @@ export interface VpkTrimConfig {
   enabled: boolean;
 }
 
+export interface DiskUsageLimitCurrent {
+  used_percent: number;
+  free_bytes: number;
+  total_bytes: number;
+}
+
+export interface DiskUsageLimitConfig {
+  limit_percent: number;
+  default_percent: number;
+  min_percent: number;
+  max_percent: number;
+  current?: DiskUsageLimitCurrent | null;
+}
+
+/**
+ * 磁盘检查被拒绝时的响应体。code 区分两类拦截：
+ * disk_usage_exceeded 只是超过配置上限，管理员二次确认后可以继续；
+ * disk_space_insufficient 是预判会写满，任何角色都不能继续。
+ */
+export interface DiskLimitInfo {
+  code: 'disk_usage_exceeded' | 'disk_space_insufficient';
+  message: string;
+  used_percent: number;
+  limit_percent: number;
+  free_bytes: number;
+  total_bytes: number;
+  required_bytes: number;
+  can_force: boolean;
+}
+
+export class DiskLimitError extends Error {
+  readonly info: DiskLimitInfo;
+
+  constructor(info: DiskLimitInfo) {
+    super(info.message || '磁盘空间不足');
+    this.name = 'DiskLimitError';
+    this.info = info;
+  }
+}
+
 export interface MapHotReloadConfig {
   command: string;
   default_command: string;
@@ -538,6 +578,39 @@ class ApiService {
     if (status === 403) {
       throw new Error('没有权限执行此操作');
     }
+  }
+
+  /**
+   * 读取失败响应的人类可读文案。后端既有纯文本错误，也有带 message 字段的
+   * JSON 错误（如磁盘检查的 507），这里统一处理避免把裸 JSON 显示给用户。
+   */
+  private async readErrorMessage(response: Response): Promise<string> {
+    const body = await response.text();
+    const trimmed = body.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed.message === 'string' && parsed.message) {
+          return parsed.message;
+        }
+      } catch {
+        // 不是合法 JSON，按纯文本处理
+      }
+    }
+    return body;
+  }
+
+  private async toDiskLimitError(response: Response): Promise<DiskLimitError | null> {
+    const body = await response.text();
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed.code === 'string' && parsed.code) {
+        return new DiskLimitError(parsed as DiskLimitInfo);
+      }
+    } catch {
+      // 响应不是磁盘检查的结构化错误
+    }
+    return null;
   }
 
   async post(url: string, data?: Record<string, any>) {
@@ -1236,7 +1309,8 @@ class ApiService {
     file: File,
     onProgress?: (event: MapUploadProgressEvent) => void,
     signal?: AbortSignal,
-    onInitialized?: (uploadId: string) => void
+    onInitialized?: (uploadId: string) => void,
+    options?: { force?: boolean }
   ): Promise<MapUploadResult> {
     const chunkSize = 5 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
@@ -1246,8 +1320,17 @@ class ApiService {
       filename: file.name,
       fileSize: file.size,
       totalChunks,
+      // force 仅在管理员二次确认后带上，服务端会按实时角色再次校验
+      ...(options?.force ? { force: 'true' } : {}),
     });
-    if (!initResponse.ok) throw new Error(await initResponse.text());
+    if (!initResponse.ok) {
+      if (initResponse.status === 507) {
+        const diskLimitError = await this.toDiskLimitError(initResponse);
+        if (diskLimitError) throw diskLimitError;
+        throw new Error('磁盘空间不足，无法开始上传');
+      }
+      throw new Error(await this.readErrorMessage(initResponse));
+    }
     const { uploadId } = await initResponse.json();
 
     // 初始化请求无法安全中止，否则客户端可能拿不到服务端已创建的 uploadId。
@@ -1288,7 +1371,7 @@ class ApiService {
       uploadId,
       filename: file.name,
     });
-    if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+    if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
     return { success: true };
   }
 
@@ -1303,7 +1386,7 @@ class ApiService {
 
     // 1. 获取服务端已上传分片
     const statusResponse = await this.post('/upload/status', { uploadId });
-    if (!statusResponse.ok) throw new Error(await statusResponse.text());
+    if (!statusResponse.ok) throw new Error(await this.readErrorMessage(statusResponse));
     const { uploadedChunks: serverChunks } = await statusResponse.json();
 
     const uploadedSet = new Set(serverChunks);
@@ -1319,7 +1402,7 @@ class ApiService {
         uploadId,
         filename: file.name,
       });
-      if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+      if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
       return;
     }
 
@@ -1333,12 +1416,12 @@ class ApiService {
       uploadId,
       filename: file.name,
     });
-    if (!mergeResponse.ok) throw new Error(await mergeResponse.text());
+    if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
   }
 
   async cancelUpload(uploadId: string) {
     const response = await this.post('/upload/cancel', { uploadId });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
   }
 
   async deleteMap(mapName: string) {
@@ -1503,7 +1586,7 @@ class ApiService {
       body: fd,
     });
     this.handleResponseError(response.status);
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
     return response.text();
   }
 
@@ -1845,6 +1928,18 @@ class ApiService {
   async getVpkTrimConfig(): Promise<VpkTrimConfig> {
     const response = await this.post('/vpk-trim/config');
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getDiskUsageLimitConfig(): Promise<DiskUsageLimitConfig> {
+    const response = await this.post('/disk-usage/config');
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async setDiskUsageLimitConfig(limitPercent: number) {
+    const response = await this.postJson('/config/disk-usage', { limit_percent: limitPercent });
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
     return response.json();
   }
 

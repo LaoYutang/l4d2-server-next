@@ -115,9 +115,10 @@ func main() {
 	router.POST("/config/monitor-history", middlewares.Auth(privateKey), controller.SetMonitorConfig)
 	router.POST("/vpk-trim/config", middlewares.Auth(privateKey), controller.GetVPKTrimConfig)
 	router.POST("/config/vpk-trim", middlewares.Auth(privateKey), controller.SetVPKTrimConfig)
+	router.POST("/disk-usage/config", middlewares.Auth(privateKey), controller.GetDiskUsageConfig)
+	router.POST("/config/disk-usage", middlewares.Auth(privateKey), controller.SetDiskUsageConfig)
 
 	// Root Level Protected Routes (Misc)
-	router.POST("/upload", middlewares.Auth(privateKey), controller.Upload)
 	router.POST("/upload/init", middlewares.Auth(privateKey), controller.UploadInit)
 	router.POST("/upload/chunk", middlewares.Auth(privateKey), controller.UploadChunk)
 	router.POST("/upload/status", middlewares.Auth(privateKey), controller.UploadStatus)
