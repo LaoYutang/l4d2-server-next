@@ -46,12 +46,18 @@
     FileTextOutlined,
     DownOutlined,
   } from '@ant-design/icons-vue';
-  import { api, type Plugin, type PluginExportProgress } from '../services/api';
+  import {
+    api,
+    type Plugin,
+    type PluginExportProgress,
+    type PluginExportDownloadProgress,
+  } from '../services/api';
   import type { UploadProps, TablePaginationConfig } from 'ant-design-vue';
   import TextFileEditorModal from '../components/TextFileEditorModal.vue';
   import PluginConfigModal from '../components/PluginConfigModal.vue';
   import PluginDetailModal from '../components/PluginDetailModal.vue';
   import { useAuthStore } from '../stores/auth';
+  import { formatBytes } from '../utils/format';
 
   const authStore = useAuthStore();
   const isMobile = ref(window.innerWidth < 768);
@@ -80,6 +86,9 @@
     storeResizeObserver?.disconnect();
     stopStoreDownloadPolling();
     stopPluginExportPolling();
+    pluginViewUnmounted = true;
+    exportDownloadController?.abort();
+    exportDownloadController = null;
   });
 
   const drawerWidth = computed(() => {
@@ -218,6 +227,12 @@
   const cancellingPluginExport = ref(false);
   const exportDownloaded = ref(false);
   const exportProgress = ref<PluginExportProgress | null>(null);
+  const downloadingPlugins = ref(false);
+  const exportDownloadProgress = ref<PluginExportDownloadProgress | null>(null);
+  const exportDownloadError = ref('');
+  const exportDownloadCancelled = ref(false);
+  let pluginViewUnmounted = false;
+  let exportDownloadController: AbortController | null = null;
   let exportProgressInterval: number | null = null;
 
   const presetModalVisible = ref(false);
@@ -405,6 +420,25 @@
     return `${progress.message || '正在压缩插件文件'} (${progress.processed}/${progress.total})`;
   });
 
+  const exportDownloadStatus = computed(() => {
+    if (exportDownloadError.value) return 'exception';
+    if (exportDownloaded.value) return 'success';
+    if (exportDownloadCancelled.value) return 'normal';
+    return 'active';
+  });
+
+  const exportDownloadText = computed(() => {
+    const progress = exportDownloadProgress.value;
+    if (!progress) return '';
+    const loaded = formatBytes(progress.loaded);
+    if (exportDownloadCancelled.value) return `下载已取消，已下载 ${loaded}`;
+    if (exportDownloadError.value) return `下载失败，已下载 ${loaded}`;
+    if (exportDownloaded.value) return `下载完成 (${loaded})，请在浏览器中保存文件`;
+    if (progress.loaded === 0 && progress.total === null) return '正在连接服务器，准备下载...';
+    const size = progress.total === null ? `${loaded}（总大小未知）` : `${loaded} / ${formatBytes(progress.total)}`;
+    return `已下载 ${size} · 平均速度 ${progress.speed}`;
+  });
+
   const stopPluginExportPolling = () => {
     if (exportProgressInterval) {
       clearInterval(exportProgressInterval);
@@ -413,24 +447,35 @@
   };
 
   const downloadCompletedPluginExport = async (taskId: string) => {
-    if (exportDownloaded.value) return;
-    exportDownloaded.value = true;
+    if (pluginViewUnmounted || exportDownloaded.value || downloadingPlugins.value) return;
+    const controller = new AbortController();
+    exportDownloadController = controller;
+    downloadingPlugins.value = true;
     stopPluginExportPolling();
 
     try {
-      await api.downloadExportedPlugins(taskId);
-      message.success('插件导出完成，已开始下载');
+      await api.downloadExportedPlugins(
+        taskId,
+        (progress) => {
+          if (exportDownloadController === controller) {
+            exportDownloadProgress.value = progress;
+          }
+        },
+        controller.signal
+      );
+      if (exportDownloadController !== controller) return;
+      exportDownloaded.value = true;
+      message.success('插件下载完成，请在浏览器中保存文件');
     } catch (error: any) {
-      message.error('下载导出文件失败: ' + error.message);
-      exportProgress.value = {
-        task_id: taskId,
-        status: 'failed',
-        processed: exportProgress.value?.processed || 0,
-        total: exportProgress.value?.total || 0,
-        message: error.message || '下载导出文件失败',
-      };
+      if (controller.signal.aborted || exportDownloadController !== controller) return;
+      exportDownloadError.value = error.message || '下载导出文件失败';
+      message.error('下载导出文件失败: ' + exportDownloadError.value);
     } finally {
-      exportingPlugins.value = false;
+      if (exportDownloadController === controller) {
+        exportDownloadController = null;
+        downloadingPlugins.value = false;
+        exportingPlugins.value = false;
+      }
     }
   };
 
@@ -443,6 +488,12 @@
     loadingPluginExportStatus = true;
     try {
       const progress = await api.getExportAllPluginsStatus(taskId);
+      if (
+        pluginViewUnmounted ||
+        exportProgress.value?.task_id !== taskId ||
+        !isPluginExportActive.value ||
+        cancellingPluginExport.value
+      ) return;
       exportProgress.value = progress;
 
       if (progress.status === 'completed') {
@@ -457,6 +508,7 @@
         message.info('插件导出已取消');
       }
     } catch (error: any) {
+      if (pluginViewUnmounted) return;
       stopPluginExportPolling();
       exportingPlugins.value = false;
       message.error('获取导出进度失败: ' + error.message);
@@ -475,6 +527,9 @@
 
     exportingPlugins.value = true;
     exportDownloaded.value = false;
+    exportDownloadProgress.value = null;
+    exportDownloadError.value = '';
+    exportDownloadCancelled.value = false;
     exportProgressVisible.value = true;
     exportProgress.value = {
       task_id: '',
@@ -486,6 +541,7 @@
 
     try {
       const progress = await api.startExportAllPlugins();
+      if (pluginViewUnmounted) return;
       exportProgress.value = progress;
 
       if (progress.status === 'completed') {
@@ -497,6 +553,7 @@
         startPluginExportPolling();
       }
     } catch (error: any) {
+      if (pluginViewUnmounted) return;
       exportingPlugins.value = false;
       exportProgress.value = {
         task_id: '',
@@ -510,6 +567,13 @@
   };
 
   const cancelPluginExport = async (closeAfterCancel: boolean = false) => {
+    if (downloadingPlugins.value) {
+      exportDownloadCancelled.value = true;
+      exportDownloadController?.abort();
+      message.info('插件下载已取消');
+      if (closeAfterCancel) exportProgressVisible.value = false;
+      return;
+    }
     const taskId = exportProgress.value?.task_id;
     if (!taskId || !isPluginExportActive.value) {
       exportProgressVisible.value = false;
@@ -534,7 +598,7 @@
   };
 
   const handleExportModalCancel = () => {
-    if (isPluginExportActive.value) {
+    if (isPluginExportActive.value || downloadingPlugins.value) {
       cancelPluginExport(true);
     } else {
       exportProgressVisible.value = false;
@@ -1722,35 +1786,53 @@
           show-icon
         />
         <a-alert
-          v-if="exportProgress?.status === 'failed'"
-          :message="exportProgress.message || '导出失败'"
+          v-if="exportDownloadError || exportProgress?.status === 'failed'"
+          :message="exportDownloadError || exportProgress?.message || '导出失败'"
           type="error"
           show-icon
         />
         <a-alert
-          v-else-if="exportProgress?.status === 'cancelled'"
-          message="导出已取消"
+          v-else-if="exportDownloadCancelled || exportProgress?.status === 'cancelled'"
+          :message="exportDownloadCancelled ? '下载已取消' : '导出已取消'"
           type="info"
           show-icon
         />
-        <a-progress
-          :percent="exportPercent"
-          :status="exportProgressStatus"
-          :stroke-width="10"
-        />
-        <div class="text-sm text-gray-500 dark:text-gray-400">
-          {{ exportProgressText }}
+        <div>
+          <div class="mb-2 font-medium">压缩插件</div>
+          <a-progress
+            :percent="exportPercent"
+            :status="exportProgressStatus"
+            :stroke-width="10"
+          />
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ exportProgressText }}
+          </div>
+        </div>
+        <div v-if="exportDownloadProgress">
+          <div class="mb-2 flex items-center gap-2 font-medium">
+            <SyncOutlined v-if="downloadingPlugins" spin />
+            下载插件
+          </div>
+          <a-progress
+            :percent="exportDownloadProgress.percent ?? 0"
+            :show-info="exportDownloadProgress.percent !== null"
+            :status="exportDownloadStatus"
+            :stroke-width="10"
+          />
+          <div class="text-sm text-gray-500 dark:text-gray-400" role="status">
+            {{ exportDownloadText }}
+          </div>
         </div>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
           <a-button
-            v-if="isPluginExportActive"
+            v-if="isPluginExportActive || downloadingPlugins"
             danger
             :loading="cancellingPluginExport"
             @click="cancelPluginExport(false)"
           >
-            取消导出
+            {{ downloadingPlugins ? '取消下载' : '取消导出' }}
           </a-button>
           <a-button v-else @click="exportProgressVisible = false">关闭</a-button>
         </div>

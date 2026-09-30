@@ -391,6 +391,13 @@ export interface PluginExportProgress {
   message: string;
 }
 
+export interface PluginExportDownloadProgress {
+  loaded: number;
+  total: number | null;
+  percent: number | null;
+  speed: string;
+}
+
 export interface PlayerStatsSnapshot {
   id: number;
   timestamp: number;
@@ -738,10 +745,87 @@ class ApiService {
     return response.json();
   }
 
-  async downloadExportedPlugins(taskId: string) {
-    const response = await this.postJson('/plugins/export-all/download', { task_id: taskId });
-    if (!response.ok) throw new Error(await response.text());
-    const blob = await response.blob();
+  async downloadExportedPlugins(
+    taskId: string,
+    onProgress?: (progress: PluginExportDownloadProgress) => void,
+    signal?: AbortSignal
+  ) {
+    if (signal?.aborted) throw new DOMException('下载已取消', 'AbortError');
+
+    const startTime = performance.now();
+    const reportProgress = (loaded: number, total: number | null, completed = false) => {
+      const elapsed = (performance.now() - startTime) / 1000;
+      onProgress?.({
+        loaded,
+        total,
+        percent: completed ? 100 : total ? Math.min(99, Math.floor((loaded / total) * 100)) : null,
+        speed: this.formatSpeed(elapsed > 0 ? loaded / elapsed : 0),
+      });
+    };
+    reportProgress(0, null);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let total: number | null = null;
+      const onAbort = () => xhr.abort();
+      const cleanup = () => signal?.removeEventListener('abort', onAbort);
+
+      xhr.open('POST', '/plugins/export-all/download');
+      xhr.responseType = 'blob';
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      Object.entries(this.createAuthHeaders()).forEach(([name, value]) => {
+        xhr.setRequestHeader(name, value);
+      });
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState !== XMLHttpRequest.HEADERS_RECEIVED || xhr.status < 200 || xhr.status >= 300) return;
+        const contentLength = Number(xhr.getResponseHeader('Content-Length'));
+        total = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null;
+        reportProgress(0, total);
+      };
+      xhr.onprogress = (event) => {
+        if (xhr.status < 200 || xhr.status >= 300) return;
+        if (event.lengthComputable && event.total > 0) total = event.total;
+        reportProgress(event.loaded, total);
+      };
+      xhr.onload = async () => {
+        cleanup();
+        try {
+          this.handleResponseError(xhr.status);
+          if (xhr.status < 200 || xhr.status >= 300) {
+            throw new Error((await (xhr.response as Blob).text()) || '下载失败');
+          }
+          const result = xhr.response as Blob;
+          reportProgress(result.size, result.size, true);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      xhr.onerror = () => {
+        cleanup();
+        reject(new Error('网络错误或下载连接中断，请重新导出后重试'));
+      };
+      xhr.onabort = () => {
+        cleanup();
+        reject(new DOMException('下载已取消', 'AbortError'));
+      };
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) {
+        cleanup();
+        reject(new DOMException('下载已取消', 'AbortError'));
+        return;
+      }
+      try {
+        xhr.send(JSON.stringify({ task_id: taskId }));
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
+
+    if (signal?.aborted) throw new DOMException('下载已取消', 'AbortError');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
