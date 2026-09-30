@@ -489,11 +489,11 @@ func parseMapQueueActionReply(raw string) (string, string, bool) {
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		// 引擎和 SourceMod 的输出会混进同一次 RCON 响应：改图时 SourceMod 会记录
+		// “[SM] Changed map to ...”，插件自身的换图提示也会先打印一行。插件回话
+		// 始终是最后一条 [MapQueue] 行，其余内容一律忽略。
+		if !strings.HasPrefix(line, "[MapQueue]") {
 			continue
-		}
-		if reply != "" || !strings.HasPrefix(line, "[MapQueue]") {
-			return "", "", false
 		}
 		reply = line
 	}

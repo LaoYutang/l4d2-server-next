@@ -339,6 +339,18 @@ func TestMapQueueMapChangingActionsDoNotRefresh(t *testing.T) {
 	}{
 		{name: "run", kind: MapQueueActionRun, command: "sm_mq run", output: "[MapQueue] 队列已启动，正在切换至 c1m1_hotel。"},
 		{name: "skip", kind: MapQueueActionSkip, command: "sm_mq skip", output: "[MapQueue] 已跳过 c1m1_hotel，正在切换至 c2m1_highway。"},
+		{
+			name:    "run with console noise",
+			kind:    MapQueueActionRun,
+			command: "sm_mq run",
+			output:  "[MapQueue] 正在进入：c1m1_hotel\nL 09/30/2026 - 08:37:05: [SM] Changed map to \"c1m1_hotel\"\n[MapQueue] 队列已启动，正在切换至 c1m1_hotel。",
+		},
+		{
+			name:    "skip with console noise",
+			kind:    MapQueueActionSkip,
+			command: "sm_mq skip",
+			output:  "[MapQueue] 正在进入：c2m1_highway\nL 09/30/2026 - 08:37:05: [SM] Changed map to \"c2m1_highway\"\n[MapQueue] 已跳过 c1m1_hotel，正在切换至 c2m1_highway。",
+		},
 	}
 
 	for _, test := range tests {
@@ -357,6 +369,30 @@ func TestMapQueueMapChangingActionsDoNotRefresh(t *testing.T) {
 				t.Fatalf("commands = %#v", session.commands)
 			}
 		})
+	}
+}
+
+func TestParseMapQueueActionReplyIgnoresConsoleNoise(t *testing.T) {
+	raw := strings.Join([]string{
+		"[MapQueue] 正在进入：c1m1_hotel",
+		`L 09/30/2026 - 08:37:05: [SM] Changed map to "c1m1_hotel"`,
+		"",
+		"[MapQueue] 队列已启动，正在切换至 c1m1_hotel。",
+	}, "\n")
+
+	reply, message, ok := parseMapQueueActionReply(raw)
+	if !ok {
+		t.Fatal("noisy reply was rejected")
+	}
+	if reply != "[MapQueue] 队列已启动，正在切换至 c1m1_hotel。" {
+		t.Fatalf("reply = %q", reply)
+	}
+	if !isMapQueueActionSuccess(MapQueueActionRun, "", message) {
+		t.Fatalf("message = %q", message)
+	}
+
+	if _, _, ok := parseMapQueueActionReply(`L 09/30/2026 - 08:37:05: [SM] Changed map to "c1m1_hotel"` + "\n"); ok {
+		t.Fatal("response without a plugin line was accepted")
 	}
 }
 
