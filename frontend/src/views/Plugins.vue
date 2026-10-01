@@ -176,6 +176,7 @@
     tableScrollY.value = Math.max(150, containerHeight - overhead);
   };
 
+  // 表格浮层挂到 body，避免被固定列遮挡或滚动容器裁切。
   const getBody = () => document.body;
 
   const getModalContainer = () => document.body;
@@ -1386,6 +1387,7 @@
                       title="确定要禁用这个插件吗？"
                       ok-text="确定"
                       cancel-text="取消"
+                      :get-popup-container="getBody"
                       @confirm="togglePlugin(record as Plugin)"
                     >
                       <a-button
@@ -1617,6 +1619,7 @@
                       title="确定要启用这个插件吗？"
                       ok-text="确定"
                       cancel-text="取消"
+                      :get-popup-container="getBody"
                       @confirm="togglePlugin(record as Plugin)"
                       :disabled="!authStore.isAdmin"
                     >
