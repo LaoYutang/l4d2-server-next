@@ -6,6 +6,7 @@ import (
 	"l4d2-manager-next/consts"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -83,7 +84,29 @@ func saveManagerConfig() error {
 	if err := consts.EnsureManagerDataPath(); err != nil {
 		return err
 	}
-	return os.WriteFile(consts.ManagerConfigPath, data, 0644)
+	temporary, err := os.CreateTemp(filepath.Dir(consts.ManagerConfigPath), ".manager-config-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary.Name())
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(consts.ManagerConfigPath); err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err = temporary.Chmod(mode); err == nil {
+		_, err = temporary.Write(data)
+	}
+	if err == nil {
+		err = temporary.Sync()
+	}
+	closeErr := temporary.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(temporary.Name(), consts.ManagerConfigPath)
 }
 
 func GetSelfServiceConfig() ManagerConfig {
@@ -95,8 +118,13 @@ func GetSelfServiceConfig() ManagerConfig {
 func SetSelfServiceEnable(enable bool) error {
 	managerConfigMutex.Lock()
 	defer managerConfigMutex.Unlock()
+	previous := managerConfig.EnableSelfService
 	managerConfig.EnableSelfService = enable
-	return saveManagerConfig()
+	if err := saveManagerConfig(); err != nil {
+		managerConfig.EnableSelfService = previous
+		return err
+	}
+	return nil
 }
 
 func IsPlayerStatsEnabled() bool {
@@ -207,11 +235,4 @@ func SetSteamCDNIP(value string) (string, error) {
 	defer managerConfigMutex.Unlock()
 	managerConfig.SteamCDNIP = normalized
 	return normalized, saveManagerConfig()
-}
-
-func UpdateLastSelfServiceTime() error {
-	managerConfigMutex.Lock()
-	defer managerConfigMutex.Unlock()
-	managerConfig.LastSelfServiceTime = time.Now()
-	return saveManagerConfig()
 }

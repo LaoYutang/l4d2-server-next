@@ -235,6 +235,10 @@
               </td>
               <td class="px-5 py-4 text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words max-w-md">
                 {{ record.detail || '-' }}
+                <div v-if="record.auth_code_id" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  授权：{{ record.auth_code_remark || '无备注' }}
+                  <div class="font-mono break-all">{{ record.auth_code_id }}</div>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -283,6 +287,10 @@
             </div>
             <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
               {{ record.detail || '-' }}
+              <div v-if="record.auth_code_id" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                授权：{{ record.auth_code_remark || '无备注' }}
+                <div class="font-mono break-all">{{ record.auth_code_id }}</div>
+              </div>
             </div>
           </div>
         </div>

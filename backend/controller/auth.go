@@ -1,182 +1,192 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
-	"log"
-	"strconv"
-	"strings"
-	"time"
+	"net/http"
 
 	"l4d2-manager-next/logic"
 	"l4d2-manager-next/middlewares"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-const (
-	tempAccessTypeTemporary    = "temporary"
-	tempAccessTypeMapUploader  = "map_upload_only"
-	tempAuthMaxExpirationHours = 30 * 24
-)
-
-func Auth(c *gin.Context) {
-	// 中间件已经验证密码
-	role, _ := c.Get("role")
-	if roleStr, ok := role.(string); ok {
-		defer LogOp(c, "用户登录成功，角色: "+roleStr)()
-	} else {
-		defer LogOp(c, "用户登录成功，角色: guest")()
+func authCodeError(c *gin.Context, err error) {
+	var validation *logic.AuthValidationError
+	var cooldown *logic.AuthCooldownError
+	switch {
+	case errors.As(err, &validation):
+		FailWithError(c, http.StatusBadRequest, "%s", validation.Message)
+	case errors.As(err, &cooldown):
+		FailWithError(c, http.StatusTooManyRequests, "%s", cooldown.Error())
+	case errors.Is(err, logic.ErrAuthDuplicate):
+		FailWithError(c, http.StatusConflict, "该授权码已存在")
+	case errors.Is(err, logic.ErrAuthNotFound):
+		FailWithError(c, http.StatusNotFound, "授权记录不存在")
+	case errors.Is(err, logic.ErrAuthInvalid):
+		FailWithError(c, http.StatusUnauthorized, "授权码已失效")
+	case errors.Is(err, logic.ErrSelfServiceDisabled):
+		FailWithError(c, http.StatusForbidden, "自助授权功能未开启")
+	default:
+		FailWithError(c, http.StatusServiceUnavailable, "授权服务暂不可用")
 	}
-
-	c.JSON(200, gin.H{
-		"status": "ok",
-		"role":   role,
-	})
 }
 
-func GetTempAuthCode(c *gin.Context) {
-	expiredStr := c.PostForm("expired")
-	accessType := strings.TrimSpace(c.PostForm("access_type"))
-	if accessType == "" {
-		accessType = tempAccessTypeTemporary
+func requireAuthCodeAdmin(c *gin.Context) bool {
+	if c.GetString("role") != middlewares.RoleAdmin {
+		FailWithError(c, http.StatusForbidden, "需要管理员权限")
+		return false
 	}
-	defer LogOp(c, fmt.Sprintf("获取临时授权码，权限类型: %s，过期时间: %s 小时", accessType, expiredStr))()
+	return true
+}
 
-	role, _ := c.Get("role")
-	if role != middlewares.RoleAdmin {
-		FailWithError(c, 403, "需要管理员权限")
-		return
-	}
+func auditAuthCode(c *gin.Context, record logic.AuthCodeItem) {
+	c.Set("audit_auth_code_id", record.ID)
+	c.Set("audit_auth_code_remark", record.Remark)
+}
 
-	mapUploadOnly := false
-	switch accessType {
-	case tempAccessTypeTemporary:
-	case tempAccessTypeMapUploader:
-		mapUploadOnly = true
-	default:
-		FailWithError(c, 400, "无效的授权类型")
-		return
-	}
-
-	privateKey, exist := c.Get("privateKey")
-	if !exist {
-		FailWithError(c, 400, "请使用密码生成授权码")
-		return
-	}
-
-	expired := 1
-	if expiredStr != "" {
-		value, err := strconv.Atoi(expiredStr)
-		if err != nil || value <= 0 || value > tempAuthMaxExpirationHours {
-			FailWithError(c, 400, "有效期必须是 1 到 %d 小时之间的整数", tempAuthMaxExpirationHours)
+func Auth(c *gin.Context) {
+	defer LogOp(c, "用户登录，角色: "+c.GetString("role"))()
+	response := gin.H{"status": "ok", "role": c.GetString("role")}
+	if id := c.GetString("auth_code_id"); id != "" {
+		record, err := logic.GetAuthCodeStore().RecordLogin(id, middlewares.GetClientIP(c))
+		if err != nil {
+			authCodeError(c, err)
 			return
 		}
-		expired = value
+		response["expires_at"] = record.ExpiresAt
 	}
-	claims := middlewares.TempAuthClaims{
-		MapUploadOnly: mapUploadOnly,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expired) * time.Hour)),
-		},
-	}
+	c.JSON(http.StatusOK, response)
+}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(privateKey)
-	if err != nil {
-		FailWithError(c, 500, "生成授权码失败: %v", err)
+func ListAuthCodes(c *gin.Context) {
+	if !requireAuthCodeAdmin(c) {
 		return
 	}
-	c.String(200, tokenString)
+	var req logic.AuthCodeListFilter
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, 400, "参数错误")
+		return
+	}
+	result, err := logic.GetAuthCodeStore().List(req)
+	if err != nil {
+		authCodeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func CreateAuthCode(c *gin.Context) {
+	defer LogOp(c, "创建授权码")()
+	if !requireAuthCodeAdmin(c) {
+		return
+	}
+	var req logic.CreateAuthCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, 400, "参数错误，到期时间应使用 RFC 3339 格式")
+		return
+	}
+	result, err := logic.GetAuthCodeStore().Create(req)
+	if err != nil {
+		authCodeError(c, err)
+		return
+	}
+	auditAuthCode(c, result.AuthCodeItem)
+	c.JSON(http.StatusOK, result)
+}
+
+func UpdateAuthCode(c *gin.Context) {
+	defer LogOp(c, "更新授权码备注或到期时间")()
+	if !requireAuthCodeAdmin(c) {
+		return
+	}
+	var req logic.UpdateAuthCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, 400, "参数错误，到期时间应使用 RFC 3339 格式")
+		return
+	}
+	result, err := logic.GetAuthCodeStore().Update(req)
+	if err != nil {
+		authCodeError(c, err)
+		return
+	}
+	auditAuthCode(c, result)
+	c.JSON(http.StatusOK, result)
+}
+
+func mutateAuthCode(c *gin.Context, revoke bool) {
+	detail := "删除授权码"
+	if revoke {
+		detail = "撤销授权码"
+	}
+	defer LogOp(c, detail)()
+	if !requireAuthCodeAdmin(c) {
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		FailWithError(c, 400, "参数错误")
+		return
+	}
+	var result logic.AuthCodeItem
+	var err error
+	if revoke {
+		result, err = logic.GetAuthCodeStore().Revoke(req.ID)
+	} else {
+		result, err = logic.GetAuthCodeStore().Delete(req.ID)
+	}
+	if err != nil {
+		authCodeError(c, err)
+		return
+	}
+	auditAuthCode(c, result)
+	c.JSON(http.StatusOK, result)
+}
+
+func RevokeAuthCode(c *gin.Context) { mutateAuthCode(c, true) }
+func DeleteAuthCode(c *gin.Context) { mutateAuthCode(c, false) }
+
+func CleanupExpiredAuthCodes(c *gin.Context) {
+	detail := "清理过期授权码"
+	defer func() { LogOp(c, detail)() }()
+	if !requireAuthCodeAdmin(c) {
+		return
+	}
+	count, err := logic.GetAuthCodeStore().CleanupExpired()
+	if err != nil {
+		authCodeError(c, err)
+		return
+	}
+	detail = fmt.Sprintf("清理过期授权码，删除 %d 条", count)
+	c.JSON(http.StatusOK, gin.H{"deleted_count": count})
 }
 
 func GetSelfServiceStatus(c *gin.Context) {
-	config := logic.GetSelfServiceConfig()
-	inCooldown := false
-	remaining := 0
-
-	if config.EnableSelfService {
-		elapsed := time.Since(config.LastSelfServiceTime)
-		if elapsed < time.Hour {
-			inCooldown = true
-			remaining = int((time.Hour - elapsed).Seconds())
-		}
+	status, err := logic.GetAuthCodeStore().SelfServiceStatus()
+	if err != nil {
+		authCodeError(c, err)
+		return
 	}
-
-	c.JSON(200, gin.H{
-		"enabled":             config.EnableSelfService,
-		"in_cooldown":         inCooldown,
-		"remaining_seconds":   remaining,
-		"last_generated_time": config.LastSelfServiceTime,
-	})
+	c.JSON(http.StatusOK, status)
 }
 
 func GenerateSelfServiceCode(c *gin.Context) {
 	defer LogOp(c, "申请自助授权码")()
-	config := logic.GetSelfServiceConfig()
-
-	if !config.EnableSelfService {
-		FailWithError(c, 403, "自助授权功能未开启")
-		return
-	}
-
-	elapsed := time.Since(config.LastSelfServiceTime)
-	if elapsed < time.Hour {
-		remaining := int((time.Hour - elapsed).Seconds())
-		FailWithError(c, 429, "系统冷却中，请等待 %d 秒", remaining)
-		return
-	}
-
-	// 从中间件获取 privateKey (需要确保中间件已设置，即使是guest或无auth路径也需注入key，或者从全局获取)
-	// 注意：此接口是公开的，没有经过Auth中间件验证密码，但需要 privateKey 来签名
-	// 我们可以从 gin.Context 中获取，如果是在 main.go 中通过中间件注入的
-	// 或者这里直接读取 key (不太好，最好通过 context 传递)
-	// 假设 main.go 中 public 路由也使用了类似 Auth 的中间件但不强制验证，或者我们需要单独处理 key
-	// 暂时假设 key 通过某种方式传递，或者我们在这里重新读取 key (不推荐)
-	// 更好的方式：在 main.go 中注册路由时，确保有一个中间件注入了 privateKey 但不拦截请求
-
-	privateKey, exist := c.Get("privateKey")
-	if !exist {
-		// 如果没有 privateKey，尝试从文件读取或者报错
-		// 这里为了简单，假设 main.go 会调整以注入 key
-		FailWithError(c, 500, "系统配置错误: 密钥缺失")
-		return
-	}
-
-	// 生成 1 小时有效期的 token
-	now := time.Now()
-	expireTime := now.Add(time.Hour)
-	claims := jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(expireTime),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(privateKey) // privateKey 应该是 []byte
+	result, err := logic.GetAuthCodeStore().GenerateSelfService()
 	if err != nil {
-		FailWithError(c, 500, "生成授权码失败: %v", err)
+		authCodeError(c, err)
 		return
 	}
-
-	if err := logic.UpdateLastSelfServiceTime(); err != nil {
-		FailWithError(c, 500, "保存状态失败")
-		return
-	}
-
-	timeFormat := "2006-01-02 15:04:05"
-	log.Printf("[自助授权] IP: %s 获取了授权码, 有效期: %s - %s", middlewares.GetClientIP(c), now.Format(timeFormat), expireTime.Format(timeFormat))
-
-	c.JSON(200, gin.H{
-		"code": tokenString,
-	})
+	auditAuthCode(c, result.AuthCodeItem)
+	c.JSON(http.StatusOK, result)
 }
 
 func SetSelfServiceConfig(c *gin.Context) {
-	role, _ := c.Get("role")
-	if role != middlewares.RoleAdmin {
-		FailWithError(c, 403, "需要管理员权限")
+	if !requireAuthCodeAdmin(c) {
 		return
 	}
-
 	var req struct {
 		Enable bool `json:"enable"`
 	}
@@ -189,11 +199,9 @@ func SetSelfServiceConfig(c *gin.Context) {
 		detail = "开启自助授权配置"
 	}
 	defer LogOp(c, detail)()
-
 	if err := logic.SetSelfServiceEnable(req.Enable); err != nil {
-		FailWithError(c, 500, "保存配置失败: %v", err)
+		FailWithError(c, 500, "保存配置失败")
 		return
 	}
-
-	c.JSON(200, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

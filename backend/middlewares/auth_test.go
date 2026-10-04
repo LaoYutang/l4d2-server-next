@@ -1,37 +1,39 @@
 package middlewares
 
 import (
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"l4d2-manager-next/logic"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func signAuthTestToken(t *testing.T, privateKey []byte, claims jwt.Claims, method jwt.SigningMethod) string {
+func setupAuthTestStore(t *testing.T) *logic.AuthCodeStore {
 	t.Helper()
-	token, err := jwt.NewWithClaims(method, claims).SignedString(privateKey)
+	t.Setenv("L4D2_MANAGER_PASSWORD", "test-admin-password")
+	dir := t.TempDir()
+	store, err := logic.OpenAuthCodeStore(filepath.Join(dir, "auth.db"), filepath.Join(dir, "auth.key"), time.Time{})
 	if err != nil {
-		t.Fatalf("sign token: %v", err)
+		t.Fatal(err)
 	}
-	return token
+	previous := logic.SetAuthCodeStore(store)
+	mutex.Lock()
+	ipAttempts = make(map[string]*loginAttempt)
+	mutex.Unlock()
+	t.Cleanup(func() { logic.SetAuthCodeStore(previous); store.Close() })
+	return store
 }
 
-func runAuthTestRequest(t *testing.T, privateKey []byte, method, path, credential string) (*httptest.ResponseRecorder, string) {
+func runAuthTestRequest(t *testing.T, method, path, credential string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-
 	role := ""
 	router := gin.New()
-	router.Handle(method, path, Auth(privateKey), func(c *gin.Context) {
-		roleValue, _ := c.Get("role")
-		role, _ = roleValue.(string)
-		c.JSON(http.StatusOK, gin.H{"role": role})
-	})
-
+	router.Handle(method, path, Auth(), func(c *gin.Context) { role = c.GetString("role"); c.JSON(200, gin.H{"role": role}) })
 	request := httptest.NewRequest(method, path, nil)
 	request.RemoteAddr = "192.0.2.10:12345"
 	request.Header.Set("Authorization", "Bearer "+credential)
@@ -40,154 +42,112 @@ func runAuthTestRequest(t *testing.T, privateKey []byte, method, path, credentia
 	return response, role
 }
 
-func TestAuthRecognizesAdministratorAndTemporaryTokenRoles(t *testing.T) {
-	privateKey := []byte("test-private-key")
-	t.Setenv("L4D2_MANAGER_PASSWORD", "test-admin-password")
-	expiresAt := jwt.NewNumericDate(time.Now().Add(time.Hour))
-
-	tests := []struct {
-		name       string
-		credential string
-		wantRole   string
-	}{
-		{
-			name:       "administrator password",
-			credential: "test-admin-password",
-			wantRole:   RoleAdmin,
-		},
-		{
-			name: "legacy token",
-			credential: signAuthTestToken(t, privateKey, jwt.RegisteredClaims{
-				ExpiresAt: expiresAt,
-			}, jwt.SigningMethodHS256),
-			wantRole: RoleGuest,
-		},
-		{
-			name: "temporary token with explicit false flag",
-			credential: signAuthTestToken(t, privateKey, TempAuthClaims{
-				MapUploadOnly: false,
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: expiresAt,
-				},
-			}, jwt.SigningMethodHS256),
-			wantRole: RoleGuest,
-		},
+func TestAuthRecognizesAdministratorAndDirectAuthorizationCodes(t *testing.T) {
+	store := setupAuthTestStore(t)
+	created, err := store.Create(logic.CreateAuthCodeRequest{Code: "directCode"})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			response, role := runAuthTestRequest(t, privateKey, http.MethodPost, "/maps/queue/snapshot", test.credential)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
-			}
-			if role != test.wantRole {
-				t.Fatalf("role = %q, want %q", role, test.wantRole)
-			}
-		})
-	}
-}
-
-func TestMapUploaderTokenAllowsOnlyExplicitRequests(t *testing.T) {
-	privateKey := []byte("test-private-key")
-	t.Setenv("L4D2_MANAGER_PASSWORD", "test-admin-password")
-	token := signAuthTestToken(t, privateKey, TempAuthClaims{
-		MapUploadOnly: true,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
-	}, jwt.SigningMethodHS256)
-
-	allowed := []string{
-		"/auth",
-		"/upload/init",
-		"/upload/chunk",
-		"/upload/status",
-		"/upload/merge",
-		"/upload/cancel",
-		"/maps/hot-reload",
-		"/maps/hot-reload/status",
-	}
-	for _, path := range allowed {
-		t.Run("allows "+path, func(t *testing.T) {
-			response, role := runAuthTestRequest(t, privateKey, http.MethodPost, path, token)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
-			}
-			if role != RoleMapUploader {
-				t.Fatalf("role = %q, want %q", role, RoleMapUploader)
-			}
-		})
-	}
-
-	denied := []string{
-		"/list",
-		"/clear",
-		"/remove",
-		"/maps/hot-reload/config",
-		"/maps/hot-reload/config/update",
-		"/maps/queue/snapshot",
-		"/maps/queue/add",
-		"/maps/queue/remove",
-		"/maps/queue/start",
-		"/maps/queue/pause",
-		"/maps/queue/skip",
-		"/maps/queue/clear",
-		"/rcon/getstatus",
-		"/download/list",
-		"/plugins/list",
-		"/auth/getTempAuthCode",
-	}
-	for _, path := range denied {
-		t.Run("denies "+path, func(t *testing.T) {
-			response, _ := runAuthTestRequest(t, privateKey, http.MethodPost, path, token)
-			if response.Code != http.StatusForbidden {
-				t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusForbidden, response.Body.String())
-			}
-		})
-	}
-
-	t.Run("requires exact HTTP method", func(t *testing.T) {
-		response, _ := runAuthTestRequest(t, privateKey, http.MethodGet, "/upload/init", token)
-		if response.Code != http.StatusForbidden {
-			t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	for _, test := range []struct{ code, role string }{{"test-admin-password", RoleAdmin}, {created.Code, RoleGuest}} {
+		response, role := runAuthTestRequest(t, "POST", "/list", test.code)
+		if response.Code != 200 || role != test.role {
+			t.Fatalf("status = %d, role = %s", response.Code, role)
 		}
-	})
+	}
+	past := time.Now().Add(-time.Hour)
+	if _, err := store.Update(logic.UpdateAuthCodeRequest{ID: created.ID, ExpiresAt: &past}); err != nil {
+		t.Fatal(err)
+	}
+	response, _ := runAuthTestRequest(t, "POST", "/list", created.Code)
+	if response.Code != 401 {
+		t.Fatal("expired code accepted")
+	}
+	future := time.Now().Add(90 * 24 * time.Hour)
+	if _, err := store.Update(logic.UpdateAuthCodeRequest{ID: created.ID, ExpiresAt: &future}); err != nil {
+		t.Fatal(err)
+	}
+	response, _ = runAuthTestRequest(t, "POST", "/list", created.Code)
+	if response.Code != 200 {
+		t.Fatal("extension did not restore access")
+	}
+	if _, err := store.Revoke(created.ID); err != nil {
+		t.Fatal(err)
+	}
+	response, _ = runAuthTestRequest(t, "POST", "/list", created.Code)
+	if response.Code != 401 {
+		t.Fatal("revoked code accepted")
+	}
+	if _, err := store.Delete(created.ID); err != nil {
+		t.Fatal(err)
+	}
+	response, _ = runAuthTestRequest(t, "POST", "/list", created.Code)
+	if response.Code != 401 {
+		t.Fatal("deleted code accepted")
+	}
 }
 
-func TestAuthRejectsExpiredAndNonHS256Tokens(t *testing.T) {
-	privateKey := []byte("test-private-key")
-	t.Setenv("L4D2_MANAGER_PASSWORD", "test-admin-password")
-
-	tests := []struct {
-		name  string
-		token string
-	}{
-		{
-			name: "expired",
-			token: signAuthTestToken(t, privateKey, TempAuthClaims{
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
-				},
-			}, jwt.SigningMethodHS256),
-		},
-		{
-			name: "HS384",
-			token: signAuthTestToken(t, privateKey, TempAuthClaims{
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-				},
-			}, jwt.SigningMethodHS384),
-		},
+func TestMapUploaderCodeAllowsOnlyExplicitRequests(t *testing.T) {
+	store := setupAuthTestStore(t)
+	created, err := store.Create(logic.CreateAuthCodeRequest{AccessType: logic.AuthAccessMapUpload})
+	if err != nil {
+		t.Fatal(err)
 	}
+	allowed := []string{"/auth", "/upload/init", "/upload/chunk", "/upload/status", "/upload/merge", "/upload/cancel", "/maps/hot-reload", "/maps/hot-reload/status"}
+	for _, path := range allowed {
+		response, role := runAuthTestRequest(t, "POST", path, created.Code)
+		if response.Code != 200 || role != RoleMapUploader {
+			t.Fatalf("allowed %s: %d %s", path, response.Code, role)
+		}
+	}
+	denied := []string{"/list", "/clear", "/remove", "/maps/hot-reload/config", "/maps/queue/add", "/maps/queue/snapshot", "/rcon/getstatus", "/download/list", "/plugins/list", "/auth-codes/list", "/auth-codes/create"}
+	for _, path := range denied {
+		response, _ := runAuthTestRequest(t, "POST", path, created.Code)
+		if response.Code != 403 {
+			t.Fatalf("denied %s: %d", path, response.Code)
+		}
+	}
+	response, _ := runAuthTestRequest(t, "GET", "/upload/init", created.Code)
+	if response.Code != 403 {
+		t.Fatal("wrong method accepted")
+	}
+}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			response, _ := runAuthTestRequest(t, privateKey, http.MethodPost, "/list", test.token)
-			if response.Code != http.StatusUnauthorized {
-				var payload map[string]any
-				_ = json.Unmarshal(response.Body.Bytes(), &payload)
-				t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusUnauthorized, response.Body.String())
+func TestAuthRejectsAllLegacyJWTsAndPreservesPasswordWhenStoreUnavailable(t *testing.T) {
+	setupAuthTestStore(t)
+	for _, method := range []jwt.SigningMethod{jwt.SigningMethodHS256, jwt.SigningMethodHS384} {
+		for _, mapOnly := range []bool{false, true} {
+			legacy, err := jwt.NewWithClaims(method, jwt.MapClaims{"exp": time.Now().Add(time.Hour).Unix(), "map_upload_only": mapOnly}).SignedString([]byte("old-valid-key"))
+			if err != nil {
+				t.Fatal(err)
 			}
-		})
+			response, _ := runAuthTestRequest(t, "POST", "/auth", legacy)
+			if response.Code != 401 {
+				t.Fatalf("legacy token accepted: %d", response.Code)
+			}
+		}
+	}
+	previous := logic.SetAuthCodeStore(nil)
+	defer logic.SetAuthCodeStore(previous)
+	response, role := runAuthTestRequest(t, "POST", "/auth", "test-admin-password")
+	if response.Code != 200 || role != RoleAdmin {
+		t.Fatal("administrator unavailable")
+	}
+	response, _ = runAuthTestRequest(t, "POST", "/auth", "unknown-code")
+	if response.Code != 503 {
+		t.Fatalf("unavailable store = %d", response.Code)
+	}
+}
+
+func TestAuthRejectsMissingBearerAndRateLimitsFailures(t *testing.T) {
+	setupAuthTestStore(t)
+	for attempt := 0; attempt < 11; attempt++ {
+		response, _ := runAuthTestRequest(t, "POST", "/auth", "wrong-code")
+		want := 401
+		if attempt == 10 {
+			want = 429
+		}
+		if response.Code != want {
+			t.Fatalf("attempt %d: status %d, want %d", attempt, response.Code, want)
+		}
 	}
 }

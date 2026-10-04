@@ -186,7 +186,7 @@
           </label>
           <a-input-password
             v-model:value="password"
-            placeholder="请输入密码..."
+            placeholder="请输入管理员密码或授权码"
             size="large"
             :status="error ? 'error' : ''"
           >

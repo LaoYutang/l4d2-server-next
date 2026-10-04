@@ -1,15 +1,15 @@
 package middlewares
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"l4d2-manager-next/logic"
+
 	"github.com/gin-gonic/gin"
-	jwt "github.com/golang-jwt/jwt/v5"
 )
 
 type loginAttempt struct {
@@ -31,11 +31,6 @@ const (
 	RoleMapUploader = "map_uploader"
 )
 
-type TempAuthClaims struct {
-	MapUploadOnly bool `json:"map_upload_only,omitempty"`
-	jwt.RegisteredClaims
-}
-
 var mapUploaderAllowedRequests = map[string]struct{}{
 	http.MethodPost + " /auth":                   {},
 	http.MethodPost + " /upload/init":            {},
@@ -47,7 +42,7 @@ var mapUploaderAllowedRequests = map[string]struct{}{
 	http.MethodPost + " /maps/hot-reload/status": {},
 }
 
-func Auth(privateKey []byte) gin.HandlerFunc {
+func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := GetClientIP(c)
 
@@ -67,31 +62,29 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 		mutex.Unlock()
 
 		credential := getBearerCredential(c.GetHeader("Authorization"))
-		realPassword := os.Getenv("L4D2_MANAGER_PASSWORD")
-		if realPassword == "" {
-			realPassword = "laoyutangnb"
-		}
+		realPassword := logic.AdministratorPassword()
 
 		success := false
 		role := ""
 		if credential == realPassword {
 			success = true
 			role = RoleAdmin
-			c.Set("privateKey", privateKey)
 		} else {
-			claims := &TempAuthClaims{}
-			parsedToken, err := jwt.ParseWithClaims(
-				credential,
-				claims,
-				getKeyfunc(privateKey),
-				jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-			)
-			if err == nil && parsedToken.Valid {
+			record, err := logic.GetAuthCodeStore().Authenticate(credential)
+			if errors.Is(err, logic.ErrAuthUnavailable) {
+				c.String(http.StatusServiceUnavailable, "授权服务暂不可用")
+				c.Abort()
+				return
+			}
+			if err == nil {
 				success = true
 				role = RoleGuest
-				if claims.MapUploadOnly {
+				if record.AccessType == logic.AuthAccessMapUpload {
 					role = RoleMapUploader
 				}
+				c.Set("auth_code_id", record.ID)
+				c.Set("auth_code_remark", record.Remark)
+				c.Set("auth_expires_at", record.ExpiresAt)
 			}
 		}
 
@@ -108,6 +101,11 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 			c.Next()
 		} else {
 			mutex.Lock()
+			attempt = ipAttempts[ip]
+			if attempt == nil {
+				attempt = &loginAttempt{}
+				ipAttempts[ip] = attempt
+			}
 			now := time.Now()
 			// 如果是第一次错误或者距离第一次错误已经超过1分钟，重置计数
 			if attempt.count == 0 || now.Sub(attempt.firstTime) > time.Minute {
@@ -126,7 +124,7 @@ func Auth(privateKey []byte) gin.HandlerFunc {
 			}
 			mutex.Unlock()
 
-			c.String(http.StatusUnauthorized, "密码错误或令牌已失效")
+			c.String(http.StatusUnauthorized, "密码错误或授权码已失效")
 			c.Abort()
 		}
 	}
@@ -147,12 +145,11 @@ func getBearerCredential(header string) string {
 	return strings.TrimSpace(header[len(bearerPrefix):])
 }
 
-func getKeyfunc(privateKey []byte) jwt.Keyfunc {
-	return func(token *jwt.Token) (interface{}, error) {
-		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		// 返回密钥
-		return privateKey, nil
+// RevalidateAuth is also used by long-lived streams and before installing an upload.
+func RevalidateAuth(c *gin.Context) error {
+	if c.GetString("role") == RoleAdmin {
+		return nil
 	}
+	_, err := logic.GetAuthCodeStore().ActiveByID(c.GetString("auth_code_id"))
+	return err
 }

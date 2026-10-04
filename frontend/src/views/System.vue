@@ -3,64 +3,40 @@
   import {
     message,
     Card as ACard,
-    Select as ASelect,
-    SelectOption as ASelectOption,
-    Button as AButton,
-    Input as AInput,
     Divider as ADivider,
     Switch as ASwitch,
   } from 'ant-design-vue';
   import {
-    KeyOutlined,
     InfoCircleOutlined,
-    CheckCircleOutlined,
-    CopyOutlined,
-    CheckOutlined,
-    SafetyCertificateOutlined,
     LineChartOutlined,
     DatabaseOutlined,
     CloudUploadOutlined,
     ReloadOutlined,
   } from '@ant-design/icons-vue';
-  import { api, type TempAccessType } from '../services/api';
+  import { api } from '../services/api';
   import { useAuthStore } from '../stores/auth';
   import { useMonitorStore } from '../stores/monitor';
-  import { copyToClipboard } from '../utils/clipboard';
   import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import DiskUsageLimitSetting from '../components/settings/DiskUsageLimitSetting.vue';
 
-  type SettingsSection = 'authorization' | 'statistics' | 'map-management' | 'about';
+  type SettingsSection = 'statistics' | 'map-management' | 'about';
 
   const authStore = useAuthStore();
   const monitorStore = useMonitorStore();
   const isAdmin = computed(() => authStore.isAdmin);
-  const activeSection = ref<SettingsSection>(isAdmin.value ? 'authorization' : 'about');
-  const authorizationSection = ref<HTMLElement | null>(null);
+  const activeSection = ref<SettingsSection>(isAdmin.value ? 'statistics' : 'about');
   const statisticsSection = ref<HTMLElement | null>(null);
   const mapManagementSection = ref<HTMLElement | null>(null);
   const aboutSection = ref<HTMLElement | null>(null);
 
-  const expiredHours = ref(1);
-  const accessType = ref<TempAccessType>('temporary');
-  const generatedAccessType = ref<TempAccessType>('temporary');
-  const generating = ref(false);
-  const generatedCode = ref('');
-  const expirationTime = ref('');
-  const copied = ref(false);
-  const codeInput = ref<any>(null);
   const version = ref('');
-  const enableSelfService = ref(false);
-  const settingSelfService = ref(false);
   const enablePlayerStats = ref(false);
   const settingPlayerStats = ref(false);
   const enableMonitorHistory = ref(false);
   const settingMonitorHistory = ref(false);
   const enableVpkTrim = ref(false);
   const settingVpkTrim = ref(false);
-  const generatedAccessTypeLabel = computed(() =>
-    generatedAccessType.value === 'map_upload_only' ? '仅地图上传' : '临时权限'
-  );
   let sectionUpdateFrame: number | null = null;
   let pendingSection: SettingsSection | null = null;
   let sectionNavigationTimer: number | null = null;
@@ -77,16 +53,6 @@
       version.value = data.version;
     } catch (error) {
       console.error('Failed to fetch version:', error);
-    }
-  };
-
-  const fetchSelfServiceStatus = async () => {
-    if (!isAdmin.value) return;
-    try {
-      const status = await api.getSelfServiceStatus();
-      enableSelfService.value = status.enabled;
-    } catch (error) {
-      console.error('Failed to fetch self service status:', error);
     }
   };
 
@@ -125,28 +91,12 @@
     const tasks: Array<Promise<void>> = [fetchVersion()];
     if (isAdmin.value) {
       tasks.push(
-        fetchSelfServiceStatus(),
         fetchPlayerStatsConfig(),
         fetchMonitorConfig(),
         fetchVpkTrimConfig()
       );
     }
     await Promise.all(tasks);
-  };
-
-  const toggleSelfService = async (checked: boolean | string | number) => {
-    const isChecked = Boolean(checked);
-    settingSelfService.value = true;
-    try {
-      await api.setSelfServiceConfig(isChecked);
-      enableSelfService.value = isChecked;
-      message.success(isChecked ? '已开启自助授权功能' : '已关闭自助授权功能');
-    } catch (error: any) {
-      message.error(`设置失败: ${error.message}`);
-      enableSelfService.value = !isChecked;
-    } finally {
-      settingSelfService.value = false;
-    }
   };
 
   const togglePlayerStats = async (checked: boolean | string | number) => {
@@ -196,47 +146,8 @@
     }
   };
 
-  const generateCode = async () => {
-    generating.value = true;
-    generatedCode.value = '';
-    copied.value = false;
-
-    try {
-      generatedCode.value = await api.generateTempAuthCode(expiredHours.value, accessType.value);
-      generatedAccessType.value = accessType.value;
-
-      const date = new Date();
-      date.setHours(date.getHours() + Number(expiredHours.value));
-      expirationTime.value = date.toLocaleString();
-      message.success('授权码生成成功');
-    } catch (error: any) {
-      message.error(`生成失败: ${error.message}`);
-    } finally {
-      generating.value = false;
-    }
-  };
-
-  const copyCode = async () => {
-    if (!generatedCode.value) return;
-
-    const success = await copyToClipboard(generatedCode.value);
-    if (success) {
-      copied.value = true;
-      message.success('已复制到剪贴板');
-      window.setTimeout(() => {
-        copied.value = false;
-      }, 2000);
-      return;
-    }
-
-    codeInput.value?.focus();
-    message.warning('无法自动复制，请手动复制');
-  };
-
   const getSectionElement = (section: SettingsSection) => {
     switch (section) {
-      case 'authorization':
-        return authorizationSection.value;
       case 'statistics':
         return statisticsSection.value;
       case 'map-management':
@@ -248,7 +159,7 @@
 
   const getVisibleSections = (): SettingsSection[] =>
     isAdmin.value
-      ? ['authorization', 'statistics', 'map-management', 'about']
+      ? ['statistics', 'map-management', 'about']
       : ['about'];
 
   const scrollToSection = (section: SettingsSection) => {
@@ -365,7 +276,7 @@
     if (!admin) {
       activeSection.value = 'about';
     } else if (activeSection.value === 'about') {
-      activeSection.value = 'authorization';
+      activeSection.value = 'statistics';
     }
     await nextTick();
     setupSectionTracking();
@@ -390,17 +301,6 @@
     >
       <div class="settings-layout">
         <nav class="settings-nav" aria-label="设置分类">
-          <button
-            v-if="isAdmin"
-            type="button"
-            class="settings-nav-item"
-            :class="{ active: activeSection === 'authorization' }"
-            :aria-current="activeSection === 'authorization' ? 'location' : undefined"
-            @click="scrollToSection('authorization')"
-          >
-            <KeyOutlined />
-            <span>授权管理</span>
-          </button>
           <button
             v-if="isAdmin"
             type="button"
@@ -436,111 +336,6 @@
         </nav>
 
         <div class="settings-content">
-          <section
-            v-if="isAdmin"
-            ref="authorizationSection"
-            class="settings-category"
-            data-settings-section="authorization"
-          >
-            <div class="settings-heading">
-              <h2><KeyOutlined class="text-blue-500" /> 临时授权管理</h2>
-              <p>管理访客自助授权，并生成指定有效期的临时访问授权码。</p>
-            </div>
-
-            <div class="space-y-4">
-              <section class="setting-section">
-                <div class="setting-row">
-                  <div class="min-w-0">
-                    <div class="setting-title">
-                      <SafetyCertificateOutlined />
-                      开启自助获取通道
-                    </div>
-                    <div class="setting-description">
-                      开启后，访客可在登录页自助获取 1 小时有效期的授权码，获取后有 1 小时全局冷却时间。
-                    </div>
-                  </div>
-                  <a-switch
-                    class="shrink-0"
-                    :checked="enableSelfService"
-                    :loading="settingSelfService"
-                    checked-children="开"
-                    un-checked-children="关"
-                    @update:checked="toggleSelfService"
-                  />
-                </div>
-              </section>
-
-              <section class="setting-section">
-                <div class="mb-4">
-                  <div class="setting-title">手动生成（管理员专用）</div>
-                  <div class="setting-description">
-                    选择权限类型和有效期并直接生成授权码，不受自助授权冷却时间限制。
-                  </div>
-                </div>
-
-                <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">权限类型</span>
-                    <a-select v-model:value="accessType" class="w-full">
-                      <a-select-option value="temporary">临时权限（默认）</a-select-option>
-                      <a-select-option value="map_upload_only">仅地图上传</a-select-option>
-                    </a-select>
-                  </label>
-                  <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">有效期</span>
-                    <a-select v-model:value="expiredHours" class="w-full">
-                      <a-select-option :value="1">1 小时</a-select-option>
-                      <a-select-option :value="6">6 小时</a-select-option>
-                      <a-select-option :value="12">12 小时</a-select-option>
-                      <a-select-option :value="24">24 小时（1 天）</a-select-option>
-                      <a-select-option :value="72">72 小时（3 天）</a-select-option>
-                      <a-select-option :value="168">168 小时（7 天）</a-select-option>
-                      <a-select-option :value="720">720 小时（30 天）</a-select-option>
-                    </a-select>
-                  </label>
-                  <a-button
-                    type="primary"
-                    :loading="generating"
-                    class="sm:self-end"
-                    @click="generateCode"
-                  >
-                    {{ generating ? '生成中' : '生成授权码' }}
-                  </a-button>
-                </div>
-
-                <div
-                  v-if="generatedCode"
-                  class="animate-fade-in mt-4 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20"
-                >
-                  <div
-                    class="mb-1 flex items-center gap-2 font-bold text-green-600 dark:text-green-400"
-                  >
-                    <CheckCircleOutlined />
-                    生成成功
-                  </div>
-                  <div class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-                    权限：{{ generatedAccessTypeLabel }} · 有效期至：{{ expirationTime }}
-                  </div>
-                  <div class="flex flex-col gap-2 sm:flex-row">
-                    <a-input
-                      ref="codeInput"
-                      v-model:value="generatedCode"
-                      readonly
-                      class="min-w-0 flex-1 text-center font-mono text-lg !text-blue-600 dark:!text-blue-400"
-                    />
-                    <a-button class="!flex !items-center !justify-center" @click="copyCode">
-                      <template #icon>
-                        <CheckOutlined v-if="copied" />
-                        <CopyOutlined v-else />
-                      </template>
-                      {{ copied ? '已复制' : '复制' }}
-                    </a-button>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </section>
-
           <section
             v-if="isAdmin"
             ref="statisticsSection"

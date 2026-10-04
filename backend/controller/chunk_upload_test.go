@@ -47,6 +47,7 @@ func TestUploadChunkAcceptsFrontendFiveMBChunkWhenAverageChunkIsSmaller(t *testi
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
+	c.Set("role", "admin")
 
 	UploadChunk(c)
 
@@ -241,6 +242,7 @@ func newFormTestContext(path string, fields url.Values) (*gin.Context, *httptest
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
+	c.Set("role", "admin")
 	return c, w
 }
 

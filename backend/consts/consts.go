@@ -12,6 +12,8 @@ var GamePath string
 var MapListFilePath string
 var ManagerDataPath string
 var PrivateKeyPath string
+var AuthDBPath string
+var AuthKeyPath string
 var MonitorDBPath string
 var PlayerStatsDBPath string
 var AuditDBPath string
@@ -26,6 +28,8 @@ func init() {
 		ManagerDataPath = abs
 	}
 	PrivateKeyPath = filepath.Join(ManagerDataPath, "private.key")
+	AuthDBPath = filepath.Join(ManagerDataPath, "auth.db")
+	AuthKeyPath = filepath.Join(ManagerDataPath, "auth.key")
 	MonitorDBPath = filepath.Join(ManagerDataPath, "monitor.db")
 	PlayerStatsDBPath = filepath.Join(ManagerDataPath, "player_stats.db")
 	AuditDBPath = filepath.Join(ManagerDataPath, "audit.db")

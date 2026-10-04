@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/duke-git/lancet/v2/random"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,6 +24,11 @@ func main() {
 	db.InitPlayerStatsDB()
 	db.InitAuditDB()
 	logic.StartAuditWriter()
+	if err := logic.InitAuthCodes(); err != nil {
+		log.Printf("authorization store initialization: %v", err)
+	} else {
+		defer logic.GetAuthCodeStore().Close()
+	}
 
 	// Initialize Monitor
 	go controller.StartMonitor()
@@ -69,22 +73,6 @@ func main() {
 		c.Next()
 	})
 
-	// 如果本地的private.key不存在，创建一个随机HS256密钥
-	privateKeyPath := consts.PrivateKeyPath
-	var privateKey []byte
-	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
-		privateKey = []byte(random.RandNumeralOrLetter(16))
-		err = os.WriteFile(privateKeyPath, privateKey, 0600)
-		if err != nil {
-			panic("创建private.key失败")
-		}
-	} else {
-		privateKey, err = os.ReadFile(privateKeyPath)
-		if err != nil {
-			panic("读取private.key失败")
-		}
-	}
-
 	// 如果maplist.txt不存在，创建一个空的
 	mapListPath := filepath.Join(consts.MapListFilePath)
 	if _, err := os.Stat(mapListPath); os.IsNotExist(err) {
@@ -96,50 +84,49 @@ func main() {
 
 	router.MaxMultipartMemory = 1 << 25 // 限制表单内存缓存为32M
 
-	// Auth Group
-	auth := router.Group("/auth", middlewares.Auth(privateKey))
+	router.POST("/auth", middlewares.Auth(), controller.Auth)
+	authCodes := router.Group("/auth-codes", middlewares.Auth())
 	{
-		auth.POST("", controller.Auth)
-		auth.POST("/getTempAuthCode", controller.GetTempAuthCode)
+		authCodes.POST("/list", controller.ListAuthCodes)
+		authCodes.POST("/create", controller.CreateAuthCode)
+		authCodes.POST("/update", controller.UpdateAuthCode)
+		authCodes.POST("/revoke", controller.RevokeAuthCode)
+		authCodes.POST("/delete", controller.DeleteAuthCode)
+		authCodes.POST("/cleanup-expired", controller.CleanupExpiredAuthCodes)
 	}
 
-	// Self-service Auth (Inject privateKey without full Auth check)
-	injectKey := func(c *gin.Context) {
-		c.Set("privateKey", privateKey)
-		c.Next()
-	}
 	router.POST("/self-service/status", controller.GetSelfServiceStatus)
-	router.POST("/self-service/generate", injectKey, controller.GenerateSelfServiceCode)
-	router.POST("/config/self-service", middlewares.Auth(privateKey), controller.SetSelfServiceConfig)
-	router.POST("/config/player-stats", middlewares.Auth(privateKey), controller.SetPlayerStatsConfig)
-	router.POST("/config/monitor-history", middlewares.Auth(privateKey), controller.SetMonitorConfig)
-	router.POST("/vpk-trim/config", middlewares.Auth(privateKey), controller.GetVPKTrimConfig)
-	router.POST("/config/vpk-trim", middlewares.Auth(privateKey), controller.SetVPKTrimConfig)
-	router.POST("/disk-usage/config", middlewares.Auth(privateKey), controller.GetDiskUsageConfig)
-	router.POST("/config/disk-usage", middlewares.Auth(privateKey), controller.SetDiskUsageConfig)
+	router.POST("/self-service/generate", controller.GenerateSelfServiceCode)
+	router.POST("/config/self-service", middlewares.Auth(), controller.SetSelfServiceConfig)
+	router.POST("/config/player-stats", middlewares.Auth(), controller.SetPlayerStatsConfig)
+	router.POST("/config/monitor-history", middlewares.Auth(), controller.SetMonitorConfig)
+	router.POST("/vpk-trim/config", middlewares.Auth(), controller.GetVPKTrimConfig)
+	router.POST("/config/vpk-trim", middlewares.Auth(), controller.SetVPKTrimConfig)
+	router.POST("/disk-usage/config", middlewares.Auth(), controller.GetDiskUsageConfig)
+	router.POST("/config/disk-usage", middlewares.Auth(), controller.SetDiskUsageConfig)
 
 	// Root Level Protected Routes (Misc)
-	router.POST("/upload/init", middlewares.Auth(privateKey), controller.UploadInit)
-	router.POST("/upload/chunk", middlewares.Auth(privateKey), controller.UploadChunk)
-	router.POST("/upload/status", middlewares.Auth(privateKey), controller.UploadStatus)
-	router.POST("/upload/merge", middlewares.Auth(privateKey), controller.UploadMerge)
-	router.POST("/upload/cancel", middlewares.Auth(privateKey), controller.UploadCancel)
-	router.POST("/restart", middlewares.Auth(privateKey), controller.Restart)
-	router.POST("/clear", middlewares.Auth(privateKey), controller.Clear)
-	router.POST("/list", middlewares.Auth(privateKey), controller.List)
-	router.POST("/maps/hot-reload", middlewares.Auth(privateKey), controller.HotReloadMaps)
-	router.POST("/maps/hot-reload/status", middlewares.Auth(privateKey), controller.GetMapHotReloadStatus)
-	router.POST("/maps/hot-reload/config", middlewares.Auth(privateKey), controller.GetMapHotReloadConfig)
-	router.POST("/maps/hot-reload/config/update", middlewares.Auth(privateKey), controller.SetMapHotReloadConfig)
-	router.POST("/maps/detail", middlewares.Auth(privateKey), controller.GetMapMissionDetail)
-	router.POST("/maps/summary", middlewares.Auth(privateKey), controller.GetMapSummaries)
-	router.POST("/maps/inspection/global-scripts", middlewares.Auth(privateKey), controller.GetMapGlobalScripts)
-	router.POST("/maps/inspection/script-overrides", middlewares.Auth(privateKey), controller.GetMapScriptOverrides)
-	router.POST("/maps/inspection/global-scripts/update", middlewares.Auth(privateKey), controller.UpdateMapGlobalScript)
-	router.POST("/maps/trim", middlewares.Auth(privateKey), controller.TrimMap)
+	router.POST("/upload/init", middlewares.Auth(), controller.UploadInit)
+	router.POST("/upload/chunk", middlewares.Auth(), controller.UploadChunk)
+	router.POST("/upload/status", middlewares.Auth(), controller.UploadStatus)
+	router.POST("/upload/merge", middlewares.Auth(), controller.UploadMerge)
+	router.POST("/upload/cancel", middlewares.Auth(), controller.UploadCancel)
+	router.POST("/restart", middlewares.Auth(), controller.Restart)
+	router.POST("/clear", middlewares.Auth(), controller.Clear)
+	router.POST("/list", middlewares.Auth(), controller.List)
+	router.POST("/maps/hot-reload", middlewares.Auth(), controller.HotReloadMaps)
+	router.POST("/maps/hot-reload/status", middlewares.Auth(), controller.GetMapHotReloadStatus)
+	router.POST("/maps/hot-reload/config", middlewares.Auth(), controller.GetMapHotReloadConfig)
+	router.POST("/maps/hot-reload/config/update", middlewares.Auth(), controller.SetMapHotReloadConfig)
+	router.POST("/maps/detail", middlewares.Auth(), controller.GetMapMissionDetail)
+	router.POST("/maps/summary", middlewares.Auth(), controller.GetMapSummaries)
+	router.POST("/maps/inspection/global-scripts", middlewares.Auth(), controller.GetMapGlobalScripts)
+	router.POST("/maps/inspection/script-overrides", middlewares.Auth(), controller.GetMapScriptOverrides)
+	router.POST("/maps/inspection/global-scripts/update", middlewares.Auth(), controller.UpdateMapGlobalScript)
+	router.POST("/maps/trim", middlewares.Auth(), controller.TrimMap)
 
 	// Map Queue Group
-	mapQueue := router.Group("/maps/queue", middlewares.Auth(privateKey))
+	mapQueue := router.Group("/maps/queue", middlewares.Auth())
 	{
 		mapQueue.POST("/snapshot", controller.GetMapQueueSnapshot)
 		mapQueue.POST("/add", controller.AddMapQueueItem)
@@ -150,13 +137,13 @@ func main() {
 		mapQueue.POST("/clear", controller.ClearMapQueue)
 	}
 
-	router.POST("/remove", middlewares.Auth(privateKey), controller.Remove)
-	router.POST("/rename", middlewares.Auth(privateKey), controller.RenameMap)
-	router.POST("/getUserPlaytime", middlewares.Auth(privateKey), controller.GetUserPlaytime)
+	router.POST("/remove", middlewares.Auth(), controller.Remove)
+	router.POST("/rename", middlewares.Auth(), controller.RenameMap)
+	router.POST("/getUserPlaytime", middlewares.Auth(), controller.GetUserPlaytime)
 	router.POST("/getVersion", controller.GetVersion) // Public
 
 	// RCON Group
-	rcon := router.Group("/rcon", middlewares.Auth(privateKey))
+	rcon := router.Group("/rcon", middlewares.Auth())
 	{
 		rcon.POST("", controller.Rcon) //
 		rcon.POST("/maplist", controller.GetRconMapList)
@@ -170,7 +157,7 @@ func main() {
 	}
 
 	// Download Group
-	download := router.Group("/download", middlewares.Auth(privateKey))
+	download := router.Group("/download", middlewares.Auth())
 	{
 		download.POST("/add", controller.AddDownloadTask)
 		download.POST("/clear", controller.ClearTasks)
@@ -184,14 +171,14 @@ func main() {
 	}
 
 	// Monitor Group
-	monitor := router.Group("/monitor", middlewares.Auth(privateKey))
+	monitor := router.Group("/monitor", middlewares.Auth())
 	{
 		monitor.POST("/status", controller.GetMonitorStatus)
 		monitor.POST("/config", controller.GetMonitorConfig)
 		monitor.POST("/history", controller.GetMonitorHistory)
 	}
 
-	playerStats := router.Group("/player-stats", middlewares.Auth(privateKey))
+	playerStats := router.Group("/player-stats", middlewares.Auth())
 	{
 		playerStats.POST("/config", controller.GetPlayerStatsConfig)
 		playerStats.POST("/hourly", controller.GetPlayerStatsHourly)
@@ -200,21 +187,21 @@ func main() {
 	}
 
 	// Server Info Group
-	serverInfo := router.Group("/server-info", middlewares.Auth(privateKey))
+	serverInfo := router.Group("/server-info", middlewares.Auth())
 	{
 		serverInfo.POST("/get", controller.GetServerInfo)
 		serverInfo.POST("/update", controller.UpdateServerInfo)
 	}
 
 	// Server Config Group
-	serverConfig := router.Group("/server-config", middlewares.Auth(privateKey))
+	serverConfig := router.Group("/server-config", middlewares.Auth())
 	{
 		serverConfig.POST("/get", controller.GetServerConfig)
 		serverConfig.POST("/update", controller.UpdateServerConfig)
 	}
 
 	// Plugins Group
-	plugins := router.Group("/plugins", middlewares.Auth(privateKey))
+	plugins := router.Group("/plugins", middlewares.Auth())
 	{
 		plugins.POST("/list", controller.GetPlugins)
 		plugins.POST("/upload", controller.UploadPlugin)
@@ -259,7 +246,7 @@ func main() {
 	}
 
 	// Admins Group
-	admins := router.Group("/admins", middlewares.Auth(privateKey))
+	admins := router.Group("/admins", middlewares.Auth())
 	{
 		admins.POST("/list", controller.GetAdmins)
 		admins.POST("/add", controller.AddAdmin)
@@ -267,22 +254,22 @@ func main() {
 	}
 
 	// Logs Group
-	logs := router.Group("/logs", middlewares.Auth(privateKey))
+	logs := router.Group("/logs", middlewares.Auth())
 	{
 		logs.POST("/list", controller.ListSourceModLogs)
 		logs.POST("/cleanup/preview", controller.PreviewSourceModLogCleanup)
 		logs.POST("/delete", controller.DeleteSourceModLogs)
 	}
-	router.GET("/logs/stream", middlewares.Auth(privateKey), controller.StreamSourceModLog)
+	router.GET("/logs/stream", middlewares.Auth(), controller.StreamSourceModLog)
 
 	// Audit Group
-	audit := router.Group("/audit", middlewares.Auth(privateKey))
+	audit := router.Group("/audit", middlewares.Auth())
 	{
 		audit.POST("/list", controller.ListAuditLogs)
 	}
 
 	// Panel Access Control Group (admin-only checks are enforced in controllers)
-	accessControl := router.Group("/access-control", middlewares.Auth(privateKey))
+	accessControl := router.Group("/access-control", middlewares.Auth())
 	{
 		accessControl.POST("/config", controller.GetAccessControlConfig)
 		accessControl.POST("/preview", controller.PreviewAccessControl)

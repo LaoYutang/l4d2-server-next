@@ -17,6 +17,7 @@ const Backup = () => import('../views/Backup.vue');
 const Logs = () => import('../views/Logs.vue');
 const Audit = () => import('../views/Audit.vue');
 const AccessControl = () => import('../views/AccessControl.vue');
+const AuthCodes = () => import('../views/AuthCodes.vue');
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -77,6 +78,12 @@ const router = createRouter({
           path: 'system',
           name: 'System',
           component: System,
+        },
+        {
+          path: 'auth-codes',
+          name: 'AuthCodes',
+          component: AuthCodes,
+          meta: { requiresAdmin: true },
         },
         {
           path: 'server-info',

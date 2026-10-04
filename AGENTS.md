@@ -66,7 +66,7 @@ Left 4 Dead 2 游戏服务器与 Web 管理后台。Go/Gin 后端管理游戏文
 ## CONVENTIONS
 
 - Go 控制器负责 HTTP 参数、权限和响应；跨接口可复用的规则、状态和持久化优先放 `logic/`。
-- 运行数据位于相对工作目录 `./data/`：`private.key`、三个 SQLite 数据库和 JSON 配置均由 `consts` 管理；不要恢复到仓库根目录的旧路径。
+- 运行数据位于相对工作目录 `./data/`：`auth.key`、四个 SQLite 数据库和 JSON 配置均由 `consts` 管理；不要恢复到仓库根目录的旧路径。
 - 认证使用 Bearer：管理员密码来自 `L4D2_MANAGER_PASSWORD`，临时授权码登录为 guest；敏感接口必须由后端再次校验管理员角色。
 - 写操作使用 `defer LogOp(c, detail)()` 记录成功/失败；统一错误路径优先使用 `FailWithError`。
 - 前端使用 Vue SFC + `<script setup>` + TypeScript、Pinia、Ant Design Vue 和 Tailwind CSS。

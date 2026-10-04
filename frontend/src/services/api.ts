@@ -2,6 +2,46 @@ import { useAuthStore, type AuthRole } from '../stores/auth';
 
 export type TempAccessType = 'temporary' | 'map_upload_only';
 
+export type AuthCodeStatus = 'active' | 'expired' | 'revoked';
+export interface AuthCodeItem {
+  id: string;
+  masked_code: string;
+  remark: string;
+  access_type: TempAccessType;
+  source: 'manual' | 'self_service';
+  status: AuthCodeStatus;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  first_login_at: string | null;
+  last_login_at: string | null;
+  login_count: number;
+  last_login_ip: string;
+}
+export interface AuthCodeCreated extends AuthCodeItem { code: string }
+export interface AuthCodeListParams {
+  page: number;
+  page_size: number;
+  status: '' | AuthCodeStatus;
+  source: '' | 'manual' | 'self_service';
+  keyword: string;
+}
+export interface AuthCodeListResult {
+  items: AuthCodeItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  counts: Record<'all' | AuthCodeStatus, number>;
+  cleanup_count: number;
+  server_time: string;
+}
+export interface SelfServiceStatus {
+  enabled: boolean;
+  in_cooldown: boolean;
+  remaining_seconds: number;
+  last_generated_time: string;
+}
+
 export interface LogStream {
   close: () => void;
 }
@@ -80,6 +120,8 @@ export interface AuditLogItem {
   path: string;
   success: boolean;
   detail: string;
+  auth_code_id?: string;
+  auth_code_remark?: string;
 }
 
 export interface AuditListParams {
@@ -576,11 +618,12 @@ class ApiService {
   }
 
   private handleResponseError(status: number) {
-    if (status === 401 || status === 429) {
+    if (status === 401) {
       const authStore = useAuthStore();
       authStore.logout();
       throw new Error('认证失效，请重新登录');
     }
+    if (status === 429) throw new Error('请求过于频繁，请稍后重试');
 
     if (status === 403) {
       throw new Error('没有权限执行此操作');
@@ -666,19 +709,40 @@ class ApiService {
     return response;
   }
 
-  async generateTempAuthCode(expiredHours: number, accessType: TempAccessType = 'temporary') {
-    const fd = new FormData();
-    fd.append('expired', expiredHours.toString());
-    fd.append('access_type', accessType);
-
-    const response = await fetch('/auth/getTempAuthCode', {
-      method: 'POST',
-      headers: this.createAuthHeaders(),
-      body: fd,
-    });
-    this.handleResponseError(response.status);
+  async getAuthCodes(params: AuthCodeListParams): Promise<AuthCodeListResult> {
+    const response = await this.postJson('/auth-codes/list', params);
     if (!response.ok) throw new Error(await response.text());
-    return response.text();
+    return response.json();
+  }
+
+  async createAuthCode(params: { code?: string; remark: string; access_type: TempAccessType; expires_at?: string }): Promise<AuthCodeCreated> {
+    const response = await this.postJson('/auth-codes/create', params);
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async updateAuthCode(params: { id: string; remark?: string; expires_at?: string }): Promise<AuthCodeItem> {
+    const response = await this.postJson('/auth-codes/update', params);
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async revokeAuthCode(id: string): Promise<AuthCodeItem> {
+    const response = await this.postJson('/auth-codes/revoke', { id });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async deleteAuthCode(id: string): Promise<AuthCodeItem> {
+    const response = await this.postJson('/auth-codes/delete', { id });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async cleanupExpiredAuthCodes(): Promise<{ deleted_count: number }> {
+    const response = await this.postJson('/auth-codes/cleanup-expired', {});
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
   }
 
   async getStatus() {
@@ -1863,6 +1927,12 @@ class ApiService {
     };
 
     const handleSSEEvent = (eventText: string) => {
+
+      if (eventText.split('\n').some((line) => line.trim() === 'event:auth-expired' || line.trim() === 'event: auth-expired')) {
+        controller.abort();
+        this.handleResponseError(401);
+        return;
+      }
       const dataText = eventText
         .replace(/\r\n/g, '\n')
         .split('\n')
@@ -1922,13 +1992,13 @@ class ApiService {
     };
   }
 
-  async getSelfServiceStatus() {
+  async getSelfServiceStatus(): Promise<SelfServiceStatus> {
     const response = await fetch('/self-service/status', { method: 'POST' });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }
 
-  async generateSelfServiceCode() {
+  async generateSelfServiceCode(): Promise<AuthCodeCreated> {
     const response = await fetch('/self-service/generate', { method: 'POST' });
     if (!response.ok) {
       // Return error object if possible, or throw

@@ -41,6 +41,12 @@ func LogOp(c *gin.Context, detail string) func() {
 		if success {
 			result = "SUCCESS"
 		}
+		authID := c.GetString("auth_code_id")
+		authRemark := c.GetString("auth_code_remark")
+		if targetID := c.GetString("audit_auth_code_id"); targetID != "" {
+			authID = targetID
+			authRemark = c.GetString("audit_auth_code_remark")
+		}
 
 		fmt.Printf(
 			"[OPT] %s | %s | %s | %s | %s | %s\n",
@@ -52,12 +58,14 @@ func LogOp(c *gin.Context, detail string) func() {
 			detail,
 		)
 		enqueueAuditLog(model.AuditLog{
-			Time:    startedAt.Unix(),
-			Role:    role,
-			IP:      ip,
-			Path:    path,
-			Success: success,
-			Detail:  detail,
+			Time:           startedAt.Unix(),
+			Role:           role,
+			IP:             ip,
+			Path:           path,
+			Success:        success,
+			Detail:         detail,
+			AuthCodeID:     authID,
+			AuthCodeRemark: sanitizeAuditDetail(authRemark),
 		})
 
 		if panicValue != nil {

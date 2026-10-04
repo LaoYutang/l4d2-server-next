@@ -45,6 +45,7 @@ export default defineConfig({
           { text: '备份管理', link: '/features/backup' },
           { text: '日志查看', link: '/features/logs' },
           { text: '访问控制', link: '/features/access-control' },
+          { text: '授权码管理', link: '/features/auth-codes' },
           { text: '系统管理', link: '/features/system' }
         ]
       },

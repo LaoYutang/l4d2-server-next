@@ -51,7 +51,7 @@ frontend/src/
 
 - 使用 `createWebHashHistory`，`MainLayout` 下的页面均懒加载。
 - `/login` 公开；其他页面要求已登录。
-- `/audit` 和 `/access-control` 带 `requiresAdmin`，路由守卫会把 guest 重定向到首页。
+- `/audit`、`/access-control` 和 `/auth-codes` 带 `requiresAdmin`，路由守卫会把 guest 重定向到首页。
 - 菜单和按钮也按 `authStore.isAdmin` 隐藏，但这只是交互层；真正权限必须由后端保证。
 - 新增页面通常要同时修改 `src/views/`、`src/router/index.ts` 和 `src/layouts/MainLayout.vue`。
 
@@ -76,7 +76,7 @@ frontend/src/
 - 业务请求经单例 `api` 发起；视图/组件不要新增裸 `fetch`。
 - 允许 `ApiService` 内部直接使用 `fetch`/`XMLHttpRequest`：Bearer、上传进度、30 秒超时、SSE 和公开自助授权需要底层控制。
 - `src/stores/auth.ts` 的登录请求是刻意保留的例外，因为成功前 Pinia 尚未建立认证状态。
-- `handleResponseError` 对 `401/429` 注销，对 `403` 抛出权限错误；新增底层请求也要保持一致。
+- `handleResponseError` 对 `401` 注销，`429` 提示稍后重试，`403` 抛出权限错误；新增底层请求也要保持一致。
 - 后端错误主要是文本响应，调用方通常捕获并以 Ant `message` 显示；不要静默吞掉状态码。
 - 对后台任务保留任务 ID，并在页面卸载、取消或完成时清理轮询/流/AbortController。
 

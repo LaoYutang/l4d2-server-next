@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/middlewares"
 	"net/http"
 	"os"
 	"strings"
@@ -147,6 +148,10 @@ func sourceModLogDeleteAuditDetail(files []logic.SourceModLogDeleteTarget) strin
 }
 
 func StreamSourceModLog(c *gin.Context) {
+	if err := middlewares.RevalidateAuth(c); err != nil {
+		authCodeError(c, err)
+		return
+	}
 	filename := c.Query("file")
 
 	if err := logic.ValidateSourceModLogName(filename); err != nil {
@@ -251,6 +256,11 @@ func StreamSourceModLog(c *gin.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			if err := middlewares.RevalidateAuth(c); err != nil {
+				c.SSEvent("auth-expired", gin.H{"message": "授权已失效"})
+				flusher.Flush()
+				return
+			}
 			info, err := file.Stat()
 			if err != nil {
 				continue

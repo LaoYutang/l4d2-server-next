@@ -21,6 +21,7 @@
     TeamOutlined,
     AuditOutlined,
     SecurityScanOutlined,
+    LockOutlined,
   } from '@ant-design/icons-vue';
   import { useThemeStore } from '../stores/theme';
 
@@ -176,6 +177,10 @@
           <span>访问控制</span>
         </a-menu-item>
 
+        <a-menu-item v-if="authStore.isAdmin" key="/auth-codes">
+          <template #icon><LockOutlined /></template>
+          <span>授权码管理</span>
+        </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>
           <span>系统管理</span>
@@ -280,6 +285,10 @@
         <a-menu-item v-if="authStore.isAdmin" key="/access-control">
           <template #icon><SecurityScanOutlined /></template>
           访问控制
+        </a-menu-item>
+        <a-menu-item v-if="authStore.isAdmin" key="/auth-codes">
+          <template #icon><LockOutlined /></template>
+          授权码管理
         </a-menu-item>
         <a-menu-item key="/system">
           <template #icon><SettingOutlined /></template>

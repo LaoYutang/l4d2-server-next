@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/middlewares"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +23,34 @@ const (
 	uploadTempDir      = "upload_temp"
 	maxUploadChunkSize = 6 << 20
 )
+
+// Administrators may manage every upload; other credentials own their tasks by
+// immutable authorization ID. Legacy tasks without an owner are admin-only.
+func ensureUploadOwner(c *gin.Context, uploadID string, allowMissing bool) bool {
+	if c.GetString("role") == middlewares.RoleAdmin {
+		return true
+	}
+	if err := middlewares.RevalidateAuth(c); err != nil {
+		authCodeError(c, err)
+		return false
+	}
+	root, err := os.OpenRoot(consts.AddonsBasePath)
+	if err != nil {
+		FailWithError(c, 400, "上传任务不存在或已过期")
+		return false
+	}
+	defer root.Close()
+	taskPath := filepath.Join(uploadTempDir, uploadID)
+	if _, err := root.Stat(taskPath); os.IsNotExist(err) && allowMissing {
+		return true
+	}
+	owner, err := root.ReadFile(filepath.Join(taskPath, ".auth_owner"))
+	if err != nil || string(owner) != c.GetString("auth_code_id") {
+		FailWithError(c, http.StatusForbidden, "无权访问其他授权创建的上传任务")
+		return false
+	}
+	return true
+}
 
 func getUploadTempPath(uploadId string) string {
 	return filepath.Join(consts.AddonsBasePath, uploadTempDir, uploadId)
@@ -84,6 +113,10 @@ func UploadInit(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if err := middlewares.RevalidateAuth(c); err != nil {
+		authCodeError(c, err)
+		return
+	}
 
 	uploadId := uuid.New().String()
 	tempPath := getUploadTempPath(uploadId)
@@ -98,6 +131,15 @@ func UploadInit(c *gin.Context) {
 	if err := os.WriteFile(metaPath, []byte(metaContent), 0644); err != nil {
 		_ = removeUploadTempDir(uploadId)
 		FailWithError(c, http.StatusInternalServerError, "保存元信息失败: %v", err)
+		return
+	}
+	owner := c.GetString("auth_code_id")
+	if c.GetString("role") == middlewares.RoleAdmin {
+		owner = "admin"
+	}
+	if err := os.WriteFile(filepath.Join(tempPath, ".auth_owner"), []byte(owner), 0600); err != nil {
+		_ = removeUploadTempDir(uploadId)
+		FailWithError(c, http.StatusInternalServerError, "保存上传任务授权失败")
 		return
 	}
 
@@ -133,6 +175,9 @@ func UploadChunk(c *gin.Context) {
 	chunkIndex, err := strconv.Atoi(chunkIndexStr)
 	if err != nil || chunkIndex < 0 {
 		FailWithError(c, http.StatusBadRequest, "chunkIndex 参数无效")
+		return
+	}
+	if !ensureUploadOwner(c, uploadId, false) {
 		return
 	}
 
@@ -207,6 +252,9 @@ func UploadStatus(c *gin.Context) {
 	}
 
 	var uploadedChunks []int
+	if !ensureUploadOwner(c, uploadId, false) {
+		return
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -240,6 +288,9 @@ func UploadMerge(c *gin.Context) {
 
 	tempPath := getUploadTempPath(uploadId)
 	metaPath := filepath.Join(tempPath, ".meta")
+	if !ensureUploadOwner(c, uploadId, false) {
+		return
+	}
 
 	// 读取元信息
 	metaBytes, err := os.ReadFile(metaPath)
@@ -326,6 +377,10 @@ func UploadMerge(c *gin.Context) {
 		return
 	}
 
+	if err := middlewares.RevalidateAuth(c); err != nil {
+		authCodeError(c, err)
+		return
+	}
 	switch {
 	case zipReg.MatchString(cleanFilename):
 		files, processErr = ProcessZipFile(mergedPath)
@@ -364,6 +419,9 @@ func UploadCancel(c *gin.Context) {
 	}
 	if err := validateUploadId(uploadId); err != nil {
 		FailWithError(c, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if !ensureUploadOwner(c, uploadId, true) {
 		return
 	}
 

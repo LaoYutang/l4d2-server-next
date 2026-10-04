@@ -82,7 +82,7 @@ backend/
 
 | File | Owner |
 |------|-------|
-| `private.key` | 临时授权 JWT 的 HS256 密钥 |
+| `auth.db` + `auth.key` | 授权码指纹、有效期、撤销、登录记录和自助冷却；旧 JWT 全部失效 |
 | `manager_config.json` | 自助授权、统计、监控历史、VPK 精简、热重载命令、Steam CDN IP、磁盘使用率上限 |
 | `access_control.json` | 可信代理与面板黑白名单，带 revision |
 | `map_vpk_inspections.json` | 地图 VPK 检查缓存 |

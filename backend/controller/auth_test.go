@@ -1,130 +1,131 @@
 package controller
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"l4d2-manager-next/middlewares"
+	"l4d2-manager-next/logic"
 	"l4d2-manager-next/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func runGetTempAuthCodeTest(t *testing.T, role string, privateKey []byte, values url.Values) *httptest.ResponseRecorder {
+func setupAuthControllerStore(t *testing.T) *logic.AuthCodeStore {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "/auth/getTempAuthCode", strings.NewReader(values.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	t.Setenv("L4D2_MANAGER_PASSWORD", "test-admin-password")
+	dir := t.TempDir()
+	store, err := logic.OpenAuthCodeStore(filepath.Join(dir, "auth.db"), filepath.Join(dir, "auth.key"), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := logic.SetAuthCodeStore(store)
+	previousAudit := enqueueAuditLog
+	enqueueAuditLog = func(model.AuditLog) {}
+	t.Cleanup(func() { logic.SetAuthCodeStore(previous); store.Close(); enqueueAuditLog = previousAudit })
+	return store
+}
+
+func authJSONContext(role string, payload any) (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	body, _ := json.Marshal(payload)
 	response := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(response)
-	context.Request = request
-	context.Set("role", role)
-	context.Set("privateKey", privateKey)
-	GetTempAuthCode(context)
-	return response
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest("POST", "/auth-codes/test", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.RemoteAddr = "192.0.2.20:1234"
+	c.Set("role", role)
+	return c, response
 }
 
-func parseGeneratedTempToken(t *testing.T, tokenString string, privateKey []byte) *middlewares.TempAuthClaims {
-	t.Helper()
-	claims := &middlewares.TempAuthClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		return privateKey, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-	if err != nil || !token.Valid {
-		t.Fatalf("parse generated token: %v", err)
-	}
-	return claims
-}
-
-func TestGetTempAuthCodeGeneratesSelectedAccessType(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	privateKey := []byte("test-private-key")
-	oldEnqueueAuditLog := enqueueAuditLog
-	enqueueAuditLog = func(model.AuditLog) {}
-	t.Cleanup(func() { enqueueAuditLog = oldEnqueueAuditLog })
-
-	tests := []struct {
-		name              string
-		accessType        string
-		wantMapUploadOnly bool
-	}{
-		{name: "missing defaults to temporary", wantMapUploadOnly: false},
-		{name: "temporary", accessType: tempAccessTypeTemporary, wantMapUploadOnly: false},
-		{name: "map uploader", accessType: tempAccessTypeMapUploader, wantMapUploadOnly: true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			values := url.Values{"expired": {"6"}}
-			if test.accessType != "" {
-				values.Set("access_type", test.accessType)
+func TestAuthCodeManagementRequiresAdmin(t *testing.T) {
+	setupAuthControllerStore(t)
+	for _, role := range []string{"guest", "map_uploader"} {
+		for _, handler := range []gin.HandlerFunc{ListAuthCodes, CreateAuthCode, UpdateAuthCode, RevokeAuthCode, DeleteAuthCode, CleanupExpiredAuthCodes, SetSelfServiceConfig} {
+			c, response := authJSONContext(role, map[string]any{})
+			handler(c)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("role %s: status %d", role, response.Code)
 			}
-			response := runGetTempAuthCodeTest(t, middlewares.RoleAdmin, privateKey, values)
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
-			}
-			claims := parseGeneratedTempToken(t, response.Body.String(), privateKey)
-			if claims.MapUploadOnly != test.wantMapUploadOnly {
-				t.Fatalf("map_upload_only = %v, want %v", claims.MapUploadOnly, test.wantMapUploadOnly)
-			}
-		})
+		}
 	}
 }
 
-func TestGetTempAuthCodeValidatesRoleAccessTypeAndExpiration(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	privateKey := []byte("test-private-key")
-	oldEnqueueAuditLog := enqueueAuditLog
-	enqueueAuditLog = func(model.AuditLog) {}
-	t.Cleanup(func() { enqueueAuditLog = oldEnqueueAuditLog })
-
-	tests := []struct {
-		name       string
-		role       string
-		values     url.Values
-		wantStatus int
-	}{
-		{
-			name:       "guest cannot generate",
-			role:       middlewares.RoleGuest,
-			values:     url.Values{"expired": {"1"}},
-			wantStatus: http.StatusForbidden,
-		},
-		{
-			name:       "unknown access type",
-			role:       middlewares.RoleAdmin,
-			values:     url.Values{"expired": {"1"}, "access_type": {"unknown"}},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "non numeric expiration",
-			role:       middlewares.RoleAdmin,
-			values:     url.Values{"expired": {"invalid"}},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "thirty day expiration",
-			role:       middlewares.RoleAdmin,
-			values:     url.Values{"expired": {"720"}},
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "expiration above thirty days",
-			role:       middlewares.RoleAdmin,
-			values:     url.Values{"expired": {"721"}},
-			wantStatus: http.StatusBadRequest,
-		},
+func TestAuthCodeControllerLifecycleAndAudit(t *testing.T) {
+	setupAuthControllerStore(t)
+	var logs []model.AuditLog
+	enqueueAuditLog = func(entry model.AuditLog) { logs = append(logs, entry) }
+	c, response := authJSONContext("admin", map[string]any{"code": "customCode8", "remark": "玩家上传", "access_type": "map_upload_only"})
+	CreateAuthCode(c)
+	if response.Code != 200 {
+		t.Fatalf("create: %d %s", response.Code, response.Body.String())
 	}
+	var created logic.CreatedAuthCode
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Code != "customCode8" || created.Remark != "玩家上传" {
+		t.Fatalf("creation: %+v", created)
+	}
+	if len(logs) != 1 || logs[0].AuthCodeID != created.ID || strings.Contains(logs[0].Detail, created.Code) {
+		t.Fatal("incorrect audit")
+	}
+	c, response = authJSONContext("admin", map[string]any{"id": created.ID, "expires_at": time.Now().Add(-time.Hour)})
+	UpdateAuthCode(c)
+	if response.Code != 200 {
+		t.Fatalf("update: %s", response.Body.String())
+	}
+	c, response = authJSONContext("admin", map[string]any{"keyword": "玩家"})
+	ListAuthCodes(c)
+	if response.Code != 200 || strings.Contains(response.Body.String(), created.Code) || !strings.Contains(response.Body.String(), "expired") {
+		t.Fatalf("list: %s", response.Body.String())
+	}
+	c, response = authJSONContext("admin", map[string]any{})
+	CleanupExpiredAuthCodes(c)
+	if response.Code != 200 || !strings.Contains(response.Body.String(), `"deleted_count":1`) {
+		t.Fatalf("cleanup: %s", response.Body.String())
+	}
+	if len(logs) != 3 {
+		t.Fatalf("audit records lost: %d", len(logs))
+	}
+}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			response := runGetTempAuthCodeTest(t, test.role, privateKey, test.values)
-			if response.Code != test.wantStatus {
-				t.Fatalf("status = %d, want %d; body = %q", response.Code, test.wantStatus, response.Body.String())
-			}
-		})
+func TestAuthReturnsRoleAndExpiryWithoutAnotherToken(t *testing.T) {
+	store := setupAuthControllerStore(t)
+	created, err := store.Create(logic.CreateAuthCodeRequest{Code: "directCredential"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, response := authJSONContext("guest", nil)
+	c.Set("auth_code_id", created.ID)
+	c.Set("auth_code_remark", created.Remark)
+	Auth(c)
+	if response.Code != 200 {
+		t.Fatalf("login: %s", response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["role"] != "guest" || payload["expires_at"] == nil || payload["token"] != nil || payload["code"] != nil {
+		t.Fatalf("unexpected login response: %v", payload)
+	}
+	listed, err := store.List(logic.AuthCodeListFilter{})
+	if err != nil || listed.Items[0].LoginCount != 1 {
+		t.Fatalf("login not recorded: %+v %v", listed, err)
+	}
+}
+
+func TestAuthCodeControllerRejectsMalformedExpiryWithoutLeakingCredential(t *testing.T) {
+	setupAuthControllerStore(t)
+	c, response := authJSONContext("admin", map[string]any{"code": "secretCode", "expires_at": "wrong"})
+	CreateAuthCode(c)
+	if response.Code != 400 || strings.Contains(response.Body.String(), "secretCode") {
+		t.Fatalf("malformed expiry: %s", response.Body.String())
 	}
 }
