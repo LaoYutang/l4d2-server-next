@@ -253,10 +253,10 @@
             <tbody>
               <tr v-for="record in records" :key="record.id" class="border-b border-gray-100 align-top dark:border-gray-700">
                 <td class="p-3"><div class="font-mono">{{ record.masked_code }}</div><div class="mt-1 max-w-56 break-words">{{ record.remark || '无备注' }}</div><div class="mt-1 text-xs text-gray-400 font-mono break-all" :title="record.id">{{ record.id }}</div></td>
-                <td class="p-3 whitespace-nowrap"><div>{{ accessLabel(record.access_type) }}</div><div class="mt-1 text-xs text-gray-500">{{ record.source === 'self_service' ? '自助领取' : '管理员创建' }}</div></td>
-                <td class="p-3 whitespace-nowrap"><a-tag :color="statusColors[statusOf(record)]">{{ statusLabels[statusOf(record)] }}</a-tag><div v-if="record.revoked_at" class="mt-1 text-xs text-gray-500">{{ formatTime(record.revoked_at) }}</div></td>
-                <td class="p-3 whitespace-nowrap"><div>{{ formatTime(record.created_at) }}</div><div class="mt-1 text-gray-500">至 {{ formatTime(record.expires_at) }}</div></td>
-                <td class="p-3 whitespace-nowrap text-xs"><div>登录 {{ record.login_count }} 次</div><div class="mt-1">首次：{{ formatTime(record.first_login_at) }}</div><div class="mt-1">最近：{{ formatTime(record.last_login_at) }}</div><div class="mt-1 font-mono text-gray-500">{{ record.last_login_ip || '—' }}</div></td>
+                <td class="p-3 whitespace-nowrap"><div>{{ accessLabel(record.access_type) }}</div><div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ record.source === 'self_service' ? '自助领取' : '管理员创建' }}</div></td>
+                <td class="p-3 whitespace-nowrap"><a-tag :color="statusColors[statusOf(record)]">{{ statusLabels[statusOf(record)] }}</a-tag><div v-if="record.revoked_at" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatTime(record.revoked_at) }}</div></td>
+                <td class="p-3 whitespace-nowrap"><div>{{ formatTime(record.created_at) }}</div><div class="mt-1 text-gray-500 dark:text-gray-400">至 {{ formatTime(record.expires_at) }}</div></td>
+                <td class="p-3 whitespace-nowrap text-xs"><div>登录 {{ record.login_count }} 次</div><div class="mt-1">首次：{{ formatTime(record.first_login_at) }}</div><div class="mt-1">最近：{{ formatTime(record.last_login_at) }}</div><div class="mt-1 font-mono text-gray-500 dark:text-gray-400">{{ record.last_login_ip || '—' }}</div></td>
                 <td class="p-3"><div class="flex flex-wrap gap-2 min-w-40"><a-button size="small" @click="openEdit(record)">编辑</a-button><a-button size="small" danger :disabled="busy || !!record.revoked_at" @click="revoke(record)">撤销</a-button><a-button size="small" danger :disabled="busy" @click="remove(record)">删除</a-button></div></td>
               </tr>
             </tbody>
@@ -284,10 +284,10 @@
     <a-modal v-model:open="createOpen" wrap-class-name="auth-codes-modal" title="创建授权码" :confirm-loading="creating" :cancel-button-props="{ disabled: creating }" :closable="!creating" :mask-closable="false" ok-text="创建" cancel-text="取消" @ok="createCode" @after-close="createForm.code = ''">
       <div class="space-y-4 py-2">
         <div><label class="field-label">生成方式</label><a-radio-group v-model:value="createForm.mode"><a-radio value="random">随机生成 32 位</a-radio><a-radio value="custom">自定义</a-radio></a-radio-group></div>
-        <div v-if="createForm.mode === 'custom'"><label for="custom-auth-code" class="field-label">自定义授权码</label><a-input id="custom-auth-code" v-model:value="createForm.code" :maxlength="32" autocomplete="off" placeholder="8–32 位，区分大小写" /><p class="field-help">支持英文字母、数字和可见英文符号，不含空格，不能与现有授权码或管理员密码重复。</p></div>
+        <div v-if="createForm.mode === 'custom'"><label for="custom-auth-code" class="field-label">自定义授权码</label><a-input id="custom-auth-code" v-model:value="createForm.code" :maxlength="32" autocomplete="off" placeholder="8–32 位，区分大小写" /><p class="field-help text-gray-500 dark:text-gray-400">支持英文字母、数字和可见英文符号，不含空格，不能与现有授权码或管理员密码重复。</p></div>
         <div><label for="auth-remark" class="field-label">备注</label><a-input id="auth-remark" v-model:value="createForm.remark" :maxlength="200" placeholder="可选，如使用人或用途" /></div>
-        <div><label class="field-label">权限类型</label><a-select v-model:value="createForm.access_type" class="w-full"><a-select-option value="temporary">临时权限</a-select-option><a-select-option value="map_upload_only">仅地图上传</a-select-option></a-select><p class="field-help">临时权限沿用访客权限；仅地图上传只开放上传页面。</p></div>
-        <div><label for="auth-expiry" class="field-label">到期时间（本地时间）</label><a-input id="auth-expiry" v-model:value="createForm.expires_at" type="datetime-local" step="1" /><div class="mt-2 flex flex-wrap gap-2"><a-button v-for="duration in durationOptions" :key="duration.hours" size="small" @click="createForm.expires_at = expiryAfter(duration.hours)">{{ duration.label }}</a-button></div><p class="field-help">可指定任意未来日期。</p></div>
+        <div><label class="field-label">权限类型</label><a-select v-model:value="createForm.access_type" class="w-full"><a-select-option value="temporary">临时权限</a-select-option><a-select-option value="map_upload_only">仅地图上传</a-select-option></a-select><p class="field-help text-gray-500 dark:text-gray-400">临时权限沿用访客权限；仅地图上传只开放上传页面。</p></div>
+        <div><label for="auth-expiry" class="field-label">到期时间（本地时间）</label><a-input id="auth-expiry" v-model:value="createForm.expires_at" type="datetime-local" step="1" class="[color-scheme:light] dark:[color-scheme:dark]" /><div class="mt-2 flex flex-wrap gap-2"><a-button v-for="duration in durationOptions" :key="duration.hours" size="small" @click="createForm.expires_at = expiryAfter(duration.hours)">{{ duration.label }}</a-button></div><p class="field-help text-gray-500 dark:text-gray-400">可指定任意未来日期。</p></div>
       </div>
     </a-modal>
 
@@ -295,17 +295,17 @@
       <div v-if="result" class="space-y-4 py-2">
         <a-alert type="warning" show-icon message="完整授权码仅在此显示，请复制保存。关闭后无法再次查看。" />
         <a-input :value="result.code" readonly class="font-mono" aria-label="新授权码" @focus="($event.target as HTMLInputElement).select()" />
-        <div class="text-sm text-gray-500">{{ accessLabel(result.access_type) }} · 到期：{{ formatTime(result.expires_at) }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">{{ accessLabel(result.access_type) }} · 到期：{{ formatTime(result.expires_at) }}</div>
         <div class="flex justify-end gap-2"><a-button @click="resultOpen = false">关闭</a-button><a-button type="primary" @click="copyCode"><template #icon><CopyOutlined /></template>复制授权码</a-button></div>
       </div>
     </a-modal>
 
     <a-modal v-model:open="editOpen" wrap-class-name="auth-codes-modal" title="编辑授权信息" :confirm-loading="saving" :cancel-button-props="{ disabled: saving }" :closable="!saving" :mask-closable="false" ok-text="保存" cancel-text="取消" @ok="saveEdit" @after-close="selected = null">
       <div class="space-y-4 py-2">
-        <div v-if="selected" class="font-mono text-gray-500">{{ selected.masked_code }}</div>
+        <div v-if="selected" class="font-mono text-gray-500 dark:text-gray-400">{{ selected.masked_code }}</div>
         <a-alert v-if="selected?.revoked_at" type="warning" show-icon message="此授权已撤销。更新到期时间不会恢复授权。" />
         <div><label for="edit-auth-remark" class="field-label">备注</label><a-input id="edit-auth-remark" v-model:value="editForm.remark" :maxlength="200" /></div>
-        <div><label for="edit-auth-expiry" class="field-label">到期时间（本地时间）</label><a-input id="edit-auth-expiry" v-model:value="editForm.expires_at" type="datetime-local" step="1" /><div class="mt-2 flex flex-wrap gap-2"><a-button v-for="duration in durationOptions" :key="duration.hours" size="small" @click="editForm.expires_at = expiryAfter(duration.hours)">从现在起 {{ duration.label }}</a-button></div><p class="field-help">可延长或缩短期限。已过期且未撤销的授权码，延长到未来后可继续使用原码。</p></div>
+        <div><label for="edit-auth-expiry" class="field-label">到期时间（本地时间）</label><a-input id="edit-auth-expiry" v-model:value="editForm.expires_at" type="datetime-local" step="1" class="[color-scheme:light] dark:[color-scheme:dark]" /><div class="mt-2 flex flex-wrap gap-2"><a-button v-for="duration in durationOptions" :key="duration.hours" size="small" @click="editForm.expires_at = expiryAfter(duration.hours)">从现在起 {{ duration.label }}</a-button></div><p class="field-help text-gray-500 dark:text-gray-400">可延长或缩短期限。已过期且未撤销的授权码，延长到未来后可继续使用原码。</p></div>
       </div>
     </a-modal>
   </div>
@@ -335,5 +335,5 @@
   }
 
   .field-label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-  .field-help { margin-top: 6px; font-size: 12px; color: #6b7280; }
+  .field-help { margin-top: 6px; font-size: 12px; }
 </style>
