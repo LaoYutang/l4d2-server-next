@@ -16,6 +16,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   @apply bg-gray-50 text-gray-900 transition-colors duration-300;
 }
 
