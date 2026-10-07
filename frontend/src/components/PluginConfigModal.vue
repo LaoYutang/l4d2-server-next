@@ -1,5 +1,6 @@
 <script setup lang="ts">
-  import { ref, watch } from 'vue';
+  import { computed, ref, watch } from 'vue';
+  import { SearchOutlined } from '@ant-design/icons-vue';
   import {
     message,
     Modal as AModal,
@@ -42,13 +43,39 @@
 
   const loading = ref(false);
   const pluginConfigs = ref<PluginConfigFile[]>([]);
+  const searchKeyword = ref('');
   const tempApplying = ref<Record<string, boolean>>({});
   const activeKey = ref<string>('');
+
+  const searchQuery = computed(() => searchKeyword.value.trim().toLowerCase());
+  const filteredPluginConfigs = computed(() => {
+    const query = searchQuery.value;
+    if (!query) return pluginConfigs.value;
+
+    return pluginConfigs.value
+      .map((file) => ({
+        ...file,
+        cvars: file.cvars.filter(
+          (cvar) =>
+            cvar.name.toLowerCase().includes(query) ||
+            cvar.description.toLowerCase().includes(query)
+        ),
+      }))
+      .filter((file) => file.cvars.length > 0);
+  });
+
+  watch(filteredPluginConfigs, (files) => {
+    const firstFile = files[0];
+    if (searchQuery.value && firstFile && !files.some((file) => file.file_name === activeKey.value)) {
+      activeKey.value = firstFile.file_name;
+    }
+  });
 
   const fetchConfigs = async () => {
     if (!props.pluginName) return;
     loading.value = true;
     pluginConfigs.value = [];
+    searchKeyword.value = '';
     activeKey.value = '';
     try {
       const configs = await api.getPluginConfigs(props.pluginName);
@@ -122,10 +149,30 @@
     >
       该插件没有找到可配置的文件，请确保插件已启用且生成了配置文件。
     </div>
-    <div v-else class="max-h-[70vh] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar">
-      <a-collapse v-model:activeKey="activeKey" accordion>
+    <div v-else>
+      <a-input
+        v-model:value="searchKeyword"
+        allow-clear
+        class="mb-4"
+        placeholder="筛选变量名或注释"
+        aria-label="筛选插件配置项"
+      >
+        <template #prefix><SearchOutlined /></template>
+      </a-input>
+      <div
+        v-if="filteredPluginConfigs.length === 0"
+        class="text-center py-8 text-gray-500 dark:text-gray-400"
+      >
+        未找到匹配的配置项
+      </div>
+      <a-collapse
+        v-else
+        v-model:activeKey="activeKey"
+        accordion
+        class="max-h-[70vh] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar"
+      >
         <a-collapse-panel
-          v-for="file in pluginConfigs"
+          v-for="file in filteredPluginConfigs"
           :key="file.file_name"
           :header="`配置文件: ${file.file_name}`"
         >
