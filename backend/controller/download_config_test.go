@@ -43,16 +43,18 @@ func newDownloadConfigTestContext(role, body string) (*gin.Context, *httptest.Re
 func TestDownloadConfigRequiresAdmin(t *testing.T) {
 	setupDownloadConfigControllerTest(t)
 
-	c, w := newDownloadConfigTestContext("guest", "")
-	GetDownloadConfig(c)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest get config status = %d, want %d", w.Code, http.StatusForbidden)
-	}
+	for _, role := range []string{"guest", "map_uploader"} {
+		c, w := newDownloadConfigTestContext(role, "")
+		GetDownloadConfig(c)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("%s get config status = %d, want %d", role, w.Code, http.StatusForbidden)
+		}
 
-	c, w = newDownloadConfigTestContext("guest", `{"steam_cdn_ip":"192.0.2.10"}`)
-	SetDownloadConfig(c)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest update config status = %d, want %d", w.Code, http.StatusForbidden)
+		c, w = newDownloadConfigTestContext(role, `{"steam_cdn_ip":"192.0.2.10"}`)
+		SetDownloadConfig(c)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("%s update config status = %d, want %d", role, w.Code, http.StatusForbidden)
+		}
 	}
 }
 

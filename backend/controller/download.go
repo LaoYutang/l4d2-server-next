@@ -13,12 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type DOWNLOAD_STATUS = uint8
@@ -31,12 +31,15 @@ const (
 )
 
 type downloadTask struct {
+	id                string          // 固定任务 ID，不受列表过滤或清理影响
+	authCodeID        string          // 地图上传与下载授权码的任务归属
 	url               string          // 下载链接
 	referer           string          // 下载请求 Referer
 	status            DOWNLOAD_STATUS // 状态
 	message           string          // 错误消息
 	progress          float64         // 进度
 	cancel            chan struct{}   // 取消信号通道
+	done              chan struct{}   // 下载和文件处理结束
 	cancelled         bool            // 标记是否已取消
 	downloadSpeed     float64         // 下载速度 (bytes/second)
 	startTime         time.Time       // 下载开始时间
@@ -61,11 +64,21 @@ func NewDownloadTaskWithFilename(url string, filename string, semaphore chan str
 }
 
 func NewDownloadTaskWithFilenameAndReferer(url string, filename string, referer string, semaphore chan struct{}) *downloadTask {
+	return newDownloadTaskForOwner(url, filename, referer, "", "", semaphore)
+}
+
+func newDownloadTaskForOwner(url, filename, referer, ownerID, taskID string, semaphore chan struct{}) *downloadTask {
+	if taskID == "" {
+		taskID = uuid.NewString()
+	}
 	res := &downloadTask{
+		id:                taskID,
+		authCodeID:        ownerID,
 		url:               url,
 		referer:           cleanDownloadHeaderValue(referer),
 		status:            DOWNLOAD_STATUS_PENDING,
 		cancel:            make(chan struct{}),
+		done:              make(chan struct{}),
 		cancelled:         false,
 		downloadSpeed:     0,
 		startTime:         time.Now(),
@@ -227,6 +240,8 @@ func (dt *downloadTask) updateSpeedPeriodically() {
 		select {
 		case <-dt.cancel:
 			return
+		case <-dt.done:
+			return
 		case <-dt.speedUpdateTimer.C:
 			dt.mu.Lock()
 			currentBytes := dt.downloadedBytes
@@ -241,6 +256,8 @@ func (dt *downloadTask) updateSpeedPeriodically() {
 
 // 执行实际的文件下载
 func (dt *downloadTask) download() {
+	defer close(dt.done)
+	defer dt.speedUpdateTimer.Stop()
 	select {
 	case <-dt.cancel:
 		dt.markFailed("下载已取消")
@@ -249,6 +266,11 @@ func (dt *downloadTask) download() {
 	}
 
 	defer func() { <-dt.semaphore }() // 释放信号量
+
+	if err := dt.validateOwner(); err != nil {
+		dt.markFailed("授权码已失效，无法开始下载")
+		return
+	}
 
 	dt.markStarted()
 
@@ -293,12 +315,15 @@ func (dt *downloadTask) download() {
 	dt.mu.Unlock()
 
 	// 创建本地文件
-	filePath := filepath.Join(consts.AddonsBasePath, "temp", fileName)
+	// Keep retry attempts isolated even when they retain the same public task ID.
+	tempDir := filepath.Join(consts.AddonsBasePath, "temp", uuid.NewString())
+	filePath := filepath.Join(tempDir, fileName)
 	err = os.MkdirAll(filepath.Dir(filePath), 0755)
 	if err != nil {
 		dt.markFailed(fmt.Sprintf("创建目录失败: %v", err))
 		return
 	}
+	defer os.RemoveAll(tempDir)
 
 	file, err := os.Create(filePath)
 	if err != nil {
@@ -390,6 +415,10 @@ func (dt *downloadTask) download() {
 	}
 
 	// 下载完成后处理文件
+	if err := dt.validateOwner(); err != nil {
+		dt.markFailed("授权码已失效，无法安装下载的地图")
+		return
+	}
 	if _, err := ProcessFile(filePath); err != nil {
 		dt.markFailed(fmt.Sprintf("文件处理失败: %v", err))
 		return
@@ -539,20 +568,32 @@ func (d *downloader) AddTaskWithFilename(url string, filename string) {
 }
 
 func (d *downloader) AddTaskWithFilenameAndReferer(url string, filename string, referer string) {
-	task := NewDownloadTaskWithFilenameAndReferer(url, filename, referer, d.semaphore)
+	d.addTaskForOwner(url, filename, referer, "")
+}
+
+func (d *downloader) addTaskForOwner(url, filename, referer, ownerID string) {
+	task := newDownloadTaskForOwner(url, filename, referer, ownerID, "", d.semaphore)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.tasks = append(d.tasks, task)
 }
 
 func (d *downloader) GetTasksInfo() []map[string]any {
+	return d.getTasksInfoForOwner("")
+}
+
+func (d *downloader) getTasksInfoForOwner(ownerID string) []map[string]any {
 	d.mu.RLock()
 	tasks := append([]*downloadTask(nil), d.tasks...)
 	d.mu.RUnlock()
 
 	tasksInfo := make([]map[string]any, 0, len(tasks))
 	for _, task := range tasks {
+		if ownerID != "" && task.authCodeID != ownerID {
+			continue
+		}
 		tasksInfo = append(tasksInfo, map[string]any{
+			"id":             task.id,
 			"url":            task.url,
 			"status":         task.GetStatus(),
 			"progress":       task.GetProgress(),
@@ -581,13 +622,17 @@ func (d *downloader) CancelTask(index int) bool {
 }
 
 func (d *downloader) ClearFinishedTasks() {
+	d.clearFinishedTasksForOwner("")
+}
+
+func (d *downloader) clearFinishedTasksForOwner(ownerID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	tasks := make([]*downloadTask, 0, len(d.tasks))
 	for _, task := range d.tasks {
 		status := task.GetStatus()
-		if status == DOWNLOAD_STATUS_IN_PROGRESS || status == DOWNLOAD_STATUS_PENDING {
+		if (ownerID != "" && task.authCodeID != ownerID) || status == DOWNLOAD_STATUS_IN_PROGRESS || status == DOWNLOAD_STATUS_PENDING {
 			tasks = append(tasks, task)
 		}
 	}
@@ -602,14 +647,18 @@ func (d *downloader) RestartTask(index int) bool {
 		return false
 	}
 
+	d.restartTaskLocked(index)
+	return true
+}
+
+func (d *downloader) restartTaskLocked(index int) {
 	originalTask := d.tasks[index]
 	taskURL := originalTask.url
 	taskFilename := originalTask.preferredFilename
 	taskReferer := originalTask.referer
 
 	originalTask.Cancel()
-	d.tasks[index] = NewDownloadTaskWithFilenameAndReferer(taskURL, taskFilename, taskReferer, d.semaphore)
-	return true
+	d.tasks[index] = newDownloadTaskForOwner(taskURL, taskFilename, taskReferer, originalTask.authCodeID, originalTask.id, d.semaphore)
 }
 
 var Downloader *downloader
@@ -687,6 +736,10 @@ func AddDownloadTask(c *gin.Context) {
 	if ok, _ := ensureUploadDiskSpace(c, 0, false); !ok {
 		return
 	}
+	ownerID, ok := downloadRequestOwner(c)
+	if !ok {
+		return
+	}
 
 	url := c.PostForm("url")
 	if url == "" {
@@ -703,35 +756,32 @@ func AddDownloadTask(c *gin.Context) {
 
 	// 识别切分多个http连接
 	urls := splitURLString(url)
+	if len(urls) == 0 {
+		FailWithError(c, http.StatusBadRequest, "没有可用的 HTTP 下载链接")
+		return
+	}
 	for _, singleURL := range urls {
-		if filename != "" && len(urls) == 1 {
-			Downloader.AddTaskWithFilenameAndReferer(singleURL, filename, referer)
-		} else if referer != "" && len(urls) == 1 {
-			Downloader.AddTaskWithFilenameAndReferer(singleURL, "", referer)
+		if len(urls) == 1 {
+			Downloader.addTaskForOwner(singleURL, filename, referer, ownerID)
 		} else {
-			Downloader.AddTask(singleURL)
+			Downloader.addTaskForOwner(singleURL, "", "", ownerID)
 		}
 	}
 	c.String(http.StatusOK, "下载任务已添加")
 }
 
 func CancelDownloadTask(c *gin.Context) {
-	indexStr := c.PostForm("index")
-	defer LogOp(c, "取消下载任务索引: "+indexStr)()
-
-	if indexStr == "" {
-		FailWithError(c, http.StatusBadRequest, "任务索引不能为空")
+	ownerID, ok := downloadRequestOwner(c)
+	if !ok {
 		return
 	}
-
-	index, err := strconv.Atoi(indexStr)
-	if err != nil {
-		FailWithError(c, http.StatusBadRequest, "任务索引格式错误")
+	taskID, ok := downloadRequestTaskID(c)
+	if !ok {
 		return
 	}
-
-	if !Downloader.CancelTask(index) {
-		FailWithError(c, http.StatusBadRequest, "任务索引超出范围")
+	defer LogOp(c, "取消下载任务: "+taskID)()
+	if err := Downloader.cancelTaskForOwner(taskID, ownerID); err != nil {
+		failDownloadTaskAccess(c, err)
 		return
 	}
 
@@ -739,32 +789,38 @@ func CancelDownloadTask(c *gin.Context) {
 }
 
 func ClearTasks(c *gin.Context) {
+	ownerID, ok := downloadRequestOwner(c)
+	if !ok {
+		return
+	}
 	defer LogOp(c, "清理已完成/失败下载任务")()
-	Downloader.ClearFinishedTasks()
+	Downloader.clearFinishedTasksForOwner(ownerID)
 	c.String(http.StatusOK, "下载任务已清空")
 }
 
 func GetDownloadTasksInfo(c *gin.Context) {
-	c.JSON(http.StatusOK, Downloader.GetTasksInfo())
+	ownerID, ok := downloadRequestOwner(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, Downloader.getTasksInfoForOwner(ownerID))
 }
 
 func RestartDownloadTask(c *gin.Context) {
-	indexStr := c.PostForm("index")
-	defer LogOp(c, "重启下载任务索引: "+indexStr)()
-
-	if indexStr == "" {
-		FailWithError(c, http.StatusBadRequest, "任务索引不能为空")
+	ownerID, ok := downloadRequestOwner(c)
+	if !ok {
 		return
 	}
-
-	index, err := strconv.Atoi(indexStr)
-	if err != nil {
-		FailWithError(c, http.StatusBadRequest, "任务索引格式错误")
+	taskID, ok := downloadRequestTaskID(c)
+	if !ok {
 		return
 	}
-
-	if !Downloader.RestartTask(index) {
-		FailWithError(c, http.StatusBadRequest, "任务索引超出范围")
+	defer LogOp(c, "重启下载任务: "+taskID)()
+	if ok, _ := ensureUploadDiskSpace(c, 0, false); !ok {
+		return
+	}
+	if err := Downloader.restartTaskForOwner(taskID, ownerID); err != nil {
+		failDownloadTaskAccess(c, err)
 		return
 	}
 

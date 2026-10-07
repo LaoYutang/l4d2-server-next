@@ -69,6 +69,7 @@ declare module 'vue' {
     DiskUsageLimitSetting: typeof import('./components/settings/DiskUsageLimitSetting.vue')['default']
     GameBlacklistTab: typeof import('./components/GameBlacklistTab.vue')['default']
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
+    MapDownloadPanel: typeof import('./components/MapDownloadPanel.vue')['default']
     MapGlobalScriptsModal: typeof import('./components/MapGlobalScriptsModal.vue')['default']
     MapHotReloadButton: typeof import('./components/MapHotReloadButton.vue')['default']
     MapHotReloadSetting: typeof import('./components/settings/MapHotReloadSetting.vue')['default']

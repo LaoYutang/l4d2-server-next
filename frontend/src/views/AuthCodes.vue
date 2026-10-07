@@ -27,7 +27,7 @@
     { label: '已过期', value: counts.value.expired },
     { label: '已撤销', value: counts.value.revoked },
   ]);
-  const accessLabel = (type: TempAccessType) => type === 'map_upload_only' ? '仅地图上传' : '临时权限';
+  const accessLabel = (type: TempAccessType) => type === 'map_upload_only' ? '仅地图上传与下载' : '临时权限';
   const formatTime = (value: string | null) => value ? new Date(value).toLocaleString() : '—';
   const statusOf = (record: AuthCodeItem): AuthCodeStatus => record.revoked_at ? 'revoked' : new Date(record.expires_at).getTime() <= clock.value + serverOffset.value ? 'expired' : 'active';
   const localTime = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
@@ -286,7 +286,7 @@
         <div><label class="field-label">生成方式</label><a-radio-group v-model:value="createForm.mode"><a-radio value="random">随机生成 32 位</a-radio><a-radio value="custom">自定义</a-radio></a-radio-group></div>
         <div v-if="createForm.mode === 'custom'"><label for="custom-auth-code" class="field-label">自定义授权码</label><a-input id="custom-auth-code" v-model:value="createForm.code" :maxlength="32" autocomplete="off" placeholder="8–32 位，区分大小写" /><p class="field-help text-gray-500 dark:text-gray-400">支持英文字母、数字和可见英文符号，不含空格，不能与现有授权码或管理员密码重复。</p></div>
         <div><label for="auth-remark" class="field-label">备注</label><a-input id="auth-remark" v-model:value="createForm.remark" :maxlength="200" placeholder="可选，如使用人或用途" /></div>
-        <div><label class="field-label">权限类型</label><a-select v-model:value="createForm.access_type" class="w-full"><a-select-option value="temporary">临时权限</a-select-option><a-select-option value="map_upload_only">仅地图上传</a-select-option></a-select><p class="field-help text-gray-500 dark:text-gray-400">临时权限沿用访客权限；仅地图上传只开放上传页面。</p></div>
+        <div><label class="field-label">权限类型</label><a-select v-model:value="createForm.access_type" class="w-full"><a-select-option value="temporary">临时权限</a-select-option><a-select-option value="map_upload_only">仅地图上传与下载</a-select-option></a-select><p class="field-help text-gray-500 dark:text-gray-400">临时权限沿用访客权限；仅地图上传与下载开放独立页面，可上传地图、管理自己的下载任务和执行地图热重载。</p></div>
         <div><label for="auth-expiry" class="field-label">到期时间（本地时间）</label><a-input id="auth-expiry" v-model:value="createForm.expires_at" type="datetime-local" step="1" class="[color-scheme:light] dark:[color-scheme:dark]" /><div class="mt-2 flex flex-wrap gap-2"><a-button v-for="duration in durationOptions" :key="duration.hours" size="small" @click="createForm.expires_at = expiryAfter(duration.hours)">{{ duration.label }}</a-button></div><p class="field-help text-gray-500 dark:text-gray-400">可指定任意未来日期。</p></div>
       </div>
     </a-modal>

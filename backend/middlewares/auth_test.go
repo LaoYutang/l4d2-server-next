@@ -92,14 +92,14 @@ func TestMapUploaderCodeAllowsOnlyExplicitRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed := []string{"/auth", "/upload/init", "/upload/chunk", "/upload/status", "/upload/merge", "/upload/cancel", "/maps/hot-reload", "/maps/hot-reload/status"}
+	allowed := []string{"/auth", "/upload/init", "/upload/chunk", "/upload/status", "/upload/merge", "/upload/cancel", "/maps/hot-reload", "/maps/hot-reload/status", "/download/add", "/download/list", "/download/cancel", "/download/restart", "/download/clear", "/download/link/parse"}
 	for _, path := range allowed {
 		response, role := runAuthTestRequest(t, "POST", path, created.Code)
 		if response.Code != 200 || role != RoleMapUploader {
 			t.Fatalf("allowed %s: %d %s", path, response.Code, role)
 		}
 	}
-	denied := []string{"/list", "/clear", "/remove", "/maps/hot-reload/config", "/maps/queue/add", "/maps/queue/snapshot", "/rcon/getstatus", "/download/list", "/plugins/list", "/auth-codes/list", "/auth-codes/create"}
+	denied := []string{"/list", "/clear", "/remove", "/maps/hot-reload/config", "/maps/queue/add", "/maps/queue/snapshot", "/rcon/getstatus", "/download/config", "/download/config/update", "/plugins/list", "/auth-codes/list", "/auth-codes/create"}
 	for _, path := range denied {
 		response, _ := runAuthTestRequest(t, "POST", path, created.Code)
 		if response.Code != 403 {

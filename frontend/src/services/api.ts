@@ -297,6 +297,19 @@ export interface DownloadConfig {
   steam_cdn_ip: string;
 }
 
+export interface DownloadTask {
+  id: string;
+  url: string;
+  filename: string;
+  status: 0 | 1 | 2 | 3;
+  progress: number;
+  message: string;
+  downloadSpeed: number;
+  formattedSpeed: string;
+  totalSize: number;
+  formattedSize: string;
+}
+
 export interface SteamCDNIPEntry {
   ip: string;
   category: string;
@@ -1642,7 +1655,7 @@ class ApiService {
     return response.json();
   }
 
-  async getDownloadTasks() {
+  async getDownloadTasks(): Promise<DownloadTask[]> {
     const response = await this.post('/download/list');
     if (!response.ok) throw new Error(await response.text());
     try {
@@ -1744,9 +1757,9 @@ class ApiService {
     return response.json();
   }
 
-  async restartDownloadTask(index: number) {
+  async restartDownloadTask(id: string) {
     const fd = new FormData();
-    fd.append('index', index.toString());
+    fd.append('id', id);
     const response = await fetch('/download/restart', {
       method: 'POST',
       headers: this.createAuthHeaders(),
@@ -1757,9 +1770,9 @@ class ApiService {
     return response.text();
   }
 
-  async cancelDownloadTask(index: number) {
+  async cancelDownloadTask(id: string) {
     const fd = new FormData();
-    fd.append('index', index.toString());
+    fd.append('id', id);
     const response = await fetch('/download/cancel', {
       method: 'POST',
       headers: this.createAuthHeaders(),

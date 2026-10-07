@@ -167,7 +167,7 @@
             class="rounded-lg border border-gray-200 bg-gray-50/80 p-3 text-xs leading-5 text-gray-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-gray-300"
           >
             <div>默认值 {{ defaultPercent }}%，可直接输入 {{ minPercent }} - {{ maxPercent }} 之间的整数。</div>
-            <div>超过上限时，管理员会看到二次确认提示，确认后仍可继续上传；游客和“仅地图上传”授权码会被直接拒绝。</div>
+            <div>超过上限时，管理员会看到二次确认提示，确认后仍可继续上传；游客和“仅地图上传与下载”授权码会被直接拒绝。</div>
             <div>添加下载任务超过上限时一律拒绝，不提供二次确认。</div>
             <div>剩余空间不足以下载或解压文件时（低于文件大小的 2 倍），任何角色都无法继续。</div>
           </div>

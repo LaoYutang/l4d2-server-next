@@ -40,6 +40,12 @@ var mapUploaderAllowedRequests = map[string]struct{}{
 	http.MethodPost + " /upload/cancel":          {},
 	http.MethodPost + " /maps/hot-reload":        {},
 	http.MethodPost + " /maps/hot-reload/status": {},
+	http.MethodPost + " /download/add":           {},
+	http.MethodPost + " /download/list":          {},
+	http.MethodPost + " /download/cancel":        {},
+	http.MethodPost + " /download/restart":       {},
+	http.MethodPost + " /download/clear":         {},
+	http.MethodPost + " /download/link/parse":    {},
 }
 
 func Auth() gin.HandlerFunc {
@@ -94,7 +100,7 @@ func Auth() gin.HandlerFunc {
 			mutex.Unlock()
 			c.Set("role", role)
 			if role == RoleMapUploader && !isMapUploaderRequestAllowed(c.Request.Method, c.Request.URL.Path) {
-				c.String(http.StatusForbidden, "该授权码仅允许上传和热重载地图")
+				c.String(http.StatusForbidden, "该授权码仅允许上传、下载和热重载地图")
 				c.Abort()
 				return
 			}
