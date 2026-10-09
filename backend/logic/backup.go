@@ -42,9 +42,9 @@ type BackupAdmin struct {
 }
 
 type BackupServerInfo struct {
-	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty"`
-	Motd     string `yaml:"motd,omitempty" json:"motd,omitempty"`
-	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
+	Hostname string `yaml:"hostname" json:"hostname"`
+	Motd     string `yaml:"motd" json:"motd"`
+	Host     string `yaml:"host" json:"host"`
 }
 
 type BackupServerConfig struct {
@@ -62,7 +62,7 @@ type BackupEntry struct {
 	Name         string              `yaml:"name" json:"name"`
 	CreatedAt    int64               `yaml:"created_at" json:"created_at"`
 	Plugins      []BackupPlugin      `yaml:"plugins" json:"plugins"`
-	Admins       []BackupAdmin       `yaml:"admins,omitempty" json:"admins,omitempty"`
+	Admins       *[]BackupAdmin      `yaml:"admins,omitempty" json:"admins,omitempty"`
 	ServerInfo   *BackupServerInfo   `yaml:"server_info,omitempty" json:"server_info,omitempty"`
 	ServerConfig *BackupServerConfig `yaml:"server_config,omitempty" json:"server_config,omitempty"`
 }
@@ -115,11 +115,15 @@ func ListBackups() ([]BackupInfo, error) {
 
 	infos := make([]BackupInfo, 0, len(config.Backups))
 	for _, b := range config.Backups {
+		adminCount := 0
+		if b.Admins != nil {
+			adminCount = len(*b.Admins)
+		}
 		infos = append(infos, BackupInfo{
 			Name:            b.Name,
 			CreatedAt:       b.CreatedAt,
 			PluginCount:     len(b.Plugins),
-			AdminCount:      len(b.Admins),
+			AdminCount:      adminCount,
 			HasServerInfo:   b.ServerInfo != nil,
 			HasServerConfig: b.ServerConfig != nil,
 		})
@@ -164,7 +168,7 @@ func GetBackupAdminsDetail(name string) ([]BackupAdmin, error) {
 	if entry.Admins == nil {
 		return []BackupAdmin{}, nil
 	}
-	return entry.Admins, nil
+	return *entry.Admins, nil
 }
 
 func GetBackupServerInfoDetail(name string) (*BackupServerInfo, error) {
@@ -257,12 +261,21 @@ func CreateBackup(name string) error {
 		})
 	}
 
+	admins, err := captureAdmins()
+	if err != nil {
+		return fmt.Errorf("备份管理员列表失败: %w", err)
+	}
+	serverInfo, err := captureServerInfo()
+	if err != nil {
+		return fmt.Errorf("备份服务器信息失败: %w", err)
+	}
+
 	entry := BackupEntry{
 		Name:         name,
 		CreatedAt:    time.Now().Unix(),
 		Plugins:      backupPlugins,
-		Admins:       captureAdmins(),
-		ServerInfo:   captureServerInfo(),
+		Admins:       admins,
+		ServerInfo:   serverInfo,
 		ServerConfig: captureServerConfig(),
 	}
 
@@ -402,13 +415,17 @@ func RestoreBackup(name string) (*RestoreResult, error) {
 	}
 
 	// Restore admin list
-	if len(target.Admins) > 0 {
-		restoreAdminsToFile(target.Admins)
+	if target.Admins != nil {
+		if err := restoreAdminsToFile(*target.Admins); err != nil {
+			return nil, fmt.Errorf("恢复管理员列表失败: %w", err)
+		}
 	}
 
 	// Restore server info
 	if target.ServerInfo != nil {
-		restoreServerInfoToFiles(target.ServerInfo)
+		if err := restoreServerInfoToFiles(target.ServerInfo); err != nil {
+			return nil, fmt.Errorf("恢复服务器信息失败: %w", err)
+		}
 	}
 
 	// Restore server config
@@ -513,15 +530,18 @@ func getStoreOriginalConfigs(pluginName string) map[string]map[string]string {
 	return result
 }
 
-// captureAdmins reads the current admin list for backup. Returns nil on error or
-// when the admin file doesn't exist (SourceMod not enabled).
-func captureAdmins() []BackupAdmin {
+// captureAdmins records an explicit empty list when the admin file is absent.
+// A nil pointer is reserved for older backups that did not capture admins.
+func captureAdmins() (*[]BackupAdmin, error) {
+	if _, err := os.Stat(getAdminsFilePath()); os.IsNotExist(err) {
+		admins := []BackupAdmin{}
+		return &admins, nil
+	} else if err != nil {
+		return nil, err
+	}
 	admins, err := ParseAdminsSimple()
 	if err != nil {
-		return nil
-	}
-	if len(admins) == 0 {
-		return nil
+		return nil, err
 	}
 	result := make([]BackupAdmin, 0, len(admins))
 	for _, a := range admins {
@@ -530,50 +550,40 @@ func captureAdmins() []BackupAdmin {
 			Remark:  a.Remark,
 		})
 	}
-	return result
+	return &result, nil
 }
 
-// captureServerInfo reads hostname, motd and host for backup.
-func captureServerInfo() *BackupServerInfo {
+// captureServerInfo records all three fields, treating absent files as empty.
+// Other read errors must not turn unknown content into an empty snapshot.
+func captureServerInfo() (*BackupServerInfo, error) {
 	info := &BackupServerInfo{}
-	hasData := false
-
-	hostnamePath := filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt")
-	motdPath := filepath.Join(consts.GamePath, "motd.txt")
-	hostPath := filepath.Join(consts.GamePath, "host.txt")
-
-	if data, err := os.ReadFile(hostnamePath); err == nil {
-		info.Hostname = string(data)
-		hasData = true
+	for _, file := range []struct {
+		path    string
+		content *string
+	}{
+		{filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt"), &info.Hostname},
+		{filepath.Join(consts.GamePath, "motd.txt"), &info.Motd},
+		{filepath.Join(consts.GamePath, "host.txt"), &info.Host},
+	} {
+		data, err := os.ReadFile(file.path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		*file.content = string(data)
 	}
-	if data, err := os.ReadFile(motdPath); err == nil {
-		info.Motd = string(data)
-		hasData = true
-	}
-	if data, err := os.ReadFile(hostPath); err == nil {
-		info.Host = string(data)
-		hasData = true
-	}
-
-	if !hasData {
-		return nil
-	}
-	return info
+	return info, nil
 }
 
 // restoreAdminsToFile overwrites the admins_simple.ini file with backed-up admins,
 // preserving any header comment lines at the top of the file.
-func restoreAdminsToFile(admins []BackupAdmin) {
+func restoreAdminsToFile(admins []BackupAdmin) error {
 	path := getAdminsFilePath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		fmt.Println("Warning: admins_simple.ini not found, skipping admin restore")
-		return
-	}
-
 	content, err := os.ReadFile(path)
-	if err != nil {
-		fmt.Printf("Warning: failed to read admins file: %v\n", err)
-		return
+	if err != nil && !os.IsNotExist(err) {
+		return err
 	}
 
 	lines := strings.Split(string(content), "\n")
@@ -601,32 +611,37 @@ func restoreAdminsToFile(admins []BackupAdmin) {
 		}
 	}
 
-	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
-		fmt.Printf("Warning: failed to write admins file: %v\n", err)
-	}
+	return restoreBackupFile(path, []byte(sb.String()))
 }
 
 // restoreServerInfoToFiles writes backed-up server info back to the respective files.
-func restoreServerInfoToFiles(info *BackupServerInfo) {
-	hostnamePath := filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt")
-	motdPath := filepath.Join(consts.GamePath, "motd.txt")
-	hostPath := filepath.Join(consts.GamePath, "host.txt")
+func restoreServerInfoToFiles(info *BackupServerInfo) error {
+	for _, file := range []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(consts.GamePath, "addons", "sourcemod", "configs", "l4d2_hostname.txt"), info.Hostname},
+		{filepath.Join(consts.GamePath, "motd.txt"), info.Motd},
+		{filepath.Join(consts.GamePath, "host.txt"), info.Host},
+	} {
+		if err := restoreBackupFile(file.path, []byte(file.content)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	if info.Hostname != "" {
-		if err := os.WriteFile(hostnamePath, []byte(info.Hostname), 0644); err != nil {
-			fmt.Printf("Warning: failed to restore hostname: %v\n", err)
-		}
+func restoreBackupFile(path string, content []byte) error {
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	if info.Motd != "" {
-		if err := os.WriteFile(motdPath, []byte(info.Motd), 0644); err != nil {
-			fmt.Printf("Warning: failed to restore motd: %v\n", err)
-		}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
 	}
-	if info.Host != "" {
-		if err := os.WriteFile(hostPath, []byte(info.Host), 0644); err != nil {
-			fmt.Printf("Warning: failed to restore host: %v\n", err)
-		}
-	}
+	return atomicWriteFile(path, content, mode)
 }
 
 // captureServerConfig reads the current server.cfg managed fields for backup.
