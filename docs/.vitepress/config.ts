@@ -9,16 +9,21 @@ export default defineConfig({
   sitemap: {
     hostname: 'https://l4d2-manage-docs.laoyutang.cn'
   },
-  head: [['meta', { name: 'theme-color', content: '#2563eb' }]],
+  head: [
+    ['meta', { name: 'theme-color', content: '#2563eb' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }]
+  ],
   themeConfig: {
     logo: '/logo.png',
     nav: [
       { text: '快速开始', link: '/guide/quick-start' },
-      { text: '部署配置', link: '/guide/linux' },
-      { text: '功能指南', link: '/features/dashboard' },
-      { text: '运维手册', link: '/operations/plugin-package' },
-      { text: 'GitHub', link: 'https://github.com/LaoYutang/l4d2-server-next' }
+      { text: '功能指南', link: '/features/dashboard' }
     ],
+    footer: {
+      message: 'L4D2 Server Next · 使用手册'
+    },
+    darkModeSwitchTitle: '切换到深色模式',
+    lightModeSwitchTitle: '切换到浅色模式',
     sidebar: [
       {
         text: '开始使用',
