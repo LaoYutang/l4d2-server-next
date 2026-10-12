@@ -22,4 +22,6 @@ type AuthCode struct {
 type AuthCodeState struct {
 	ID                  uint `gorm:"primaryKey"`
 	LastSelfServiceTime time.Time
+	// Preserve the last grant time when revocation releases its cooldown.
+	SelfServiceCooldownCleared bool `gorm:"not null;default:false"`
 }

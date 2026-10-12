@@ -167,7 +167,7 @@
         busy.value = true;
         try {
           message.success(await action());
-          await loadRecords();
+          await refresh();
         } catch (error) {
           message.error(errorMessage(error));
           throw error;
@@ -175,7 +175,7 @@
       },
     });
   };
-  const revoke = (record: AuthCodeItem) => confirmMutation('撤销授权', `撤销「${record.remark || record.masked_code}」后将立即失效，记录会保留。撤销后调整到期时间也不会恢复授权。`, async () => { await api.revokeAuthCode(record.id); return '授权已撤销'; });
+  const revoke = (record: AuthCodeItem) => confirmMutation('撤销授权', `撤销「${record.remark || record.masked_code}」后将立即失效，记录会保留。撤销后调整到期时间也不会恢复授权。${record.source === 'self_service' ? '若这是最近领取的自助码，撤销后会解除冷却，允许立即领取新码。' : ''}`, async () => { await api.revokeAuthCode(record.id); return '授权已撤销'; });
   const remove = (record: AuthCodeItem) => confirmMutation('删除授权码', `删除「${record.remark || record.masked_code}」后将立即失效，授权记录会移除，操作审计会保留。`, async () => { await api.deleteAuthCode(record.id); return '授权码已删除'; });
   const cleanup = () => confirmMutation('清理全部过期授权码', `将删除服务器当前已过期的授权记录（当前约 ${cleanupCount.value} 条），包含已撤销且过期的记录。此操作不受列表筛选限制，审计会保留。`, async () => { const response = await api.cleanupExpiredAuthCodes(); return `已清理 ${response.deleted_count} 条过期授权码`; });
 
@@ -219,7 +219,7 @@
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="font-medium">登录页自助授权</div>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">开启后，访客可领取有效期为 1 小时的临时授权码，每次领取后全局冷却 1 小时。</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">开启后，访客可领取有效期为 1 小时的临时授权码，每次领取后全局冷却 1 小时。撤销最近领取的自助码后可立即重新领取。</p>
           <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
             <template v-if="!selfService">状态暂不可用</template>
             <template v-else-if="remainingSeconds">冷却剩余 {{ cooldownLabel }}</template>

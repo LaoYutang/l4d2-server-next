@@ -218,26 +218,16 @@
       >
         <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
           <div
-            class="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-bold mb-2 text-sm"
+            class="flex items-center justify-between gap-2 text-blue-700 dark:text-blue-300 font-bold mb-2 text-sm"
           >
-            <KeyOutlined />
-            自助授权通道
+            <span class="flex items-center gap-2"><KeyOutlined />自助授权通道</span>
+            <a-button type="link" size="small" :disabled="selfServiceLoading" @click="fetchSelfServiceStatus">刷新领取状态</a-button>
           </div>
 
           <div v-if="!selfServiceCooldown && !selfServiceCode">
             <p class="text-xs text-blue-600/80 dark:text-blue-400/80 mb-3">
               可申请 1 小时有效期的临时访问权限。
             </p>
-            <a-button
-              type="primary"
-              ghost
-              size="small"
-              block
-              @click="generateSelfServiceCode"
-              :loading="selfServiceLoading"
-            >
-              获取临时授权码
-            </a-button>
           </div>
 
           <div v-else-if="selfServiceCode">
@@ -266,7 +256,7 @@
 
           <div v-else class="text-center">
             <p class="text-xs text-orange-600 dark:text-orange-400 mb-2 font-medium">
-              仍在上次授权时效内
+              自助授权领取冷却中
             </p>
             <div
               class="flex items-center justify-center gap-2 text-xl font-mono font-bold text-gray-700 dark:text-gray-300"
@@ -275,6 +265,18 @@
               {{ formatTime(selfServiceRemaining) }}
             </div>
           </div>
+          <a-button
+            v-if="!selfServiceCooldown"
+            type="primary"
+            ghost
+            size="small"
+            block
+            class="mt-3"
+            @click="generateSelfServiceCode"
+            :loading="selfServiceLoading"
+          >
+            {{ selfServiceCode ? '获取新的临时授权码' : '获取临时授权码' }}
+          </a-button>
         </div>
       </div>
     </a-card>

@@ -3,12 +3,15 @@ package logic
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"l4d2-manager-next/model"
 )
 
 func testAuthCodeStore(t *testing.T) *AuthCodeStore {
@@ -265,6 +268,149 @@ func TestAuthCodeFailedWriteDoesNotChangeRuntimeState(t *testing.T) {
 	}
 }
 
+func TestAuthCodeSelfServiceRevocationReleasesCooldown(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
+			setupManagerConfigTest(t)
+			if err := SetSelfServiceEnable(true); err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			databasePath, keyPath := filepath.Join(dir, "auth.db"), filepath.Join(dir, "auth.key")
+			store, err := OpenAuthCodeStore(databasePath, keyPath, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { store.Close() })
+			now := time.Now().UTC()
+			store.now = func() time.Time { return now }
+			issued, err := store.GenerateSelfService()
+			if err != nil {
+				t.Fatal(err)
+			}
+			now = now.Add(20 * time.Minute)
+			if _, err := store.Revoke(issued.ID); err != nil {
+				t.Fatal(err)
+			}
+			if restart {
+				if err := store.Close(); err != nil {
+					t.Fatal(err)
+				}
+				reopened, err := OpenAuthCodeStore(databasePath, keyPath, issued.CreatedAt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				store = reopened
+				store.now = func() time.Time { return now }
+			}
+			status, err := store.SelfServiceStatus()
+			if err != nil || !status.Enabled || status.InCooldown || status.RemainingSeconds != 0 || !status.LastGeneratedTime.Equal(issued.CreatedAt) {
+				t.Fatalf("cooldown after revocation: %+v %v", status, err)
+			}
+			if _, err := store.Authenticate(issued.Code); !errors.Is(err, ErrAuthInvalid) {
+				t.Fatalf("revoked credential accepted: %v", err)
+			}
+			replacement, err := store.GenerateSelfService()
+			if err != nil {
+				t.Fatalf("immediate replacement: %v", err)
+			}
+			if replacement.ID == issued.ID || replacement.Code == issued.Code || replacement.ExpiresAt.Sub(now) != time.Hour {
+				t.Fatal("replacement did not receive a new one-hour authorization")
+			}
+			if _, err := store.Authenticate(replacement.Code); err != nil {
+				t.Fatal(err)
+			}
+			status, err = store.SelfServiceStatus()
+			if err != nil || !status.InCooldown || status.RemainingSeconds != 3600 || !status.LastGeneratedTime.Equal(now) {
+				t.Fatalf("replacement cooldown: %+v %v", status, err)
+			}
+			var cooldown *AuthCooldownError
+			if _, err := store.GenerateSelfService(); !errors.As(err, &cooldown) {
+				t.Fatalf("replacement did not restart cooldown: %v", err)
+			}
+		})
+	}
+}
+
+func TestAuthCodeSelfServiceRevocationPreservesOtherCooldowns(t *testing.T) {
+	store := testAuthCodeStore(t)
+	setupManagerConfigTest(t)
+	if err := SetSelfServiceEnable(true); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	store.now = func() time.Time { return now }
+	older, err := store.GenerateSelfService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Hour)
+	latest, err := store.GenerateSelfService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manual, err := store.Create(CreateAuthCodeRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{manual.ID, older.ID} {
+		if _, err := store.Revoke(id); err != nil {
+			t.Fatal(err)
+		}
+		status, err := store.SelfServiceStatus()
+		if err != nil || !status.InCooldown || status.RemainingSeconds != 3600 {
+			t.Fatalf("unrelated revocation released cooldown: %+v %v", status, err)
+		}
+	}
+	if _, err := store.Revoke(latest.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GenerateSelfService(); err != nil {
+		t.Fatal(err)
+	}
+	// Repeating an old revocation must not release the replacement's cooldown.
+	if _, err := store.Revoke(latest.ID); err != nil {
+		t.Fatal(err)
+	}
+	var cooldown *AuthCooldownError
+	if _, err := store.GenerateSelfService(); !errors.As(err, &cooldown) {
+		t.Fatalf("repeated revocation released a new cooldown: %v", err)
+	}
+}
+
+func TestAuthCodeSelfServiceRevocationRollsBackOnCooldownWriteFailure(t *testing.T) {
+	store := testAuthCodeStore(t)
+	setupManagerConfigTest(t)
+	if err := SetSelfServiceEnable(true); err != nil {
+		t.Fatal(err)
+	}
+	issued, err := store.GenerateSelfService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.database.Exec(`CREATE TRIGGER reject_cooldown_update BEFORE UPDATE ON auth_code_states
+		BEGIN SELECT RAISE(ABORT, 'cooldown update rejected'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Revoke(issued.ID); !errors.Is(err, ErrAuthUnavailable) {
+		t.Fatalf("revocation error: %v", err)
+	}
+	if _, err := store.Authenticate(issued.Code); err != nil {
+		t.Fatalf("failed revocation changed cached authorization: %v", err)
+	}
+	var persisted model.AuthCode
+	if err := store.database.First(&persisted, "id = ?", issued.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.RevokedAt != nil {
+		t.Fatal("failed cooldown update committed revocation")
+	}
+	status, err := store.SelfServiceStatus()
+	if err != nil || !status.InCooldown {
+		t.Fatalf("failed revocation released cooldown: %+v %v", status, err)
+	}
+}
+
 func TestAuthCodeMissingKeyIsNotRegenerated(t *testing.T) {
 	dir := t.TempDir()
 	databasePath, keyPath := filepath.Join(dir, "auth.db"), filepath.Join(dir, "auth.key")
@@ -284,7 +430,7 @@ func TestAuthCodeMissingKeyIsNotRegenerated(t *testing.T) {
 	}
 }
 
-func TestAuthCodeSelfServiceCooldownPersistsAfterDeletionAndRestart(t *testing.T) {
+func TestAuthCodeSelfServiceCooldownPersistsAfterMigrationDeletionAndRestart(t *testing.T) {
 	setupManagerConfigTest(t)
 	if err := SetSelfServiceEnable(true); err != nil {
 		t.Fatal(err)
@@ -301,12 +447,21 @@ func TestAuthCodeSelfServiceCooldownPersistsAfterDeletionAndRestart(t *testing.T
 	if err != nil || !status.InCooldown || status.RemainingSeconds < 1790 {
 		t.Fatalf("initial cooldown: %+v %v", status, err)
 	}
+	// Reopening a database from the previous schema must preserve its cooldown.
+	if err := store.database.Migrator().DropColumn(&model.AuthCodeState{}, "SelfServiceCooldownCleared"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 	store, err = OpenAuthCodeStore(databasePath, keyPath, time.Time{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	status, err = store.SelfServiceStatus()
+	if err != nil || !status.InCooldown || status.RemainingSeconds < 1790 {
+		store.Close()
+		t.Fatalf("migrated cooldown: %+v %v", status, err)
 	}
 	now := time.Now().UTC().Add(31 * time.Minute)
 	store.now = func() time.Time { return now }

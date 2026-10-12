@@ -101,13 +101,14 @@ type AuthCodeStore struct {
 	database *gorm.DB
 	key      []byte
 	// Writers serialize commit and publication; authentication never waits on disk IO.
-	writeMu             sync.Mutex
-	mu                  sync.RWMutex
-	byID                map[string]model.AuthCode
-	byFingerprint       map[string]string
-	lastSelfServiceTime time.Time
-	closed              bool
-	now                 func() time.Time
+	writeMu                    sync.Mutex
+	mu                         sync.RWMutex
+	byID                       map[string]model.AuthCode
+	byFingerprint              map[string]string
+	lastSelfServiceTime        time.Time
+	selfServiceCooldownCleared bool
+	closed                     bool
+	now                        func() time.Time
 }
 
 func GetAuthCodeStore() *AuthCodeStore                     { return defaultAuthCodes.Load() }
@@ -149,6 +150,7 @@ func OpenAuthCodeStore(databasePath, keyPath string, lastSelfServiceTime time.Ti
 		return nil, err
 	}
 	store.lastSelfServiceTime = state.LastSelfServiceTime
+	store.selfServiceCooldownCleared = state.SelfServiceCooldownCleared
 	return store, nil
 }
 
@@ -441,10 +443,37 @@ func (s *AuthCodeStore) Revoke(id string) (AuthCodeItem, error) {
 	if record.RevokedAt == nil {
 		now := s.now().UTC()
 		record.RevokedAt = &now
-		if err := s.database.Model(&model.AuthCode{}).Where("id = ?", id).Update("revoked_at", now).Error; err != nil {
+		clearCooldown := false
+		err := s.database.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&model.AuthCode{}).Where("id = ?", id).Update("revoked_at", now).Error; err != nil {
+				return err
+			}
+			if record.Source != "self_service" {
+				return nil
+			}
+			var state model.AuthCodeState
+			if err := tx.First(&state, 1).Error; err != nil {
+				return err
+			}
+			// An older grant must not release a newer grant's cooldown.
+			if !state.LastSelfServiceTime.Equal(record.CreatedAt) {
+				return nil
+			}
+			if err := tx.Model(&state).Update("self_service_cooldown_cleared", true).Error; err != nil {
+				return err
+			}
+			clearCooldown = true
+			return nil
+		})
+		if err != nil {
 			return AuthCodeItem{}, fmt.Errorf("%w: %v", ErrAuthUnavailable, err)
 		}
-		s.publish(record)
+		s.mu.Lock()
+		s.byID[record.ID] = record
+		if clearCooldown {
+			s.selfServiceCooldownCleared = true
+		}
+		s.mu.Unlock()
 	}
 	return authCodeItem(record, s.now()), nil
 }
@@ -591,10 +620,11 @@ func (s *AuthCodeStore) SelfServiceStatus() (SelfServiceStatus, error) {
 	}
 	s.mu.RLock()
 	last := s.lastSelfServiceTime
+	cleared := s.selfServiceCooldownCleared
 	s.mu.RUnlock()
 	status := SelfServiceStatus{Enabled: GetSelfServiceConfig().EnableSelfService, LastGeneratedTime: last}
 	remaining := time.Hour - s.now().Sub(last)
-	if status.Enabled && remaining > 0 {
+	if status.Enabled && !cleared && remaining > 0 {
 		status.InCooldown = true
 		status.RemainingSeconds = int((remaining + time.Second - 1) / time.Second)
 	}
@@ -623,13 +653,16 @@ func (s *AuthCodeStore) GenerateSelfService() (CreatedAuthCode, error) {
 			return err
 		}
 		remaining := time.Hour - record.CreatedAt.Sub(state.LastSelfServiceTime)
-		if remaining > 0 {
+		if !state.SelfServiceCooldownCleared && remaining > 0 {
 			return &AuthCooldownError{int((remaining + time.Second - 1) / time.Second)}
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
-		return tx.Model(&state).Update("last_self_service_time", record.CreatedAt).Error
+		return tx.Model(&state).Updates(map[string]any{
+			"last_self_service_time":        record.CreatedAt,
+			"self_service_cooldown_cleared": false,
+		}).Error
 	})
 	if err != nil {
 		var cooldown *AuthCooldownError
@@ -642,6 +675,7 @@ func (s *AuthCodeStore) GenerateSelfService() (CreatedAuthCode, error) {
 	s.byID[record.ID] = record
 	s.byFingerprint[record.Fingerprint] = record.ID
 	s.lastSelfServiceTime = record.CreatedAt
+	s.selfServiceCooldownCleared = false
 	s.mu.Unlock()
 	return CreatedAuthCode{AuthCodeItem: authCodeItem(record, s.now()), Code: code}, nil
 }
