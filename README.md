@@ -22,6 +22,8 @@
 
 Linux 一键脚本：
 
+请使用 root 用户运行（普通用户可先执行 `sudo -i`），再运行以下命令：
+
 ```sh
 bash <(curl -sL l4d2-manage.laoyutang.cn)
 ```

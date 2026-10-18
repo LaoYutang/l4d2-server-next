@@ -6,6 +6,8 @@ Linux 下推荐优先使用一键脚本。需要完全掌控配置时，可以�
 
 适合新机器或多实例场景。脚本位于 `manifest/install/manage.sh`，支持安装、管理、更新和删除实例。
 
+请使用 root 用户运行（普通用户可先执行 `sudo -i`），再运行以下命令：
+
 ```sh
 bash <(curl -sL l4d2-manage.laoyutang.cn)
 ```
@@ -15,6 +17,10 @@ bash <(curl -sL l4d2-manage.laoyutang.cn)
 ```sh
 bash <(curl -sL https://raw.githubusercontent.com/LaoYutang/l4d2-server-next/master/manifest/install/manage.sh)
 ```
+
+一键脚本当前版本为 **1.1.0**。配置确认接受 `Y` 和 `y`；`[Y/n]` 的空回车表示确认，`[y/N]` 的空回车表示取消。输入读取失败或关闭时会停止操作，不会当作默认确认。请保留上面的进程替换写法，不要改成 `curl … | bash`，否则脚本文本会占用交互输入。
+
+目录创建、配置写入、进入部署目录或 Docker Compose 启动失败时，脚本会停止并保留原始错误输出，不再立即返回主菜单清屏。按错误提示修复后可重新运行；这只是安装脚本的版本，不改变面板应用版本。
 
 脚本会生成 Docker Compose 配置，并持久化游戏数据、插件目录和管理器数据。
 

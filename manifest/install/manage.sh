@@ -6,7 +6,7 @@
 set -o pipefail
 
 # ─── 常量 ───
-readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_VERSION="1.1.0"
 readonly BASE_DIR="/data/l4d2"
 readonly CONFIG_DIR="${BASE_DIR}/.config"
 readonly INSTANCE_DIR="${CONFIG_DIR}/instances"
@@ -79,12 +79,24 @@ print_error()   { echo -e "  ${RED}✘ $1${NC}"; }
 print_warn()    { echo -e "  ${YELLOW}⚠ $1${NC}"; }
 print_info()    { echo -e "  ${BLUE}➜ $1${NC}"; }
 
-# 确认操作 (返回 0=是, 1=否)
+# 致命错误后退出，避免返回菜单时清屏覆盖原始错误。
+fatal_error() {
+    print_error "$1" >&2
+    print_info "操作已停止，保留上方错误信息；修复后请重新运行脚本。" >&2
+    exit 1
+}
+
+require_root() {
+    [[ "$(id -u)" == "0" ]] || fatal_error "请使用 root 用户运行；可先执行 sudo -i，再运行一键脚本。"
+}
+
+# 确认操作 (返回 0=是, 1=否；读取失败时退出)
 confirm() {
-    local prompt="$1" default="${2:-n}"
+    local prompt="$1" default="${2:-n}" answer
     local yn="y/N"
     [[ "$default" == "y" ]] && yn="Y/n"
-    read -r -p "$(echo -e "  ${YELLOW}? ${NC}${prompt} [${yn}]: ")" answer
+    read -r -p "$(echo -e "  ${YELLOW}? ${NC}${prompt} [${yn}]: ")" answer || fatal_error "输入读取失败或已结束，已取消当前操作。"
+    answer="${answer%$'\r'}"
     answer="${answer:-$default}"
     [[ "$answer" =~ ^[Yy]$ ]]
 }
@@ -93,10 +105,10 @@ confirm() {
 read_input() {
     local prompt="$1" default="$2" result
     if [[ -n "$default" ]]; then
-        read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt} ${DIM}(默认: ${default})${NC}: ")" result
+        read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt} ${DIM}(默认: ${default})${NC}: ")" result || fatal_error "输入读取失败或已结束，已取消当前操作。"
         echo "${result:-$default}"
     else
-        read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" result
+        read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" result || fatal_error "输入读取失败或已结束，已取消当前操作。"
         echo "$result"
     fi
 }
@@ -105,9 +117,9 @@ read_input() {
 read_password() {
     local prompt="$1" pass1 pass2
     while true; do
-        read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" pass1
+        read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" pass1 || fatal_error "输入读取失败或已结束，已取消当前操作。"
         echo >&2
-        read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}请确认密码: ")" pass2
+        read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}请确认密码: ")" pass2 || fatal_error "输入读取失败或已结束，已取消当前操作。"
         echo >&2
         if [[ "$pass1" == "$pass2" ]]; then
             if [[ -z "$pass1" ]]; then
@@ -123,7 +135,7 @@ read_password() {
 
 press_enter() {
     echo ""
-    read -r -p "$(echo -e "  ${DIM}按 Enter 键继续...${NC}")"
+    read -r -p "$(echo -e "  ${DIM}按 Enter 键继续...${NC}")" || fatal_error "输入已关闭，退出管理工具。"
 }
 
 # ═══════════════════════════════════════════
@@ -131,7 +143,7 @@ press_enter() {
 # ═══════════════════════════════════════════
 
 ensure_dirs() {
-    mkdir -p "$CONFIG_DIR" "$INSTANCE_DIR"
+    mkdir -p "$CONFIG_DIR" "$INSTANCE_DIR" || fatal_error "无法创建配置目录：${INSTANCE_DIR}"
 }
 
 # 索引 → 实例名 (0=l4d2, 1=l4d2-1, 2=l4d2-2 ...)
@@ -205,7 +217,7 @@ save_instance_config() {
         printf 'BIND_MOUNT=%s\n' "${BIND_MOUNT:-false}"
         printf 'BIND_DATA_DIR=%q\n' "${BIND_DATA_DIR:-}"
         printf 'BIND_PLUGINS_DIR=%q\n' "${BIND_PLUGINS_DIR:-}"
-    } > "$conf"
+    } > "$conf" || fatal_error "保存实例配置失败：${conf}"
 }
 
 # 加载镜像加速源配置
@@ -228,7 +240,7 @@ normalize_mirror_url() {
 # 保存镜像加速源配置
 save_mirror() {
     MIRROR_URL=$(normalize_mirror_url "$MIRROR_URL")
-    printf 'MIRROR_URL=%q\n' "$MIRROR_URL" > "$MIRROR_CONF"
+    printf 'MIRROR_URL=%q\n' "$MIRROR_URL" > "$MIRROR_CONF" || fatal_error "保存镜像源配置失败：${MIRROR_CONF}"
 }
 
 # 获取带加速源前缀的完整镜像名
@@ -281,7 +293,7 @@ generate_compose() {
     instances=$(list_instance_names)
 
     if [[ -z "$instances" ]]; then
-        rm -f "$COMPOSE_FILE"
+        rm -f "$COMPOSE_FILE" || fatal_error "无法移除空实例的 Compose 配置：${COMPOSE_FILE}"
         return
     fi
 
@@ -295,7 +307,7 @@ generate_compose() {
         for name in $instances; do
             local BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
             # shellcheck source=/dev/null
-            source "${INSTANCE_DIR}/${name}.conf"
+            source "${INSTANCE_DIR}/${name}.conf" || fatal_error "无法读取实例配置：${name}"
             if [[ "${BIND_MOUNT:-false}" == "true" ]]; then
                 printf '%s\n' "  ${name}-data:"
                 printf '%s\n' "    driver: local"
@@ -325,7 +337,7 @@ generate_compose() {
         for name in $instances; do
             local GAME_PORT MANAGER_PORT ADMIN_PASSWORD RCON_PASSWORD TICK VAC STEAM_API_KEY BIND_MOUNT BIND_DATA_DIR BIND_PLUGINS_DIR
             # shellcheck source=/dev/null
-            source "${INSTANCE_DIR}/${name}.conf"
+            source "${INSTANCE_DIR}/${name}.conf" || fatal_error "无法读取实例配置：${name}"
 
             printf '%s\n' "  ${name}:"
             printf '%s\n' "    image: ${game_image}"
@@ -382,7 +394,7 @@ generate_compose() {
             printf '%s\n' "        max-file: \"3\""
             printf '\n'
         done
-    } > "$COMPOSE_FILE"
+    } > "$COMPOSE_FILE" || fatal_error "生成 Compose 配置失败：${COMPOSE_FILE}"
 
     print_success "docker-compose.yaml 已生成"
 }
@@ -679,14 +691,14 @@ quick_setup() {
             true  # 保持不变
         else
             local new_mirror
-            new_mirror=$(read_input "输入加速源地址 (留空使用官方源)" "$MIRROR_URL")
+            new_mirror=$(read_input "输入加速源地址 (留空使用官方源)" "$MIRROR_URL") || exit 1
             MIRROR_URL="$new_mirror"
             save_mirror
         fi
     else
         echo -e "  默认加速源: ${GREEN}${DEFAULT_MIRROR}${NC}"
         local new_mirror
-        new_mirror=$(read_input "镜像加速源 (回车使用默认)" "$DEFAULT_MIRROR")
+        new_mirror=$(read_input "镜像加速源 (回车使用默认)" "$DEFAULT_MIRROR") || exit 1
         MIRROR_URL="${new_mirror:-$DEFAULT_MIRROR}"
         save_mirror
     fi
@@ -697,14 +709,14 @@ quick_setup() {
     echo ""
 
     # 管理密码
-    ADMIN_PASSWORD=$(read_password "请设置管理密码")
+    ADMIN_PASSWORD=$(read_password "请设置管理密码") || exit 1
     echo ""
 
     # 游戏端口
-    GAME_PORT=$(read_input "游戏端口" "$DEFAULT_GAME_PORT")
+    GAME_PORT=$(read_input "游戏端口" "$DEFAULT_GAME_PORT") || exit 1
 
     # 管理面板端口
-    MANAGER_PORT=$(read_input "管理面板端口" "$DEFAULT_MANAGER_PORT")
+    MANAGER_PORT=$(read_input "管理面板端口" "$DEFAULT_MANAGER_PORT") || exit 1
 
     # Tick 率
     echo ""
@@ -714,7 +726,7 @@ quick_setup() {
     print_menu_item "3" "100 tick" "推荐"
     print_menu_item "4" "128 tick"
     local tick_choice
-    tick_choice=$(read_input "选择 Tick 率" "3")
+    tick_choice=$(read_input "选择 Tick 率" "3") || exit 1
     case "$tick_choice" in
         1) TICK=30 ;;
         2) TICK=60 ;;
@@ -748,7 +760,7 @@ quick_setup() {
     generate_compose
 
     echo ""
-    cd "$BASE_DIR" || return
+    cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
     print_info "正在拉取镜像并启动服务 (首次启动需拉取镜像，请耐心等待)..."
     echo ""
     if docker compose up -d; then
@@ -760,8 +772,7 @@ quick_setup() {
         echo -e "  ${GREEN}管理面板:${NC}  http://服务器IP:${BOLD}${MANAGER_PORT}${NC}"
     else
         echo ""
-        print_error "启动失败，请检查上方错误信息"
-        print_warn "配置已保存，修复问题后可在 [服务实例管理] 中重试"
+        fatal_error "启动失败，请检查上方 Docker Compose 原始错误；配置已保存，可修复后重试。"
     fi
     press_enter
 }
@@ -787,12 +798,12 @@ add_instance() {
     echo ""
 
     # ── 1. 管理密码 ──
-    ADMIN_PASSWORD=$(read_password "请设置管理密码")
+    ADMIN_PASSWORD=$(read_password "请设置管理密码") || exit 1
     echo ""
 
     # ── 2. 端口 ──
     while true; do
-        GAME_PORT=$(read_input "游戏端口" "$suggest_game")
+        GAME_PORT=$(read_input "游戏端口" "$suggest_game") || exit 1
         local conflict
         if conflict=$(check_port_conflict "$GAME_PORT"); then
             print_error "端口 ${GAME_PORT} 已被实例 [${conflict}] 使用"
@@ -802,7 +813,7 @@ add_instance() {
     done
 
     while true; do
-        MANAGER_PORT=$(read_input "管理面板端口" "$suggest_manager")
+        MANAGER_PORT=$(read_input "管理面板端口" "$suggest_manager") || exit 1
         local conflict
         if conflict=$(check_port_conflict "$MANAGER_PORT"); then
             print_error "端口 ${MANAGER_PORT} 已被实例 [${conflict}] 使用"
@@ -823,7 +834,7 @@ add_instance() {
     print_menu_item "3" "100 tick" "推荐"
     print_menu_item "4" "128 tick"
     local tick_choice
-    tick_choice=$(read_input "选择 Tick 率" "3")
+    tick_choice=$(read_input "选择 Tick 率" "3") || exit 1
     case "$tick_choice" in
         1) TICK=30 ;;
         2) TICK=60 ;;
@@ -843,7 +854,7 @@ add_instance() {
     echo ""
     echo -e "  ${DIM}Steam API Key 用于查询玩家游戏时长${NC}"
     echo -e "  ${DIM}获取地址: https://steamcommunity.com/dev/apikey${NC}"
-    STEAM_API_KEY=$(read_input "Steam API Key (可选，回车跳过)" "")
+    STEAM_API_KEY=$(read_input "Steam API Key (可选，回车跳过)" "") || exit 1
 
     # ── 6. 具名卷 bind 模式 ──
     echo ""
@@ -858,9 +869,9 @@ add_instance() {
         BIND_MOUNT="true"
         local default_data="/data/l4d2/${name}-data"
         local default_plugins="/data/l4d2/${name}-plugins"
-        BIND_DATA_DIR=$(read_input "游戏数据目录 (将自动创建)" "$default_data")
-        BIND_PLUGINS_DIR=$(read_input "插件数据目录 (将自动创建)" "$default_plugins")
-        mkdir -p "$BIND_DATA_DIR" "$BIND_PLUGINS_DIR" 2>/dev/null || true
+        BIND_DATA_DIR=$(read_input "游戏数据目录 (将自动创建)" "$default_data") || exit 1
+        BIND_PLUGINS_DIR=$(read_input "插件数据目录 (将自动创建)" "$default_plugins") || exit 1
+        mkdir -p "$BIND_DATA_DIR" "$BIND_PLUGINS_DIR" || fatal_error "创建 bind 挂载目录失败。"
     fi
 
     # ── 7. 自动生成 RCON 密码 ──
@@ -894,7 +905,7 @@ add_instance() {
     # ── 部署 ──
     print_section "部署实例 [${name}]"
     echo ""
-    cd "$BASE_DIR" || return
+    cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
     print_info "正在启动服务 (首次启动需拉取镜像，请耐心等待)..."
     echo ""
     if docker compose up -d; then
@@ -906,8 +917,7 @@ add_instance() {
         echo -e "  ${GREEN}管理面板:${NC}  http://服务器IP:${BOLD}${MANAGER_PORT}${NC}"
     else
         echo ""
-        print_error "启动失败，请检查上方错误信息"
-        print_warn "配置已保存，修复问题后可重新启动"
+        fatal_error "启动失败，请检查上方 Docker Compose 原始错误；配置已保存，可修复后重试。"
     fi
 }
 
@@ -953,7 +963,7 @@ select_instance() {
     echo "" >&2
 
     local choice
-    read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" choice >&2
+    read -r -p "$(echo -e "  ${CYAN}▸ ${NC}${prompt}: ")" choice >&2 || fatal_error "输入读取失败或已结束，已取消当前操作。"
 
     if [[ "$choice" == "0" || -z "$choice" ]]; then
         return 1
@@ -991,7 +1001,7 @@ _edit_game_server() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1)
@@ -999,7 +1009,7 @@ _edit_game_server() {
                 echo -e "  ${DIM}当前游戏端口: ${BOLD}${GAME_PORT}${NC}"
                 while true; do
                     local input
-                    input=$(read_input "输入新端口" "$GAME_PORT")
+                    input=$(read_input "输入新端口" "$GAME_PORT") || exit 1
                     if [[ "$input" == "$GAME_PORT" ]]; then
                         break
                     fi
@@ -1024,7 +1034,7 @@ _edit_game_server() {
                 print_menu_item "0" "不修改"
                 echo ""
                 local tc
-                tc=$(read_input "选择" "0")
+                tc=$(read_input "选择" "0") || exit 1
                 case "$tc" in
                     1) TICK=30;  print_success "Tick 率已设为 30" ;;
                     2) TICK=60;  print_success "Tick 率已设为 60" ;;
@@ -1069,7 +1079,7 @@ _edit_manager() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1)
@@ -1077,7 +1087,7 @@ _edit_manager() {
                 echo -e "  ${DIM}当前面板端口: ${BOLD}${MANAGER_PORT}${NC}"
                 while true; do
                     local input
-                    input=$(read_input "输入新端口" "$MANAGER_PORT")
+                    input=$(read_input "输入新端口" "$MANAGER_PORT") || exit 1
                     if [[ "$input" == "$MANAGER_PORT" ]]; then
                         break
                     fi
@@ -1098,11 +1108,11 @@ _edit_manager() {
             2)
                 echo ""
                 local p1 p2
-                read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}输入新密码: ")" p1; echo >&2
+                read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}输入新密码: ")" p1 || fatal_error "输入读取失败或已结束，已取消当前操作。"; echo >&2
                 if [[ -z "$p1" ]]; then
                     print_warn "密码为空，保持不变"
                 else
-                    read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}确认新密码: ")" p2; echo >&2
+                    read -r -s -p "$(echo -e "  ${CYAN}▸ ${NC}确认新密码: ")" p2 || fatal_error "输入读取失败或已结束，已取消当前操作。"; echo >&2
                     if [[ "$p1" != "$p2" ]]; then
                         print_error "两次输入不一致，密码保持不变"
                     else
@@ -1116,7 +1126,7 @@ _edit_manager() {
                 echo -e "  ${DIM}当前 Steam API Key: ${BOLD}${STEAM_API_KEY:-(未设置)}${NC}"
                 echo -e "  ${DIM}获取地址: https://steamcommunity.com/dev/apikey${NC}"
                 local new_key
-                new_key=$(read_input "输入新值 (回车清空)" "")
+                new_key=$(read_input "输入新值 (回车清空)" "") || exit 1
                 STEAM_API_KEY="$new_key"
                 if [[ -n "$STEAM_API_KEY" ]]; then
                     print_success "Steam API Key 已更新"
@@ -1161,7 +1171,7 @@ edit_instance() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1) _edit_game_server "$target" ;;
@@ -1175,7 +1185,7 @@ edit_instance() {
                 save_instance_config "$target"
                 print_success "配置已保存"
                 generate_compose
-                cd "$BASE_DIR" || return
+                cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
                 print_info "正在重启实例 [${target}]..."
                 echo ""
                 if docker compose up -d; then
@@ -1183,7 +1193,7 @@ edit_instance() {
                     print_success "实例 [${target}] 已更新并重启"
                 else
                     echo ""
-                    print_error "重启失败，请检查上方错误信息"
+                    fatal_error "重启失败，请检查上方 Docker Compose 原始错误；配置已保存，可修复后重试。"
                 fi
                 press_enter
                 return ;;
@@ -1212,7 +1222,7 @@ remove_instance() {
         return
     fi
 
-    cd "$BASE_DIR" || return
+    cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
 
     # 先直接停止并删除目标容器（不依赖 compose 文件，避免顺序问题）
     print_info "正在停止并删除容器..."
@@ -1294,9 +1304,9 @@ restart_instance() {
     local target
     target=$(select_instance "选择要重启的实例") || return
 
-    cd "$BASE_DIR" || return
+    cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
     print_info "正在重启 [${target}]..."
-    docker compose restart "${target}" "${target}-manager"
+    docker compose restart "${target}" "${target}-manager" || fatal_error "重启失败，请检查上方 Docker Compose 原始错误。"
 
     echo ""
     print_success "[${target}] 重启完成"
@@ -1330,7 +1340,7 @@ menu_docker() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1) show_docker_status; press_enter ;;
@@ -1367,7 +1377,7 @@ menu_images() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1)
@@ -1385,7 +1395,7 @@ menu_images() {
             4)
                 echo ""
                 local new_mirror
-                new_mirror=$(read_input "输入加速源地址 (留空清除当前设置)" "")
+                new_mirror=$(read_input "输入加速源地址 (留空清除当前设置)" "") || exit 1
                 MIRROR_URL="$new_mirror"
                 save_mirror
                 if [[ -n "$MIRROR_URL" ]]; then
@@ -1418,7 +1428,7 @@ menu_images() {
                     if [[ "$(count_instances)" -eq 0 ]]; then
                         print_warn "当前没有任何服务实例"
                     else
-                        cd "$BASE_DIR" || return
+                        cd "$BASE_DIR" || fatal_error "无法进入部署目录：${BASE_DIR}"
                         print_info "正在重建所有实例..."
                         echo ""
                         if docker compose up -d; then
@@ -1433,7 +1443,7 @@ menu_images() {
                             fi
                         else
                             echo ""
-                            print_error "重建失败，请检查上方错误信息"
+                            fatal_error "重建失败，请检查上方 Docker Compose 原始错误。"
                         fi
                     fi
                 fi
@@ -1466,7 +1476,7 @@ menu_instances() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1) add_instance; press_enter ;;
@@ -1485,6 +1495,8 @@ menu_instances() {
 # ═══════════════════════════════════════════
 
 main() {
+    require_root
+
     # 初始化
     ensure_dirs
     try_import_existing
@@ -1521,7 +1533,7 @@ main() {
         echo ""
 
         local choice
-        choice=$(read_input "请选择" "0")
+        choice=$(read_input "请选择" "0") || exit 1
 
         case "$choice" in
             1) menu_docker ;;
