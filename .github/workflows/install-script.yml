@@ -1,0 +1,29 @@
+name: Install script checks
+
+on:
+  pull_request:
+    paths:
+      - 'manifest/install/**'
+      - '.github/workflows/install-script.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'manifest/install/**'
+      - '.github/workflows/install-script.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Check shell syntax
+        run: bash -n manifest/install/manage.sh
+      - name: Run isolated mock tests
+        run: node --test manifest/install/tests/manage.test.cjs
