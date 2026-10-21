@@ -19,6 +19,7 @@
   import MapHotReloadSetting from '../components/settings/MapHotReloadSetting.vue';
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import DiskUsageLimitSetting from '../components/settings/DiskUsageLimitSetting.vue';
+  import MapImportPolicySetting from '../components/settings/MapImportPolicySetting.vue';
 
   type SettingsSection = 'statistics' | 'map-management' | 'about';
 
@@ -430,6 +431,7 @@
 
               <MapHotReloadSetting :active="isAdmin" context="page" />
               <DiskUsageLimitSetting :active="isAdmin" context="page" />
+              <MapImportPolicySetting v-if="isAdmin" :active="isAdmin" />
               <SteamCDNSetting :active="isAdmin" context="page" />
             </div>
           </section>

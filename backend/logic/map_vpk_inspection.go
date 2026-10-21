@@ -85,6 +85,7 @@ type ScriptOverridesInspection struct {
 
 type MapVPKInspection struct {
 	CheckedAt       string                    `json:"checked_at,omitempty"`
+	Error           string                    `json:"error,omitempty"`
 	Dictionary      DictionaryInspection      `json:"dictionary"`
 	GlobalScripts   GlobalScriptsInspection   `json:"global_scripts"`
 	ScriptOverrides ScriptOverridesInspection `json:"script_overrides"`
@@ -208,6 +209,7 @@ func InspectMapVPK(vpkPath string) MapVPKInspection {
 
 	archive, err := opener.ReadArchive()
 	if err != nil {
+		result.Error = fmt.Sprintf("VPK 目录解析失败: %v", err)
 		result.Dictionary.Status = DictionaryStatusUnreadable
 		result.GlobalScripts.Status = GlobalScriptsStatusUnreadable
 		result.ScriptOverrides.Status = ScriptOverridesStatusUnreadable
@@ -419,6 +421,61 @@ func GetMapVPKInspection(mapName string, info os.FileInfo) MapVPKInspection {
 		return newNotCheckedMapVPKInspection()
 	}
 	return cloneMapVPKInspection(record.Inspection)
+}
+
+// PreparedMapVPKInspection is an already inspected, newly installed candidate.
+type PreparedMapVPKInspection struct {
+	Name       string
+	Info       os.FileInfo
+	Inspection MapVPKInspection
+}
+
+// CommitMapVPKInspections publishes a batch and an atomic map-list replacement.
+// The caller serializes map mutations. publish must leave the old map list
+// unchanged on error. Hold the inspection lock so rollback cannot discard a
+// concurrent update to an unrelated map.
+func CommitMapVPKInspections(entries []PreparedMapVPKInspection, publish func() error) error {
+	mapVPKInspectionMu.Lock()
+	defer mapVPKInspectionMu.Unlock()
+	loadMapVPKInspectionStoreLocked()
+	previous := cloneMapVPKInspectionRecords(mapVPKInspectionRecords)
+	previousFile, readErr := os.ReadFile(consts.MapVPKInspectionsPath)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return readErr
+	}
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(consts.MapVPKInspectionsPath); err == nil {
+		mode = info.Mode().Perm()
+	}
+	for _, entry := range entries {
+		name, err := NormalizeMapVPKName(entry.Name)
+		if err != nil || entry.Info == nil {
+			mapVPKInspectionRecords = previous
+			return fmt.Errorf("无效的地图检测记录: %s", entry.Name)
+		}
+		mapVPKInspectionRecords[name] = mapVPKInspectionRecord{Size: entry.Info.Size(), ModTimeNS: entry.Info.ModTime().UnixNano(), Inspection: cloneMapVPKInspection(entry.Inspection)}
+	}
+	if err := persistMapVPKInspectionStoreLocked(); err != nil {
+		mapVPKInspectionRecords = previous
+		return err
+	}
+	if err := publish(); err != nil {
+		mapVPKInspectionRecords = previous
+		var rollbackErr error
+		if os.IsNotExist(readErr) {
+			rollbackErr = os.Remove(consts.MapVPKInspectionsPath)
+			if os.IsNotExist(rollbackErr) {
+				rollbackErr = nil
+			}
+		} else {
+			rollbackErr = atomicWriteFile(consts.MapVPKInspectionsPath, previousFile, mode)
+		}
+		if rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("回滚地图检测记录失败: %w", rollbackErr))
+		}
+		return err
+	}
+	return nil
 }
 
 func RenameMapVPKInspection(oldName, newName string) error {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"l4d2-manager-next/consts"
@@ -37,21 +38,22 @@ type downloadTask struct {
 	referer           string          // 下载请求 Referer
 	status            DOWNLOAD_STATUS // 状态
 	message           string          // 错误消息
-	progress          float64         // 进度
-	cancel            chan struct{}   // 取消信号通道
-	done              chan struct{}   // 下载和文件处理结束
-	cancelled         bool            // 标记是否已取消
-	downloadSpeed     float64         // 下载速度 (bytes/second)
-	startTime         time.Time       // 下载开始时间
-	lastUpdate        time.Time       // 上次更新时间
-	downloadedBytes   int64           // 已下载字节数
-	lastSecondBytes   int64           // 上一秒的下载字节数
-	speedUpdateTimer  *time.Ticker    // 速度更新定时器
-	mu                sync.RWMutex    // 读写锁，保护并发访问
-	semaphore         chan struct{}   // 并发控制信号量
-	totalSize         int64           // 文件总大小
-	filename          string          // 文件名
-	preferredFilename string          // 优先使用的文件名
+	importRejection   *logic.MapImportRejectedError
+	progress          float64       // 进度
+	cancel            chan struct{} // 取消信号通道
+	done              chan struct{} // 下载和文件处理结束
+	cancelled         bool          // 标记是否已取消
+	downloadSpeed     float64       // 下载速度 (bytes/second)
+	startTime         time.Time     // 下载开始时间
+	lastUpdate        time.Time     // 上次更新时间
+	downloadedBytes   int64         // 已下载字节数
+	lastSecondBytes   int64         // 上一秒的下载字节数
+	speedUpdateTimer  *time.Ticker  // 速度更新定时器
+	mu                sync.RWMutex  // 读写锁，保护并发访问
+	semaphore         chan struct{} // 并发控制信号量
+	totalSize         int64         // 文件总大小
+	filename          string        // 文件名
+	preferredFilename string        // 优先使用的文件名
 }
 
 // 新增下载任务
@@ -195,6 +197,8 @@ func (dt *downloadTask) markStarted() {
 	defer dt.mu.Unlock()
 
 	dt.status = DOWNLOAD_STATUS_IN_PROGRESS
+	dt.importRejection = nil
+	dt.message = ""
 	dt.startTime = time.Now()
 	dt.lastUpdate = dt.startTime
 }
@@ -206,6 +210,24 @@ func (dt *downloadTask) markFailed(message string) {
 	dt.message = message
 	dt.status = DOWNLOAD_STATUS_FAILED
 	dt.lastUpdate = time.Now()
+}
+
+func (dt *downloadTask) markImportFailed(err error) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	dt.message = fmt.Sprintf("文件处理失败: %v", err)
+	dt.status = DOWNLOAD_STATUS_FAILED
+	dt.lastUpdate = time.Now()
+	var rejection *logic.MapImportRejectedError
+	if errors.As(err, &rejection) {
+		dt.importRejection = rejection
+	}
+}
+
+func (dt *downloadTask) getImportRejection() *logic.MapImportRejectedError {
+	dt.mu.RLock()
+	defer dt.mu.RUnlock()
+	return dt.importRejection // immutable after publication
 }
 
 func (dt *downloadTask) updateProgress(downloaded, totalSize int64) {
@@ -420,7 +442,7 @@ func (dt *downloadTask) download() {
 		return
 	}
 	if _, err := ProcessFile(filePath); err != nil {
-		dt.markFailed(fmt.Sprintf("文件处理失败: %v", err))
+		dt.markImportFailed(err)
 		return
 	}
 
@@ -593,16 +615,17 @@ func (d *downloader) getTasksInfoForOwner(ownerID string) []map[string]any {
 			continue
 		}
 		tasksInfo = append(tasksInfo, map[string]any{
-			"id":             task.id,
-			"url":            task.url,
-			"status":         task.GetStatus(),
-			"progress":       task.GetProgress(),
-			"message":        task.GetMessage(),
-			"downloadSpeed":  task.GetDownloadSpeed(),
-			"formattedSpeed": task.GetFormattedSpeed(),
-			"totalSize":      task.GetTotalSize(),
-			"formattedSize":  task.GetFormattedSize(),
-			"filename":       task.GetFilename(),
+			"id":               task.id,
+			"url":              task.url,
+			"status":           task.GetStatus(),
+			"progress":         task.GetProgress(),
+			"message":          task.GetMessage(),
+			"import_rejection": task.getImportRejection(),
+			"downloadSpeed":    task.GetDownloadSpeed(),
+			"formattedSpeed":   task.GetFormattedSpeed(),
+			"totalSize":        task.GetTotalSize(),
+			"formattedSize":    task.GetFormattedSize(),
+			"filename":         task.GetFilename(),
 		})
 	}
 	return tasksInfo
