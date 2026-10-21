@@ -17,13 +17,14 @@ const DefaultMapHotReloadCommand = "update_addon_paths; mission_reload"
 const SteamCDNHost = "cdn.steamusercontent.com"
 
 type ManagerConfig struct {
-	EnableSelfService    bool      `json:"enable_self_service"`
-	LastSelfServiceTime  time.Time `json:"last_self_service_time"`
-	EnablePlayerStats    bool      `json:"enable_player_stats"`
-	EnableMonitorHistory bool      `json:"enable_monitor_history"`
-	EnableVPKTrim        bool      `json:"enable_vpk_trim"`
-	MapHotReloadCommand  string    `json:"map_hot_reload_command"`
-	SteamCDNIP           string    `json:"steam_cdn_ip,omitempty"`
+	EnableSelfService    bool            `json:"enable_self_service"`
+	LastSelfServiceTime  time.Time       `json:"last_self_service_time"`
+	EnablePlayerStats    bool            `json:"enable_player_stats"`
+	EnableMonitorHistory bool            `json:"enable_monitor_history"`
+	EnableVPKTrim        bool            `json:"enable_vpk_trim"`
+	MapImportPolicy      MapImportPolicy `json:"map_import_policy"`
+	MapHotReloadCommand  string          `json:"map_hot_reload_command"`
+	SteamCDNIP           string          `json:"steam_cdn_ip,omitempty"`
 	// DiskUsageLimitPercent 是地图上传与下载任务允许的磁盘使用率上限。
 	DiskUsageLimitPercent int `json:"disk_usage_limit_percent"`
 }

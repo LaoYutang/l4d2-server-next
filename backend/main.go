@@ -102,6 +102,8 @@ func main() {
 	router.POST("/config/monitor-history", middlewares.Auth(), controller.SetMonitorConfig)
 	router.POST("/vpk-trim/config", middlewares.Auth(), controller.GetVPKTrimConfig)
 	router.POST("/config/vpk-trim", middlewares.Auth(), controller.SetVPKTrimConfig)
+	router.POST("/maps/import-policy", middlewares.Auth(), controller.GetMapImportPolicy)
+	router.POST("/config/map-import-policy", middlewares.Auth(), controller.SetMapImportPolicy)
 	router.POST("/disk-usage/config", middlewares.Auth(), controller.GetDiskUsageConfig)
 	router.POST("/config/disk-usage", middlewares.Auth(), controller.SetDiskUsageConfig)
 

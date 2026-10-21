@@ -20,6 +20,7 @@
   } from '../services/api';
   import { useAuthStore } from '../stores/auth';
   import SteamCDNSetting from './settings/SteamCDNSetting.vue';
+  import MapImportRejectionDetails from './MapImportRejectionDetails.vue';
 
   const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
   const authStore = useAuthStore();
@@ -430,9 +431,13 @@
               >
                 {{ record.url }}
               </div>
-              <div v-if="record.status === 3" class="text-xs text-red-500 break-words">
+              <div v-if="record.status === 3 && !record.import_rejection?.violations?.length" class="text-xs text-red-500 break-words">
                 失败原因: {{ record.message }}
               </div>
+              <MapImportRejectionDetails
+                v-if="record.status === 3 && record.import_rejection?.violations?.length"
+                :violations="record.import_rejection.violations"
+              />
             </div>
           </template>
           <template v-else-if="column.key === 'status'">

@@ -8,7 +8,15 @@
     LoadingOutlined,
     PlayCircleOutlined,
   } from '@ant-design/icons-vue';
-  import { api, DiskLimitError, type DiskLimitInfo, type MapUploadProgressEvent } from '../services/api';
+  import {
+    api,
+    DiskLimitError,
+    MapImportRejectedError,
+    type MapImportViolation,
+    type DiskLimitInfo,
+    type MapUploadProgressEvent,
+  } from '../services/api';
+  import MapImportRejectionDetails from './MapImportRejectionDetails.vue';
   import { formatBytes, formatPercent } from '../utils/format';
 
   type MapUploadPhase = 'initializing' | 'uploading' | 'processing';
@@ -16,6 +24,7 @@
   interface MapUploadFailure {
     stage: MapUploadPhase;
     message: string;
+    violations?: MapImportViolation[];
   }
 
   const emit = defineEmits<{
@@ -250,7 +259,11 @@
         delete uploadStates.value[fileName];
       }
       uploadPhases.value[fileName] = currentStage;
-      uploadFailures.value[fileName] = { stage: currentStage, message: errorMessage };
+      uploadFailures.value[fileName] = {
+        stage: currentStage,
+        message: errorMessage,
+        violations: uploadError instanceof MapImportRejectedError ? uploadError.violations : undefined,
+      };
       message.error(`${fileName} ${getUploadFailureTitle(currentStage)}：${errorMessage}`);
       onProgress({ percent: currentPercent });
       onError(uploadError);
@@ -338,7 +351,11 @@
         delete uploadStates.value[fileName];
       }
       uploadPhases.value[fileName] = failureStage;
-      uploadFailures.value[fileName] = { stage: failureStage, message: errorMessage };
+      uploadFailures.value[fileName] = {
+        stage: failureStage,
+        message: errorMessage,
+        violations: error instanceof MapImportRejectedError ? error.violations : undefined,
+      };
       message.error(`${fileName} ${getUploadFailureTitle(failureStage)}：${errorMessage}`);
       if (targetFile) {
         targetFile.status = 'error';
@@ -467,6 +484,10 @@
             </a-button>
           </a-space>
         </div>
+        <MapImportRejectionDetails
+          v-if="file.status === 'error' && uploadFailures[file.name]?.violations?.length"
+          :violations="uploadFailures[file.name]?.violations || []"
+        />
         <a-progress
           v-if="file.status === 'uploading' || file.status === 'done' || file.status === 'error'"
           :percent="Number((uploadPercents[file.name] || file.percent || 0).toFixed(1))"

@@ -367,9 +367,6 @@ func UploadMerge(c *gin.Context) {
 	var processErr error
 
 	vpkReg := regexp.MustCompile(`(?i)\.(vpk|zip|rar|7z)$`)
-	zipReg := regexp.MustCompile(`(?i)\.zip$`)
-	rarReg := regexp.MustCompile(`(?i)\.rar$`)
-	sevenZipReg := regexp.MustCompile(`(?i)\.7z$`)
 
 	if !vpkReg.MatchString(cleanFilename) {
 		_ = removeUploadTempDir(uploadId)
@@ -381,21 +378,11 @@ func UploadMerge(c *gin.Context) {
 		authCodeError(c, err)
 		return
 	}
-	switch {
-	case zipReg.MatchString(cleanFilename):
-		files, processErr = ProcessZipFile(mergedPath)
-	case rarReg.MatchString(cleanFilename):
-		files, processErr = ProcessRarFile(mergedPath)
-	case sevenZipReg.MatchString(cleanFilename):
-		files, processErr = Process7zFile(mergedPath)
-	default:
-		// vpk 文件
-		files, processErr = ProcessVpkFile(mergedPath)
-	}
+	files, processErr = ProcessFile(mergedPath)
 
 	if processErr != nil {
 		_ = removeUploadTempDir(uploadId)
-		FailWithError(c, http.StatusInternalServerError, "处理文件失败: %v", processErr)
+		failMapImport(c, processErr)
 		return
 	}
 

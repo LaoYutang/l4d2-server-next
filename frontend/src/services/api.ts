@@ -298,6 +298,7 @@ export interface DownloadConfig {
 }
 
 export interface DownloadTask {
+  import_rejection?: { violations: MapImportViolation[] } | null;
   id: string;
   url: string;
   filename: string;
@@ -380,6 +381,7 @@ export interface MapDictionaryChapterInspection {
 
 export interface MapVPKInspection {
   checked_at?: string;
+  error?: string;
   dictionary: {
     status: MapDictionaryInspectionStatus;
     chapters: MapDictionaryChapterInspection[];
@@ -480,6 +482,29 @@ export interface MonitorConfig {
 
 export interface VpkTrimConfig {
   enabled: boolean;
+}
+
+export interface MapImportPolicy {
+  reject_missing_dictionary: boolean;
+  reject_global_scripts: boolean;
+  reject_script_overrides: boolean;
+  reject_inspection_error: boolean;
+}
+
+export interface MapImportViolation {
+  map: string;
+  rule: string;
+  message: string;
+  paths: string[];
+}
+
+export class MapImportRejectedError extends Error {
+  readonly violations: MapImportViolation[];
+  constructor(message: string, violations: MapImportViolation[]) {
+    super(message);
+    this.name = 'MapImportRejectedError';
+    this.violations = violations;
+  }
 }
 
 export interface DiskUsageLimitCurrent {
@@ -661,6 +686,20 @@ class ApiService {
       }
     }
     return body;
+  }
+
+  private async readMapImportError(response: Response): Promise<Error> {
+    if (response.status === 422) {
+      try {
+        const payload = await response.clone().json();
+        if (payload.code === 'map_import_rejected' && Array.isArray(payload.violations)) {
+          return new MapImportRejectedError(payload.message || '风险检查未通过，地图未安装', payload.violations);
+        }
+      } catch {
+        // Fall back to the ordinary error response.
+      }
+    }
+    return new Error(await this.readErrorMessage(response));
   }
 
   private async toDiskLimitError(response: Response): Promise<DiskLimitError | null> {
@@ -1532,7 +1571,7 @@ class ApiService {
       uploadId,
       filename: file.name,
     });
-    if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
+    if (!mergeResponse.ok) throw await this.readMapImportError(mergeResponse);
     return { success: true };
   }
 
@@ -1563,7 +1602,7 @@ class ApiService {
         uploadId,
         filename: file.name,
       });
-      if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
+      if (!mergeResponse.ok) throw await this.readMapImportError(mergeResponse);
       return;
     }
 
@@ -1577,7 +1616,7 @@ class ApiService {
       uploadId,
       filename: file.name,
     });
-    if (!mergeResponse.ok) throw new Error(await this.readErrorMessage(mergeResponse));
+    if (!mergeResponse.ok) throw await this.readMapImportError(mergeResponse);
   }
 
   async cancelUpload(uploadId: string) {
@@ -2095,6 +2134,18 @@ class ApiService {
   async getVpkTrimConfig(): Promise<VpkTrimConfig> {
     const response = await this.post('/vpk-trim/config');
     if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  async getMapImportPolicy(): Promise<MapImportPolicy> {
+    const response = await this.post('/maps/import-policy');
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async setMapImportPolicy(policy: MapImportPolicy): Promise<MapImportPolicy> {
+    const response = await this.postJson('/config/map-import-policy', policy);
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
     return response.json();
   }
 
