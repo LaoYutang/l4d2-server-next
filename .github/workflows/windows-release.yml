@@ -31,7 +31,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "stable"
+          go-version-file: backend/go.mod
 
       - name: Build Backend (Windows)
         run: |

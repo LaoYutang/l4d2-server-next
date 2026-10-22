@@ -14,7 +14,7 @@ import (
 
 	"github.com/axgle/mahonia"
 	"github.com/bodgit/sevenzip"
-	"github.com/nwaples/rardecode"
+	"github.com/nwaples/rardecode/v2"
 )
 
 var chineseDecoder = mahonia.NewDecoder("gbk")
@@ -241,13 +241,13 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 	// 打开rar文件
 	file, err := os.Open(rarPath)
 	if err != nil {
-		return nil, fmt.Errorf("打开rar文件失败: %v", err)
+		return nil, fmt.Errorf("打开rar文件失败: %w", err)
 	}
 	defer file.Close()
 
-	rr, err := rardecode.NewReader(file, "")
+	rr, err := rardecode.NewReader(file)
 	if err != nil {
-		return nil, fmt.Errorf("创建rar读取器失败: %v", err)
+		return nil, fmt.Errorf("创建rar读取器失败: %w", err)
 	}
 
 	vpkReg := regexp.MustCompile(`(?i)\.vpk$`)
@@ -261,7 +261,7 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("读取rar内容失败: %v", err)
+			return nil, fmt.Errorf("读取rar内容失败: %w", err)
 		}
 
 		if header.IsDir {
@@ -279,7 +279,7 @@ func ProcessRarFile(rarPath string) ([]string, error) {
 
 			if err := writeReaderToFile(rr, tempPath, 0666); err != nil {
 				cleanup()
-				return nil, fmt.Errorf("写入文件失败: %v", err)
+				return nil, fmt.Errorf("写入文件失败: %w", err)
 			}
 
 			if err := batch.add(tempPath, cleanName); err != nil {
