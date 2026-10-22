@@ -470,7 +470,7 @@
               <section class="setting-section">
                 <h3 class="setting-title mb-3"><ReloadOutlined /> 开源协议</h3>
                 <p class="text-sm leading-7 text-gray-600 dark:text-gray-300">
-                  本项目基于 Apache License 2.0 开源协议发布。<br />
+                  本项目基于 GNU AGPL v3 开源协议发布。<br />
                   欢迎贡献代码和提出建议。
                 </p>
                 <a
