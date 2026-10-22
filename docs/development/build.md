@@ -32,6 +32,10 @@ npm --prefix docs run docs:preview
 
 ## 后端
 
+后端使用 Go 1.26.10。`backend/go.mod` 和 `go.work` 声明相同的最低版本；Docker 构建镜像固定为 `golang:1.26.10-alpine`，Windows 发布工作流从 `backend/go.mod` 读取版本。升级补丁版本时需同步这些配置。
+
+构建前可用 `go version` 确认实际工具链版本。
+
 格式化：
 
 ```sh
@@ -44,6 +48,8 @@ gofmt -w backend
 cd backend
 go build .
 ```
+
+运行 `go -C backend test ./...` 可执行后端测试。RAR/ZIP 核心样本由测试在临时目录中生成；额外的压缩、加密、分卷和 7z 样本保存在被 Git 忽略的 `backend/controller/testdata/archive-fixtures.zip`，也可通过 `L4D2_ARCHIVE_FIXTURE_ZIP` 指定本地样本包。缺少样本包时这些扩展用例会明确跳过，显式指定的路径无效则测试失败。
 
 本地运行后端时建议以 `backend/` 为工作目录，确保能读取到 `ip2region_*.xdb`、`preset.yaml` 和 `static/`。
 

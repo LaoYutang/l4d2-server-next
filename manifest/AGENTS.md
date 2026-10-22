@@ -12,7 +12,7 @@
 ```text
 manifest/
 ├── docker/
-│   ├── manager.Dockerfile       # Node 24 → Go 1.25 → Docker CLI
+│   ├── manager.Dockerfile       # Node 24 → Go 1.26.10 → Docker CLI
 │   ├── l4d2.Dockerfile          # Ubuntu 22.04 + SteamCMD + L4D2
 │   ├── start.sh                 # Tick/VAC/端口/RCON 后启动 srcds
 │   └── cfg/
@@ -39,7 +39,7 @@ manifest/
 `docker/manager.Dockerfile`：
 
 1. `node:24-alpine` 安装前端依赖并构建到 `backend/static/`。
-2. `golang:1.25-alpine` 构建管理器，并通过 ldflags 注入版本。
+2. `golang:1.26.10-alpine` 构建管理器，并通过 ldflags 注入版本。
 3. `docker:29.1.1-cli-alpine3.22` 作为最终镜像，包含管理器、静态文件、插件预设和 IPv4/IPv6 xdb。
 
 运行时通常挂载：
@@ -109,7 +109,7 @@ manifest/
 
 - 推送 `v*` 标签同时触发 `manager-image.yml` 和 `windows-release.yml`。
 - 管理器镜像发布 `latest` 和标签版本，并把标签通过 `-X l4d2-manager-next/consts.Version=...` 注入。
-- Windows workflow 使用 Node 20、稳定 Go，先生成 `backend/static/`，再交叉编译 amd64，并打包二进制、xdb、`preset.yaml`、`plugins/`、`static/` 和启动脚本。
+- Windows workflow 使用 Node 20、由 `backend/go.mod` 指定的 Go 1.26.10，先生成 `backend/static/`，再交叉编译 amd64，并打包二进制、xdb、`preset.yaml`、`plugins/`、`static/` 和启动脚本。
 - `l4d2-image.yml` 只允许手动触发，发布 `latest` 和时间戳标签。
 - 管理器 workflow 在构建前把 `plugins/` 时间戳归一为 2020-01-01，以稳定 Docker 缓存。
 
