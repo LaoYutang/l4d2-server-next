@@ -2,9 +2,8 @@ package logic
 
 import (
 	"fmt"
+	"l4d2-manager-next/pkg/rcon"
 	"os"
-
-	"github.com/gorcon/rcon"
 )
 
 var executePluginRconCommand = ExecuteRconCommand
