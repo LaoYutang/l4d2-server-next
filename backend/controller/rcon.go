@@ -3,12 +3,12 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/logic"
+	"l4d2-manager-next/pkg/rcon"
 	"net/http"
 	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorcon/rcon"
 )
 
 func GetRconMapList(c *gin.Context) {

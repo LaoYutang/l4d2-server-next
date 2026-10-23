@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gorcon/rcon"
+	"l4d2-manager-next/pkg/rcon"
 )
 
 const (
