@@ -48,6 +48,7 @@
   } from '@ant-design/icons-vue';
   import {
     api,
+    ApiRequestError,
     type Plugin,
     type PluginExportProgress,
     type PluginExportDownloadProgress,
@@ -643,7 +644,14 @@
           message.success(`插件${actionText}成功`);
           fetchPlugins();
         } catch (error: any) {
-          message.error(`${actionText}失败: ` + error.message);
+          if (
+            error instanceof ApiRequestError &&
+            ['plugin_result_unknown', 'plugin_operation_busy'].includes(error.code)
+          ) {
+            message.warning(error.message);
+          } else {
+            message.error(`${actionText}失败: ` + error.message);
+          }
           fetchPlugins();
         } finally {
           hide();
@@ -663,7 +671,14 @@
           await api.loadPlugin(plugin.name);
           message.success('插件立即加载成功');
         } catch (error: any) {
-          message.error('立即加载插件失败: ' + error.message);
+          if (
+            error instanceof ApiRequestError &&
+            ['plugin_result_unknown', 'plugin_operation_busy'].includes(error.code)
+          ) {
+            message.warning(error.message);
+          } else {
+            message.error('立即加载插件失败: ' + error.message);
+          }
         } finally {
           hide();
         }

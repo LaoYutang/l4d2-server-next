@@ -96,7 +96,7 @@ func TestListPluginSMXIDsSortedAndExcludesDisabled(t *testing.T) {
 		t.Fatalf("listPluginSMXIDs() error = %v", err)
 	}
 
-	want := []string{"alpha", "nested/beta", "zeta"}
+	want := []string{"alpha.smx", "nested/beta.smx", "zeta.smx"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listPluginSMXIDs() = %v, want %v", got, want)
 	}
@@ -109,16 +109,15 @@ func TestEnableAndLoadPluginRollsBackOnLoadFailure(t *testing.T) {
 	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "addons", "sourcemod", "plugins", "hot.smx"), "smx")
 	writeTestFile(t, filepath.Join(storePath, "PluginHot", "left4dead2", "cfg", "sourcemod", "hot.cfg"), "cfg")
 
-	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
-		return "[SM] Failed to load plugin", nil
-	})
+	fixture := newLoadBatchFixture(t, nil)
+	fixture.failLoad["hot.smx"] = true
 
 	err := EnableAndLoadPlugin("PluginHot")
-	if err == nil || !strings.Contains(err.Error(), "load smx plugin hot failed") {
+	if err == nil || !strings.Contains(err.Error(), "load smx plugin hot.smx failed") {
 		t.Fatalf("EnableAndLoadPlugin() error = %v, want load failure", err)
 	}
 
-	if got, want := *commands, []string{`sm plugins load "hot"`}; !reflect.DeepEqual(got, want) {
+	if got, want := *fixture.commands, []string{`sm plugins info "hot.smx"`, `sm plugins load "hot.smx"`, `sm plugins info "hot.smx"`, `sm plugins info "hot.smx"`}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %v, want %v", got, want)
 	}
 	if _, err := os.Stat(filepath.Join(gamePath, "addons", "sourcemod", "plugins", "hot.smx")); !os.IsNotExist(err) {
@@ -147,20 +146,22 @@ func TestLoadPluginLoadsEnabledSMXWithoutChangingStatus(t *testing.T) {
 		t.Fatalf("EnablePlugin() error = %v", err)
 	}
 
-	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
-		return "[SM] OK", nil
-	})
+	fixture := newLoadBatchFixture(t, nil)
 
 	if err := LoadPlugin("PluginHot"); err != nil {
 		t.Fatalf("LoadPlugin() error = %v", err)
 	}
 
 	wantCommands := []string{
-		`sm plugins load "alpha"`,
-		`sm plugins load "nested/beta"`,
+		`sm plugins info "alpha.smx"`,
+		`sm plugins info "nested/beta.smx"`,
+		`sm plugins load "alpha.smx"`,
+		`sm plugins info "alpha.smx"`,
+		`sm plugins load "nested/beta.smx"`,
+		`sm plugins info "nested/beta.smx"`,
 	}
-	if !reflect.DeepEqual(*commands, wantCommands) {
-		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
+	if !reflect.DeepEqual(*fixture.commands, wantCommands) {
+		t.Fatalf("commands = %v, want %v", *fixture.commands, wantCommands)
 	}
 
 	plugins, err := GetPlugins()
@@ -220,8 +221,8 @@ func TestReloadPluginReloadsEnabledSMXWithoutChangingStatus(t *testing.T) {
 	}
 
 	wantCommands := []string{
-		`sm plugins reload "alpha"`,
-		`sm plugins reload "nested/beta"`,
+		`sm plugins reload "alpha.smx"`,
+		`sm plugins reload "nested/beta.smx"`,
 	}
 	if !reflect.DeepEqual(*commands, wantCommands) {
 		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
@@ -280,8 +281,8 @@ func TestUnloadPluginUnloadsDisabledSMXWithoutChangingStatus(t *testing.T) {
 	}
 
 	wantCommands := []string{
-		`sm plugins unload "nested/beta"`,
-		`sm plugins unload "alpha"`,
+		`sm plugins unload "nested/beta.smx"`,
+		`sm plugins unload "alpha.smx"`,
 	}
 	if !reflect.DeepEqual(*commands, wantCommands) {
 		t.Fatalf("commands = %v, want %v", *commands, wantCommands)
@@ -340,21 +341,21 @@ func TestDisableAndUnloadPluginRollsBackOnUnloadFailure(t *testing.T) {
 	}
 
 	commands := mockPluginRconExecutor(t, func(cmd string) (string, error) {
-		if strings.Contains(cmd, `unload "alpha"`) {
+		if strings.Contains(cmd, `unload "alpha.smx"`) {
 			return "[SM] Failed to unload plugin", nil
 		}
 		return "[SM] OK", nil
 	})
 
 	err := DisableAndUnloadPlugin("PluginHot")
-	if err == nil || !strings.Contains(err.Error(), "unload smx plugin alpha failed") {
+	if err == nil || !strings.Contains(err.Error(), "unload smx plugin alpha.smx failed") {
 		t.Fatalf("DisableAndUnloadPlugin() error = %v, want unload failure", err)
 	}
 
 	wantCommands := []string{
-		`sm plugins unload "nested/beta"`,
-		`sm plugins unload "alpha"`,
-		`sm plugins load "nested/beta"`,
+		`sm plugins unload "nested/beta.smx"`,
+		`sm plugins unload "alpha.smx"`,
+		`sm plugins load "nested/beta.smx"`,
 	}
 	if !reflect.DeepEqual(*commands, wantCommands) {
 		t.Fatalf("commands = %v, want %v", *commands, wantCommands)

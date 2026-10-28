@@ -2,6 +2,7 @@ package logic
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -169,7 +170,6 @@ func listPluginSMXIDs(name string) ([]string, error) {
 		}
 
 		pluginID := filepath.ToSlash(relPath)
-		pluginID = strings.TrimSuffix(pluginID, filepath.Ext(pluginID))
 		pluginIDs = append(pluginIDs, pluginID)
 		return nil
 	})
@@ -438,10 +438,30 @@ func normalizeRelPath(relPath string) string {
 	return strings.ToLower(strings.ReplaceAll(relPath, "\\", "/"))
 }
 
-func EnablePlugin(name string) error  { return deployPlugin(name) }
-func DisablePlugin(name string) error { return undeployPlugin(name) }
+func EnablePlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return deployPlugin(name)
+}
+
+func DisablePlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return undeployPlugin(name)
+}
 
 func EnableAndLoadPlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	smxPlugins, err := listPluginSMXIDs(name)
 	if err != nil {
 		return fmt.Errorf("failed to scan smx plugins: %v", err)
@@ -449,30 +469,23 @@ func EnableAndLoadPlugin(name string) error {
 	if len(smxPlugins) == 0 {
 		return fmt.Errorf("plugin %s does not contain smx files", name)
 	}
-
-	if err := EnablePlugin(name); err != nil {
-		return err
+	enabled, err := isPluginEnabled(name)
+	if err != nil {
+		return fmt.Errorf("failed to check plugin status: %w", err)
+	}
+	if enabled {
+		return fmt.Errorf("plugin %s is already enabled", name)
 	}
 
-	loadedPlugins := make([]string, 0, len(smxPlugins))
-	for _, pluginID := range smxPlugins {
-		if err := runSourceModPluginCommand("load", pluginID); err != nil {
-			rollbackErr := rollbackLoadedSMXPlugins(loadedPlugins)
-			if disableErr := DisablePlugin(name); disableErr != nil {
-				rollbackErr = appendRollbackError(rollbackErr, fmt.Errorf("disable rollback failed: %v", disableErr))
-			}
-			if rollbackErr != nil {
-				return fmt.Errorf("load smx plugin %s failed: %v; rollback failed: %v", pluginID, err, rollbackErr)
-			}
-			return fmt.Errorf("load smx plugin %s failed: %v", pluginID, err)
-		}
-		loadedPlugins = append(loadedPlugins, pluginID)
-	}
-
-	return nil
+	return loadPluginRuntimeBatch(name, smxPlugins, true)
 }
 
 func LoadPlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	enabled, err := isPluginEnabled(name)
 	if err != nil {
 		return fmt.Errorf("failed to check plugin status: %v", err)
@@ -489,22 +502,74 @@ func LoadPlugin(name string) error {
 		return fmt.Errorf("plugin %s does not contain smx files", name)
 	}
 
-	loadedPlugins := make([]string, 0, len(smxPlugins))
-	for _, pluginID := range smxPlugins {
-		if err := runSourceModPluginCommand("load", pluginID); err != nil {
-			rollbackErr := rollbackLoadedSMXPlugins(loadedPlugins)
-			if rollbackErr != nil {
-				return fmt.Errorf("load smx plugin %s failed: %v; rollback failed: %v", pluginID, err, rollbackErr)
-			}
-			return fmt.Errorf("load smx plugin %s failed: %v", pluginID, err)
+	return loadPluginRuntimeBatch(name, smxPlugins, false)
+}
+
+func loadPluginRuntimeBatch(name string, filenames []string, deploy bool) error {
+	before := make([]pluginRuntimeState, len(filenames))
+	hadOriginal := false
+	// Query every target before deployment or any load. Without this baseline a
+	// success receipt could refer to replacement of a pre-existing error instance.
+	for i, filename := range filenames {
+		state, err := querySourceModPluginState(filename)
+		if err != nil || state == pluginRuntimeUnknown {
+			return fmt.Errorf("%w: 无法确认 %s 原有状态，未执行加载: %v", ErrPluginResultUnknown, filename, err)
 		}
-		loadedPlugins = append(loadedPlugins, pluginID)
+		before[i] = state
+		hadOriginal = hadOriginal || state != pluginRuntimeAbsent
+	}
+	if deploy {
+		if err := deployPlugin(name); err != nil {
+			return err
+		}
 	}
 
+	newPlugins := make([]string, 0, len(filenames))
+	for i, filename := range filenames {
+		owned, err := loadSourceModPlugin(filename, before[i])
+		if owned {
+			// Include the current item before checking its final state: it may have
+			// loaded and then entered an error state during initialization.
+			newPlugins = append(newPlugins, filename)
+		}
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, ErrPluginResultUnknown) {
+			return fmt.Errorf("插件 %s 加载结果未确认，已保留部署及运行实例，请核查后再操作: %w", filename, err)
+		}
+		loadErr := fmt.Errorf("load smx plugin %s failed: %w", filename, err)
+		rollbackErr := rollbackNewSourceModPlugins(newPlugins)
+		if rollbackErr != nil {
+			return errors.Join(loadErr, fmt.Errorf("回滚未完成，部署已保留: %w", rollbackErr))
+		}
+		if deploy && !hadOriginal {
+			// A failed load may leave a registered error object, or an external
+			// operator may have loaded another target since preflight. Do not
+			// remove files while any target still exists or cannot be queried.
+			for _, target := range filenames {
+				state, queryErr := querySourceModPluginState(target)
+				if queryErr != nil || state != pluginRuntimeAbsent {
+					return errors.Join(loadErr, fmt.Errorf("%w: 无法确认 %s 已清理，部署已保留: %v", ErrPluginResultUnknown, target, queryErr))
+				}
+			}
+			if err := undeployPlugin(name); err != nil {
+				return errors.Join(loadErr, fmt.Errorf("disable rollback failed: %w", err))
+			}
+		} else if deploy {
+			return fmt.Errorf("%w; 原有插件实例未卸载，部署已保留", loadErr)
+		}
+		return loadErr
+	}
 	return nil
 }
 
 func ReloadPlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	enabled, err := isPluginEnabled(name)
 	if err != nil {
 		return fmt.Errorf("failed to check plugin status: %v", err)
@@ -562,6 +627,11 @@ func pluginExistsInStore(name string) (bool, error) {
 }
 
 func UnloadPlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	enabled, err := isPluginEnabled(name)
 	if err != nil {
 		return fmt.Errorf("failed to check plugin status: %v", err)
@@ -591,6 +661,11 @@ func UnloadPlugin(name string) error {
 }
 
 func DisableAndUnloadPlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	smxPlugins, err := listPluginSMXIDs(name)
 	if err != nil {
 		return fmt.Errorf("failed to scan smx plugins: %v", err)
@@ -604,7 +679,7 @@ func DisableAndUnloadPlugin(name string) error {
 		return err
 	}
 
-	if err := DisablePlugin(name); err != nil {
+	if err := undeployPlugin(name); err != nil {
 		rollbackErr := rollbackUnloadedSMXPlugins(unloadedPlugins)
 		if rollbackErr != nil {
 			return fmt.Errorf("disable plugin %s failed: %v; rollback failed: %v", name, err, rollbackErr)
@@ -676,19 +751,6 @@ func sourceModPluginCommandFailed(output string) bool {
 	return false
 }
 
-func rollbackLoadedSMXPlugins(pluginIDs []string) error {
-	var errs []string
-	for i := len(pluginIDs) - 1; i >= 0; i-- {
-		if err := runSourceModPluginCommand("unload", pluginIDs[i]); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", pluginIDs[i], err))
-		}
-	}
-	if len(errs) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%s", strings.Join(errs, "; "))
-}
-
 func rollbackUnloadedSMXPlugins(pluginIDs []string) error {
 	var errs []string
 	for i := len(pluginIDs) - 1; i >= 0; i-- {
@@ -713,6 +775,11 @@ func appendRollbackError(existing error, next error) error {
 }
 
 func DeletePlugin(name string) error {
+	release, err := beginPluginMutation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	defer acquirePluginOperation()()
 	if err := validatePluginName(name); err != nil {
 		return err

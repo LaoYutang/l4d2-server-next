@@ -963,12 +963,12 @@ class ApiService {
 
   async enableAndLoadPlugin(name: string) {
     const response = await this.post('/plugins/enable-and-load', { name });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) return this.throwDetailedError(response);
   }
 
   async loadPlugin(name: string) {
     const response = await this.post('/plugins/load', { name });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) return this.throwDetailedError(response);
   }
 
   async reloadPlugin(name: string) {
