@@ -1,12 +1,18 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"l4d2-manager-next/logic"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+)
+
+var (
+	enableAndLoadPlugin = logic.EnableAndLoadPlugin
+	loadPlugin          = logic.LoadPlugin
 )
 
 func GetPlugins(c *gin.Context) {
@@ -304,8 +310,8 @@ func EnableAndLoadPlugin(c *gin.Context) {
 	}
 	defer LogOp(c, "启用并立即加载插件: "+name)()
 
-	if err := logic.EnableAndLoadPlugin(name); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "启用并加载插件失败: %v", err)
+	if err := enableAndLoadPlugin(name); err != nil {
+		writePluginLoadError(c, err, "启用并加载插件失败")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "插件启用并加载成功"})
@@ -325,11 +331,30 @@ func LoadPlugin(c *gin.Context) {
 	}
 	defer LogOp(c, "立即加载插件: "+name)()
 
-	if err := logic.LoadPlugin(name); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "立即加载插件失败: %v", err)
+	if err := loadPlugin(name); err != nil {
+		writePluginLoadError(c, err, "立即加载插件失败")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "插件立即加载成功"})
+}
+
+func writePluginLoadError(c *gin.Context, err error, failureMessage string) {
+	status, code, message := 0, "", ""
+	switch {
+	case errors.Is(err, logic.ErrPluginResultUnknown):
+		status = http.StatusBadGateway
+		code = "plugin_result_unknown"
+		message = fmt.Sprintf("插件加载结果未确认，请检查服务器运行状态后再操作。详情: %v", err)
+	case errors.Is(err, logic.ErrPluginOperationBusy):
+		status = http.StatusConflict
+		code = "plugin_operation_busy"
+		message = "插件操作正在进行，请稍后重试"
+	default:
+		FailWithError(c, http.StatusInternalServerError, "%s: %v", failureMessage, err)
+		return
+	}
+	LogError(c, message)
+	c.JSON(status, gin.H{"error": code, "message": message})
 }
 
 func ReloadPlugin(c *gin.Context) {
