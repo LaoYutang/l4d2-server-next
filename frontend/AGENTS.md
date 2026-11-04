@@ -74,7 +74,7 @@ frontend/src/
 ## API CONVENTIONS
 
 - 业务请求经单例 `api` 发起；视图/组件不要新增裸 `fetch`。
-- 允许 `ApiService` 内部直接使用 `fetch`/`XMLHttpRequest`：Bearer、上传进度、30 秒超时、SSE 和公开自助授权需要底层控制。
+- 允许 `ApiService` 内部直接使用 `fetch`/`XMLHttpRequest`：Bearer、上传进度、吞吐量窗口与响应超时、SSE 和公开自助授权需要底层控制。
 - `src/stores/auth.ts` 的登录请求是刻意保留的例外，因为成功前 Pinia 尚未建立认证状态。
 - `handleResponseError` 对 `401` 注销，`429` 提示稍后重试，`403` 抛出权限错误；新增底层请求也要保持一致。
 - 后端错误主要是文本响应，调用方通常捕获并以 Ant `message` 显示；不要静默吞掉状态码。
@@ -84,7 +84,8 @@ frontend/src/
 
 `Maps.vue` 和 `ApiService` 共同维护地图分片上传：
 
-- 5 MiB 分片、并发 3、单分片 30 秒超时。
+- 5 MiB 分片、并发 3；每片独立采用 30 秒固定观察窗口，至少发送 1 MiB 请求体字节，计时延迟按实际经过时间折算。progress 不重置窗口；小于 1 MiB 的末片发送完成后直接进入确认阶段。
+- `xhr.upload.load` 只切换到独立的 30 秒响应等待，不代表成功；只有主 XHR 收到 HTTP 2xx 才确认分片完成。每次结束都清理监听器和定时器。
 - `/upload/init` 成功后立即保存 `uploadId`。
 - 网络/超时中断保留服务端分片和 `uploadId`，页面显示“继续上传”。
 - 用户主动移除、取消或用同名文件重新开始时，先 abort 客户端请求，再调用 `api.cancelUpload(uploadId)`。
