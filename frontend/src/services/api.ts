@@ -1360,71 +1360,147 @@ class ApiService {
       fd.append('chunk', new File([chunk], 'chunk'));
 
       const xhr = new XMLHttpRequest();
-      let isAbortedByUser = false;
+      const windowMs = 30_000;
+      const minimumWindowBytes = 1024 * 1024;
+      const responseWaitMs = 30_000;
+      let phase: 'uploading' | 'responding' = 'uploading';
+      let windowStartedAt = 0;
+      let windowStartBytes = 0;
+      let uploadedBytes = 0;
+      let responseStartedAt = 0;
+      let settled = false;
+      let abortError: Error | undefined;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-      const cleanup = () => {
+      const clearTimer = () => {
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId);
-        }
-        if (signal) {
-          signal.removeEventListener('abort', onAbort);
+          timeoutId = undefined;
         }
       };
-
-      const onAbort = () => {
-        isAbortedByUser = true;
-        xhr.abort();
+      const cleanup = () => {
+        clearTimer();
+        signal?.removeEventListener('abort', onAbort);
+        xhr.upload.removeEventListener('progress', onProgress);
+        xhr.upload.removeEventListener('load', onUploadComplete);
+        xhr.removeEventListener('load', onLoad);
+        xhr.removeEventListener('error', onError);
+        xhr.removeEventListener('abort', onTransportAbort);
+        xhr.removeEventListener('timeout', onTransportTimeout);
       };
-
-      if (signal) {
-        signal.addEventListener('abort', onAbort);
-        if (signal.aborted) {
-          cleanup();
-          reject(new Error('上传已取消'));
+      const settle = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+      const abortWithError = (error: Error) => {
+        if (settled) return;
+        abortError = error;
+        try {
+          xhr.abort();
+        } catch {
+          // Settle even if the transport has already closed or never started.
+        }
+        // abort need not emit an event before send or after transport completion.
+        settle(error);
+      };
+      const armTimer = (delay: number) => {
+        clearTimer();
+        timeoutId = setTimeout(checkTimeout, Math.max(1, delay));
+      };
+      const checkTimeout = () => {
+        if (settled) return;
+        const now = performance.now();
+        if (phase === 'responding') {
+          const elapsed = now - responseStartedAt;
+          if (elapsed < responseWaitMs) {
+            armTimer(responseWaitMs - elapsed);
+            return;
+          }
+          abortWithError(new Error('等待服务端确认分片超时，请继续上传以确认结果'));
           return;
         }
-      }
 
-      // 30 秒超时：只 abort，不直接 reject，由 abort 事件统一处理
-      timeoutId = setTimeout(() => {
-        xhr.abort();
-      }, 30000);
-
-      xhr.addEventListener('load', () => {
-        cleanup();
+        const elapsed = now - windowStartedAt;
+        if (elapsed < windowMs) {
+          armTimer(windowMs - elapsed);
+          return;
+        }
+        // Fixed, non-overlapping observation windows; progress does not extend
+        // the deadline. A delayed callback measures its actual elapsed time,
+        // e.g. 60 seconds needs 2 MiB, rather than granting extra upload time.
+        if ((uploadedBytes - windowStartBytes) * windowMs < minimumWindowBytes * elapsed) {
+          abortWithError(new Error('分片上传超时：每 30 秒上传量不足 1 MiB'));
+          return;
+        }
+        windowStartedAt = now;
+        windowStartBytes = uploadedBytes;
+        armTimer(windowMs);
+      };
+      const onAbort = () => abortWithError(new Error('上传已取消'));
+      const onProgress = (event: ProgressEvent) => {
+        if (settled || phase !== 'uploading') return;
+        // XHR reports actual multipart request-body bytes, including framing.
+        // loaded remains usable when total is unknown. Duplicate or regressing
+        // counters add no bytes, and framing is never mistaken for completion.
+        if (Number.isFinite(event.loaded) && event.loaded >= 0) {
+          uploadedBytes = Math.max(uploadedBytes, event.loaded);
+        }
+      };
+      const onUploadComplete = () => {
+        if (settled || phase !== 'uploading') return;
+        // upload.load means the body was sent, including a final chunk <1 MiB.
+        // It is not server confirmation: only the main XHR load may succeed.
+        phase = 'responding';
+        responseStartedAt = performance.now();
+        armTimer(responseWaitMs);
+      };
+      const onLoad = () => {
+        if (settled) return;
+        if (signal?.aborted) {
+          settle(new Error('上传已取消'));
+          return;
+        }
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
+          settle();
         } else {
           try {
             this.handleResponseError(xhr.status);
-            reject(new Error(xhr.responseText || '上传失败'));
-          } catch (e) {
-            reject(e);
+            settle(new Error(xhr.responseText || '上传失败'));
+          } catch (error) {
+            settle(new Error(this.getErrorMessage(error, '上传失败')));
           }
         }
-      });
+      };
+      const onError = () => settle(new Error('网络错误'));
+      const onTransportAbort = () => settle(abortError || new Error('分片上传已中断'));
+      const onTransportTimeout = () => settle(new Error('分片上传超时'));
 
-      xhr.addEventListener('error', () => {
-        cleanup();
-        reject(new Error('网络错误'));
-      });
-
-      xhr.addEventListener('abort', () => {
-        cleanup();
-        if (isAbortedByUser) {
-          reject(new Error('上传已取消'));
-        } else {
-          reject(new Error('分片上传超时'));
-        }
-      });
-
-      xhr.open('POST', '/upload/chunk');
-      const credential = this.getCredential();
-      if (credential) {
-        xhr.setRequestHeader('Authorization', `Bearer ${credential}`);
+      xhr.upload.addEventListener('progress', onProgress);
+      xhr.upload.addEventListener('load', onUploadComplete);
+      xhr.addEventListener('load', onLoad);
+      xhr.addEventListener('error', onError);
+      xhr.addEventListener('abort', onTransportAbort);
+      xhr.addEventListener('timeout', onTransportTimeout);
+      signal?.addEventListener('abort', onAbort);
+      if (signal?.aborted) {
+        onAbort();
+        return;
       }
-      xhr.send(fd);
+      try {
+        xhr.open('POST', '/upload/chunk');
+        const credential = this.getCredential();
+        if (credential) {
+          xhr.setRequestHeader('Authorization', `Bearer ${credential}`);
+        }
+        windowStartedAt = performance.now();
+        armTimer(windowMs);
+        xhr.send(fd);
+      } catch (error) {
+        abortWithError(new Error(this.getErrorMessage(error, '上传失败')));
+      }
     });
   }
 

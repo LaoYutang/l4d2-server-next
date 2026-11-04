@@ -71,7 +71,7 @@ Left 4 Dead 2 游戏服务器与 Web 管理后台。Go/Gin 后端管理游戏文
 - 写操作使用 `defer LogOp(c, detail)()` 记录成功/失败；统一错误路径优先使用 `FailWithError`。
 - 前端使用 Vue SFC + `<script setup>` + TypeScript、Pinia、Ant Design Vue 和 Tailwind CSS。
 - 应用 API 统一放在 `ApiService`；允许在该服务内部为 XHR 上传、SSE 和公开接口直接使用 `fetch`。
-- 分片上传为 5 MiB、并发 3、单分片 30 秒超时；网络中断保留 `uploadId` 续传，主动取消必须调用 `/upload/cancel`。
+- 分片上传为 5 MiB、并发 3；每片按独立 30 秒观察窗口检查至少 1 MiB 上传量，计时延迟按实际经过时间折算，发送完成后另等服务端确认 30 秒；网络中断保留 `uploadId` 续传，主动取消必须调用 `/upload/cancel`。
 - `frontend/src/components.d.ts` 由 `unplugin-vue-components` 在构建时生成并纳入版本控制。
 - 用户可见功能、环境变量、部署步骤变化要同步 `docs/`。
 
