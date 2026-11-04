@@ -255,6 +255,10 @@ func cloneFormValues(values url.Values) url.Values {
 }
 
 func newChunkUploadRequest(uploadId string, chunkIndex int, chunkSize int) (*http.Request, error) {
+	return newChunkDataUploadRequest(uploadId, chunkIndex, make([]byte, chunkSize))
+}
+
+func newChunkDataUploadRequest(uploadId string, chunkIndex int, content []byte) (*http.Request, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	if err := writer.WriteField("uploadId", uploadId); err != nil {
@@ -267,7 +271,7 @@ func newChunkUploadRequest(uploadId string, chunkIndex int, chunkSize int) (*htt
 	if err != nil {
 		return nil, err
 	}
-	if _, err := part.Write(make([]byte, chunkSize)); err != nil {
+	if _, err := part.Write(content); err != nil {
 		return nil, err
 	}
 	if err := writer.Close(); err != nil {
