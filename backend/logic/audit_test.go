@@ -73,7 +73,7 @@ func TestAuditWriterFlushesByTimerAndBatchSize(t *testing.T) {
 		go writer.run()
 		defer writer.stopForTest()
 
-		writer.enqueue(model.AuditLog{Time: 1, Role: "admin", IP: "127.0.0.1", Path: "/timer", Success: true, Detail: "timer"})
+		writer.enqueue(model.AuditLog{Time: time.Now().Unix(), Role: "admin", IP: "127.0.0.1", Path: "/timer", Success: true, Detail: "timer"})
 		waitForAuditCount(t, database, 1)
 	})
 
@@ -84,7 +84,7 @@ func TestAuditWriterFlushesByTimerAndBatchSize(t *testing.T) {
 		defer writer.stopForTest()
 
 		for i := 0; i < auditBatchSize; i++ {
-			if !writer.enqueue(model.AuditLog{Time: int64(i + 1), Role: "admin", IP: "127.0.0.1", Path: "/batch", Success: true, Detail: "batch"}) {
+			if !writer.enqueue(model.AuditLog{Time: time.Now().Unix(), Role: "admin", IP: "127.0.0.1", Path: "/batch", Success: true, Detail: "batch"}) {
 				t.Fatalf("record %d was unexpectedly dropped", i)
 			}
 		}
