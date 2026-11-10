@@ -2,7 +2,7 @@
 FROM node:24-alpine AS web-builder
 WORKDIR /app/frontend
 COPY ./frontend/package.json ./frontend/package-lock.json ./
-RUN npm install
+RUN npm ci --registry=https://registry.npmjs.org/
 COPY ./frontend .
 RUN npm run build
 
