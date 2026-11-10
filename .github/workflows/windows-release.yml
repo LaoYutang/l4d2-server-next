@@ -25,7 +25,7 @@ jobs:
       - name: Build Frontend
         run: |
           cd frontend
-          npm install
+          npm ci --registry=https://registry.npmjs.org/
           npm run build
 
       - name: Set up Go
