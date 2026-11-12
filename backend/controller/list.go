@@ -3,16 +3,17 @@ package controller
 import (
 	"fmt"
 	"l4d2-manager-next/consts"
+	"l4d2-manager-next/logic"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 )
 
-var mutex sync.RWMutex
+// Map imports, edits, locking and cleanup share a single mutation boundary.
+var mutex = &logic.MapLifecycleMutex
 
 func List(c *gin.Context) {
 	mutex.RLock()

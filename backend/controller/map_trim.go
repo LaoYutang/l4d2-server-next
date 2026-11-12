@@ -40,6 +40,10 @@ func TrimMap(c *gin.Context) {
 
 	mutex.Lock()
 	defer mutex.Unlock()
+	if err := logic.RecoverMapLifecycleLocked(); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "读取地图状态失败，未修改地图: %v", err)
+		return
+	}
 
 	mapList, err := readMapList()
 	if err != nil {
@@ -95,6 +99,10 @@ func TrimMap(c *gin.Context) {
 
 	if err := replaceMapWithTrimmedVPK(mapName, sourcePath, trimmedPath); err != nil {
 		FailWithError(c, http.StatusInternalServerError, "替换精简VPK失败: %v", err)
+		return
+	}
+	if err := logic.RefreshMapLifecycleFileLocked(mapName); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "地图已精简，但保存地图状态失败: %v", err)
 		return
 	}
 	if err := logic.InspectAndStoreMapVPK(mapName, sourcePath); err != nil {

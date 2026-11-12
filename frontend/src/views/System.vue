@@ -20,6 +20,7 @@
   import SteamCDNSetting from '../components/settings/SteamCDNSetting.vue';
   import DiskUsageLimitSetting from '../components/settings/DiskUsageLimitSetting.vue';
   import MapImportPolicySetting from '../components/settings/MapImportPolicySetting.vue';
+  import MapAutoCleanupSetting from '../components/settings/MapAutoCleanupSetting.vue';
 
   type SettingsSection = 'statistics' | 'map-management' | 'about';
 
@@ -403,10 +404,11 @@
           >
             <div class="settings-heading">
               <h2><CloudUploadOutlined class="text-orange-500" /> 地图管理设置</h2>
-              <p>统一管理地图资源精简、磁盘保护、热重载指令和 Steam CDN 下载配置。</p>
+              <p>统一管理地图自动清理、资源精简、磁盘保护、热重载和下载配置。</p>
             </div>
 
             <div class="space-y-4">
+              <MapAutoCleanupSetting :active="isAdmin" />
               <section class="setting-section">
                 <div class="setting-row">
                   <div class="min-w-0">

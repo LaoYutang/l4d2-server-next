@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"l4d2-manager-next/logic"
 	"net/http"
 	"os"
@@ -118,6 +119,11 @@ func UpdateMapGlobalScript(c *gin.Context) {
 	defer LogOp(c, "编辑地图全局脚本: "+mapName+" / "+scriptPath)()
 
 	mutex.Lock()
+	if err := logic.RecoverMapLifecycleLocked(); err != nil {
+		mutex.Unlock()
+		FailWithError(c, http.StatusInternalServerError, "读取地图状态失败，未修改地图: %v", err)
+		return
+	}
 	result, err := logic.UpdateMapGlobalScript(
 		mapName,
 		scriptPath,
@@ -125,6 +131,11 @@ func UpdateMapGlobalScript(c *gin.Context) {
 		request.Encoding,
 		request.ExpectedRevision,
 	)
+	if err == nil {
+		if refreshErr := logic.RefreshMapLifecycleFileLocked(mapName); refreshErr != nil {
+			err = fmt.Errorf("地图脚本已保存，但保存地图状态失败: %w", refreshErr)
+		}
+	}
 	mutex.Unlock()
 	if err != nil {
 		switch {

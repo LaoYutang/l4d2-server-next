@@ -26,12 +26,14 @@ type ManagerConfig struct {
 	MapHotReloadCommand  string          `json:"map_hot_reload_command"`
 	SteamCDNIP           string          `json:"steam_cdn_ip,omitempty"`
 	// DiskUsageLimitPercent 是地图上传与下载任务允许的磁盘使用率上限。
-	DiskUsageLimitPercent int `json:"disk_usage_limit_percent"`
+	DiskUsageLimitPercent int                `json:"disk_usage_limit_percent"`
+	MapCleanup            MapCleanupSettings `json:"map_cleanup"`
 }
 
 var (
-	managerConfig      *ManagerConfig
-	managerConfigMutex sync.RWMutex
+	managerConfig          *ManagerConfig
+	managerConfigMutex     sync.RWMutex
+	managerConfigLoadError error
 )
 
 func init() {
@@ -50,7 +52,9 @@ func LoadManagerConfig() {
 		MapHotReloadCommand:   DefaultMapHotReloadCommand,
 		SteamCDNIP:            "",
 		DiskUsageLimitPercent: DefaultDiskUsageLimitPercent,
+		MapCleanup:            MapCleanupSettings{RetentionDays: DefaultMapCleanupRetentionDays},
 	}
+	managerConfigLoadError = nil
 
 	if _, err := os.Stat(consts.ManagerConfigPath); os.IsNotExist(err) {
 		return
@@ -58,12 +62,20 @@ func LoadManagerConfig() {
 
 	data, err := os.ReadFile(consts.ManagerConfigPath)
 	if err != nil {
+		managerConfigLoadError = fmt.Errorf("读取面板配置失败: %w", err)
 		return
 	}
 
-	if err := json.Unmarshal(data, managerConfig); err != nil {
+	loaded := *managerConfig
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		managerConfigLoadError = fmt.Errorf("解析面板配置失败: %w", err)
 		return
 	}
+	if err := validateStoredMapCleanupConfig(data, loaded.MapCleanup); err != nil {
+		managerConfigLoadError = err
+		return
+	}
+	managerConfig = &loaded
 
 	if !IsDiskUsageLimitPercentValid(managerConfig.DiskUsageLimitPercent) {
 		managerConfig.DiskUsageLimitPercent = DefaultDiskUsageLimitPercent
@@ -78,7 +90,13 @@ func LoadManagerConfig() {
 }
 
 func saveManagerConfig() error {
-	data, err := json.MarshalIndent(managerConfig, "", "  ")
+	return persistManagerConfig(managerConfig)
+}
+
+// persistManagerConfig writes a complete candidate without publishing it to readers.
+// Callers hold managerConfigMutex and publish only after this succeeds.
+func persistManagerConfig(candidate *ManagerConfig) error {
+	data, err := json.MarshalIndent(candidate, "", "  ")
 	if err != nil {
 		return err
 	}

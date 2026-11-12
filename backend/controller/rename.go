@@ -35,6 +35,10 @@ func RenameMap(c *gin.Context) {
 
 	mutex.Lock()
 	defer mutex.Unlock()
+	if err := logic.RecoverMapLifecycleLocked(); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "读取地图状态失败，未修改地图: %v", err)
+		return
+	}
 
 	mapList, err := readMapList()
 	if err != nil {
@@ -84,19 +88,24 @@ func RenameMap(c *gin.Context) {
 		return
 	}
 
-	if err := os.Rename(oldPath, newPath); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "重命名文件失败: %v", err)
+	if err := logic.RenameMapLifecycleLocked(oldName, newName, func() error {
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("重命名文件失败: %w", err)
+		}
+		mapList[oldIndex] = newName
+		if err := writeMapList(mapList); err != nil {
+			if rollbackErr := os.Rename(newPath, oldPath); rollbackErr != nil {
+				return fmt.Errorf("写入地图记录失败: %w；恢复原文件失败: %v", err, rollbackErr)
+			}
+			return fmt.Errorf("写入地图记录失败: %w", err)
+		}
+		if err := logic.RenameMapVPKInspection(oldName, newName); err != nil {
+			log.Printf("更新地图 VPK 检测记录名称失败（%s -> %s）: %v", oldName, newName, err)
+		}
+		return nil
+	}); err != nil {
+		FailWithError(c, http.StatusInternalServerError, "重命名地图失败: %v", err)
 		return
-	}
-
-	mapList[oldIndex] = newName
-	if err := writeMapList(mapList); err != nil {
-		_ = os.Rename(newPath, oldPath)
-		FailWithError(c, http.StatusInternalServerError, "写入地图记录失败: %v", err)
-		return
-	}
-	if err := logic.RenameMapVPKInspection(oldName, newName); err != nil {
-		log.Printf("更新地图 VPK 检测记录名称失败（%s -> %s）: %v", oldName, newName, err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"name": newName, "message": fmt.Sprintf("地图已重命名为 %s", newName)})

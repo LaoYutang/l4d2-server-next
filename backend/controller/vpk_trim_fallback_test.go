@@ -81,6 +81,8 @@ func TestTrimMapKeepsOriginalWhenTrimUnsupported(t *testing.T) {
 
 	oldAddonsBasePath := consts.AddonsBasePath
 	oldMapListFilePath := consts.MapListFilePath
+	oldManagerDataPath := consts.ManagerDataPath
+	oldMapVPKInspectionsPath := consts.MapVPKInspectionsPath
 
 	root := t.TempDir()
 	addonsPath := filepath.Join(root, "addons")
@@ -90,9 +92,13 @@ func TestTrimMapKeepsOriginalWhenTrimUnsupported(t *testing.T) {
 
 	consts.AddonsBasePath = addonsPath
 	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
+	consts.ManagerDataPath = filepath.Join(root, "data")
+	consts.MapVPKInspectionsPath = filepath.Join(root, "data", "map_vpk_inspections.json")
 	t.Cleanup(func() {
 		consts.AddonsBasePath = oldAddonsBasePath
 		consts.MapListFilePath = oldMapListFilePath
+		consts.ManagerDataPath = oldManagerDataPath
+		consts.MapVPKInspectionsPath = oldMapVPKInspectionsPath
 	})
 
 	sourceContent := []byte("not a supported vpk layout")

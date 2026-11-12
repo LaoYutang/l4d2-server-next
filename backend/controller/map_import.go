@@ -101,6 +101,9 @@ func (batch *mapImportBatch) commit() (names []string, returnErr error) {
 	// Shared with remove/rename/trim/script editing, and held through rollback.
 	mutex.Lock()
 	defer mutex.Unlock()
+	if err := logic.RecoverMapLifecycleLocked(); err != nil {
+		return nil, fmt.Errorf("读取地图状态失败，未安装地图: %w", err)
+	}
 	previousList, err := os.ReadFile(consts.MapListFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("读取地图记录失败: %w", err)
@@ -128,7 +131,7 @@ func (batch *mapImportBatch) commit() (names []string, returnErr error) {
 	}
 	installed := make([]string, 0, len(batch.maps))
 	defer func() {
-		if returnErr == nil {
+		if returnErr == nil || errors.Is(returnErr, logic.ErrMapLifecycleCommitUncertain) {
 			return
 		}
 		for _, path := range installed {
@@ -156,8 +159,10 @@ func (batch *mapImportBatch) commit() (names []string, returnErr error) {
 		content += candidate.name + "\n"
 		names = append(names, candidate.name)
 	}
-	if err := logic.CommitMapVPKInspections(entries, func() error {
-		return publishMapImportList(consts.MapListFilePath, []byte(content), mode)
+	if err := logic.RecordInstalledMapsLocked(names, func() error {
+		return logic.CommitMapVPKInspections(entries, func() error {
+			return publishMapImportList(consts.MapListFilePath, []byte(content), mode)
+		})
 	}); err != nil {
 		return nil, fmt.Errorf("记录地图失败: %w", err)
 	}
