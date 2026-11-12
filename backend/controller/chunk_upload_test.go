@@ -216,6 +216,7 @@ func setupChunkUploadTestPaths(t *testing.T) (string, string) {
 	oldAddonsBasePath := consts.AddonsBasePath
 	oldMapListFilePath := consts.MapListFilePath
 	oldMapVPKInspectionsPath := consts.MapVPKInspectionsPath
+	oldManagerDataPath := consts.ManagerDataPath
 	rootDir := t.TempDir()
 	addonsPath := filepath.Join(rootDir, "addons")
 	if err := os.MkdirAll(addonsPath, 0755); err != nil {
@@ -224,6 +225,7 @@ func setupChunkUploadTestPaths(t *testing.T) (string, string) {
 	consts.AddonsBasePath = addonsPath
 	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
 	consts.MapVPKInspectionsPath = filepath.Join(rootDir, "data", "map_vpk_inspections.json")
+	consts.ManagerDataPath = filepath.Join(rootDir, "data")
 	if err := os.WriteFile(consts.MapListFilePath, nil, 0644); err != nil {
 		t.Fatalf("create maplist: %v", err)
 	}
@@ -231,6 +233,7 @@ func setupChunkUploadTestPaths(t *testing.T) (string, string) {
 		consts.AddonsBasePath = oldAddonsBasePath
 		consts.MapListFilePath = oldMapListFilePath
 		consts.MapVPKInspectionsPath = oldMapVPKInspectionsPath
+		consts.ManagerDataPath = oldManagerDataPath
 	})
 	return rootDir, addonsPath
 }

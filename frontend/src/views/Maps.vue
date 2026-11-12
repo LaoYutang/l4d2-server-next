@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, computed, onMounted, h, watch, reactive } from 'vue';
+  import { ref, computed, onMounted, onBeforeUnmount, h, watch, reactive } from 'vue';
   defineOptions({ name: 'Maps' });
   import {
     api,
@@ -15,6 +15,10 @@
   import MapQueueButton from '../components/MapQueueButton.vue';
   import MapUploadPanel from '../components/MapUploadPanel.vue';
   import MapDownloadPanel from '../components/MapDownloadPanel.vue';
+  import MapRemovalResult from '../components/MapRemovalResult.vue';
+  import { useMapLifecycle } from '../composables/useMapLifecycle';
+  import { formatMapUploadTime } from '../utils/mapLifecycle';
+  import { formatBytes } from '../utils/format';
   import { message, Modal } from 'ant-design-vue';
   import type { TablePaginationConfig } from 'ant-design-vue';
   import {
@@ -25,17 +29,37 @@
     EditOutlined,
     CompressOutlined,
     SettingOutlined,
+    LockOutlined,
+    UnlockOutlined,
   } from '@ant-design/icons-vue';
 
   const authStore = useAuthStore();
   const isAdmin = computed(() => authStore.isAdmin);
   const activeTab = ref('local');
-  const maps = ref<Array<{ name: string; size: string; info: string }>>([]);
+  const {
+    maps: lifecycleMaps,
+    selectedRowKeys,
+    loading,
+    loadError,
+    removing,
+    lockingMaps,
+    removalFeedback,
+    loadMaps,
+    setMapLocked,
+    removeMaps,
+  } = useMapLifecycle();
+  const maps = computed(() => lifecycleMaps.value.map((item) => ({
+    ...item,
+    size: item.missing ? 'unknown' : item.size_label || formatBytes(item.size),
+  })));
+  const lockedMapCount = computed(() => lifecycleMaps.value.filter((item) => item.locked).length);
+  const historicalMapCount = computed(() => lifecycleMaps.value.filter((item) => !item.uploaded_at).length);
   const mapSummaries = ref<Record<string, MapSummaryItem>>({});
   const mapSummaryLoading = ref<Record<string, boolean>>({});
-  const loading = ref(false);
+  const summaryRequests = new Map<string, number>();
+  let summaryRequestId = 0;
+  let summaryDisposed = false;
   const searchQuery = ref('');
-  const selectedRowKeys = ref<string[]>([]);
   const trimmingMaps = ref<Record<string, boolean>>({});
   const renameVisible = ref(false);
   const renamingMap = ref(false);
@@ -58,18 +82,6 @@
   );
 
   // Local Maps Logic
-  const loadMaps = async () => {
-    loading.value = true;
-    try {
-      maps.value = await api.getMapList();
-    } catch (e) {
-      console.error(e);
-      message.error('加载地图列表失败');
-    } finally {
-      loading.value = false;
-    }
-  };
-
   const filteredMaps = computed(() => {
     if (!searchQuery.value) return maps.value;
     const q = searchQuery.value.toLowerCase();
@@ -111,54 +123,39 @@
     selectedRowKeys.value = keys;
   };
 
-  const batchDeleteMaps = async () => {
-    if (selectedRowKeys.value.length === 0) return;
-
+  const confirmDeleteMaps = (names: string[]) => {
+    if (removing.value || names.length === 0) return;
+    const targets = [...names];
+    const selected = lifecycleMaps.value.filter((item) => targets.includes(item.name));
+    const revisions = Object.fromEntries(selected.map((item) => [item.name, item.revision]));
+    const protectedCount = selected.filter((item) => item.locked).length;
     Modal.confirm({
-      title: `确定要删除选中的 ${selectedRowKeys.value.length} 个地图吗？`,
+      title: `删除选中的 ${targets.length} 个地图？`,
       icon: () => h(ExclamationCircleOutlined),
-      content: '此操作不可逆。',
-      onOk: async () => {
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const name of selectedRowKeys.value) {
-          try {
-            await api.deleteMap(name);
-            successCount++;
-          } catch (e) {
-            console.error(`Failed to delete ${name}`, e);
-            failCount++;
-          }
-        }
-
-        if (failCount > 0) {
-          message.warning(`删除完成: ${successCount} 个成功, ${failCount} 个失败`);
-        } else {
-          message.success(`成功删除 ${successCount} 个地图`);
-        }
-
-        selectedRowKeys.value = [];
-        loadMaps();
-      },
+      content: `预计删除 ${targets.length - protectedCount} 个，保留已锁定的 ${protectedCount} 个。服务器会再次核对锁定状态；删除无法撤销。`,
+      okText: '确认删除',
+      okType: 'danger',
+      onOk: () => removeMaps(targets, revisions),
     });
   };
 
+  const batchDeleteMaps = () => confirmDeleteMaps(selectedRowKeys.value);
+
   const deleteMap = async (name: string) => {
-    Modal.confirm({
-      title: `确定要删除地图 ${name} 吗？`,
-      icon: () => h(ExclamationCircleOutlined),
-      content: '此操作不可逆。',
-      onOk: async () => {
-        try {
-          await api.deleteMap(name);
-          message.success('删除成功');
-          loadMaps();
-        } catch (e: any) {
-          message.error('删除失败: ' + e.message);
-        }
-      },
-    });
+    confirmDeleteMaps([name]);
+  };
+
+  const toggleMapLock = async (name: string) => {
+    if (!isAdmin.value || removing.value) return;
+    const item = lifecycleMaps.value.find((map) => map.name === name);
+    if (!item) return;
+    const locked = !item.locked;
+    try {
+      await setMapLocked(item, locked);
+      message.success(locked ? '地图已锁定，删除和自动清理时均会保留' : '地图已解锁');
+    } catch (error) {
+      message.error(`更新锁定状态失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const trimMap = async (name: string) => {
@@ -236,20 +233,14 @@
   };
 
   const confirmClearMaps = async () => {
+    if (removing.value) return;
     Modal.confirm({
-      title: '警告：这将删除所有第三方地图文件！',
+      title: '清空未锁定的地图？',
       icon: () => h(ExclamationCircleOutlined),
-      content: '确定继续吗？',
+      content: `当前有 ${lockedMapCount.value} 个锁定地图将保留。无上传时间的历史地图也会被手动清空；删除无法撤销。`,
       okType: 'danger',
-      onOk: async () => {
-        try {
-          await api.clearMaps();
-          message.success('所有地图已清空');
-          loadMaps();
-        } catch (e: any) {
-          message.error('清空失败: ' + e.message);
-        }
-      },
+      okText: '清空未锁定地图',
+      onOk: () => removeMaps(),
     });
   };
 
@@ -261,7 +252,7 @@
   const mapColumns = [
     { title: '地图名称', dataIndex: 'name', key: 'name' },
     { title: '大小', dataIndex: 'size', key: 'size', width: 120 },
-    { title: '操作', key: 'action', width: 330, align: 'right' as const },
+    { title: '操作', key: 'action', width: 400, align: 'right' as const },
   ];
 
   const mapDetailChapterColumns = [
@@ -291,7 +282,7 @@
   });
 
   const currentPageMapNames = computed(() => currentPageMaps.value.map((map) => map.name));
-  const currentPageMapNamesKey = computed(() => currentPageMapNames.value.join('\0'));
+  const currentPageMapNamesKey = computed(() => currentPageMaps.value.map((map) => `${map.name}\0${map.revision}`).join('\0'));
 
   const loadMapSummaries = async (names: string[]) => {
     const uniqueNames = Array.from(new Set(names.filter(Boolean)));
@@ -299,6 +290,10 @@
     if (uniqueNames.length === 0) {
       return;
     }
+
+    const requestId = ++summaryRequestId;
+    const revisions = new Map(lifecycleMaps.value.map((item) => [item.name, item.revision]));
+    uniqueNames.forEach((name) => summaryRequests.set(name, requestId));
 
     const loadingPatch = uniqueNames.reduce<Record<string, boolean>>((acc, name) => {
       acc[name] = true;
@@ -308,13 +303,19 @@
 
     try {
       const items = await api.getMapSummaries(uniqueNames);
-      mapSummaries.value = { ...mapSummaries.value, ...items };
+      if (summaryDisposed) return;
+      const currentRevisions = new Map(lifecycleMaps.value.map((item) => [item.name, item.revision]));
+      const currentItems = Object.fromEntries(Object.entries(items).filter(([name]) =>
+        summaryRequests.get(name) === requestId && revisions.get(name) === currentRevisions.get(name)
+      ));
+      mapSummaries.value = { ...mapSummaries.value, ...currentItems };
     } catch (e) {
       console.error('Failed to load map summaries', e);
     } finally {
+      if (summaryDisposed) return;
       const nextLoading = { ...mapSummaryLoading.value };
       uniqueNames.forEach((name) => {
-        nextLoading[name] = false;
+        if (summaryRequests.get(name) === requestId) nextLoading[name] = false;
       });
       mapSummaryLoading.value = nextLoading;
     }
@@ -414,6 +415,7 @@
   onMounted(() => {
     loadMaps();
   });
+  onBeforeUnmount(() => { summaryDisposed = true; });
 
 </script>
 
@@ -421,22 +423,33 @@
   <div class="h-full">
     <a-tabs v-model:activeKey="activeTab" type="card">
       <a-tab-pane key="local" tab="地图管理">
-        <div class="space-y-4">
+        <div class="maps-list grid min-w-0 gap-4">
+          <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span class="mr-1">共 {{ maps.length }} 个地图</span>
+            <a-tag color="gold" class="!m-0"><LockOutlined /> 已锁定 {{ lockedMapCount }}</a-tag>
+            <a-tag class="!m-0">历史地图 {{ historicalMapCount }}</a-tag>
+            <span class="hidden sm:inline">锁定地图始终保留；历史地图不参与自动清理</span>
+          </div>
+          <a-alert v-if="loadError" class="map-load-alert" type="error" show-icon :message="`加载地图列表失败：${loadError}`" description="当前列表可能不是最新状态，请重新读取后核对。">
+            <template #action><a-button size="small" :loading="loading" @click="loadMaps">重试</a-button></template>
+          </a-alert>
+          <MapRemovalResult v-if="removalFeedback" :feedback="removalFeedback" @close="removalFeedback = null" />
           <!-- Actions Bar -->
-          <div class="flex flex-col md:flex-row justify-between gap-4">
-            <div class="w-full md:w-1/3">
+          <div class="maps-toolbar flex min-w-0 flex-col justify-between gap-4 xl:flex-row">
+            <div class="min-w-0 w-full xl:w-1/3 xl:max-w-sm xl:shrink-0">
               <a-input-search v-model:value="searchQuery" placeholder="搜索地图..." allow-clear />
             </div>
-            <div class="flex gap-2 flex-wrap">
+            <div class="flex min-w-0 flex-wrap gap-2">
               <a-button
                 v-if="selectedRowKeys.length > 0"
                 danger
                 @click="batchDeleteMaps"
+                :loading="removing"
+                :disabled="removing || Boolean(loadError)"
                 class="!flex !items-center !justify-center"
               >
                 <template #icon><delete-outlined /></template>
-                <span class="hidden sm:inline">删除选中</span>
-                <span class="sm:hidden">删除</span>
+                删除选中
                 ({{ selectedRowKeys.length }})
               </a-button>
               <a-button
@@ -452,7 +465,7 @@
                 <a-button
                   v-if="isAdmin"
                   @click="openHotReloadConfig"
-                  class="!flex !items-center !justify-center"
+                  class="!flex !min-w-10 !items-center !justify-center"
                   title="设置热重载指令"
                 >
                   <template #icon><setting-outlined /></template>
@@ -462,6 +475,8 @@
               <a-button
                 danger
                 @click="confirmClearMaps"
+                :loading="removing"
+                :disabled="removing || loading || Boolean(loadError) || maps.length === 0"
                 class="!flex !items-center !justify-center"
               >
                 <template #icon><delete-outlined /></template>
@@ -479,15 +494,21 @@
             @change="handleTableChange"
             rowKey="name"
             :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
-            :scroll="{ x: 940 }"
+            :scroll="{ x: 1020 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
                 <div class="min-w-[180px]">
                   <div class="min-w-0 flex flex-col gap-0.5">
-                    <span class="font-medium break-all text-sm dark:text-gray-200">{{
-                      record.name
-                    }}</span>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium break-all text-sm dark:text-gray-200">{{ record.name }}</span>
+                      <a-tag v-if="record.locked" color="gold" class="!m-0 !text-xs"><LockOutlined /> 已锁定</a-tag>
+                    </div>
+                    <span
+                      class="text-xs text-gray-400 dark:text-gray-500"
+                      :title="record.uploaded_at ? `浏览器本地时间（原始记录 ${record.uploaded_at}）` : '成功导入后才记录上传时间，旧地图不会自动补记'"
+                    >{{ formatMapUploadTime(record.uploaded_at) }}</span>
+                    <span v-if="record.error" class="break-words text-xs text-amber-600 dark:text-amber-400">{{ record.error }}</span>
                     <span
                       v-if="isMapSummaryLoading(record.name)"
                       class="text-xs text-gray-400 dark:text-gray-500"
@@ -649,6 +670,7 @@
                     size="small"
                     type="text"
                     @click="openRenameModal(record.name)"
+                    :disabled="removing"
                     class="!flex !items-center !justify-center"
                     title="重命名"
                   >
@@ -660,7 +682,7 @@
                     size="small"
                     type="text"
                     :loading="trimmingMaps[record.name]"
-                    :disabled="trimmingMaps[record.name]"
+                    :disabled="trimmingMaps[record.name] || removing"
                     @click="trimMap(record.name)"
                     class="!flex !items-center !justify-center"
                     title="精简"
@@ -669,12 +691,27 @@
                     <span class="hidden sm:inline">精简</span>
                   </a-button>
                   <a-button
+                    v-if="isAdmin"
+                    size="small"
+                    type="text"
+                    :loading="lockingMaps[record.name]"
+                    :disabled="removing || lockingMaps[record.name] || record.missing || Boolean(loadError)"
+                    @click="toggleMapLock(record.name)"
+                    class="!flex !items-center !justify-center"
+                    :title="record.locked ? '解锁地图' : '锁定地图，删除和自动清理时保留'"
+                    :aria-label="`${record.locked ? '解锁' : '锁定'} ${record.name}`"
+                  >
+                    <template #icon><UnlockOutlined v-if="record.locked" /><LockOutlined v-else /></template>
+                    <span class="hidden sm:inline">{{ record.locked ? '解锁' : '锁定' }}</span>
+                  </a-button>
+                  <a-button
                     size="small"
                     danger
                     type="text"
                     @click="deleteMap(record.name)"
+                    :disabled="record.locked || removing || lockingMaps[record.name] || Boolean(loadError)"
                     class="!flex !items-center !justify-center"
-                    title="删除"
+                    :title="record.locked ? '地图已锁定，请先解锁' : '删除'"
                   >
                     <template #icon><delete-outlined /></template>
                     <span class="hidden sm:inline">删除</span>
@@ -842,6 +879,68 @@
 </template>
 
 <style scoped>
+  .maps-list > * {
+    min-width: 0;
+  }
+
+  .maps-toolbar :deep(.ant-btn) {
+    min-height: 2.5rem;
+    height: auto;
+    max-width: 100%;
+  }
+
+  .maps-toolbar :deep(.ant-input-affix-wrapper) {
+    min-height: 2.5rem;
+  }
+
+  .maps-toolbar :deep(.ant-btn-group) {
+    flex-shrink: 0;
+  }
+
+  .map-load-alert :deep(.ant-alert-content) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .map-load-alert :deep(.ant-alert-message) {
+    white-space: normal;
+  }
+
+  .map-load-alert :deep(.ant-alert-action .ant-btn) {
+    min-height: 2.5rem;
+    white-space: normal;
+  }
+
+  @media (max-width: 639px) {
+    .map-load-alert {
+      flex-wrap: wrap;
+      row-gap: 0.75rem;
+    }
+
+    .map-load-alert :deep(.ant-alert-action) {
+      flex-basis: 100%;
+      margin-inline-start: 0;
+    }
+
+    .map-load-alert :deep(.ant-alert-action .ant-btn) {
+      min-height: 2.5rem;
+      min-width: 2.5rem;
+      height: auto;
+    }
+
+    .map-load-alert :deep(.ant-alert-action .ant-btn) {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    .maps-list :deep(.ant-table-tbody .ant-btn) {
+      min-height: 2.5rem;
+      min-width: 2.5rem;
+      height: auto;
+    }
+  }
+
   :deep(.clickable-risk-tag) {
     margin-inline-end: 0;
     cursor: pointer;

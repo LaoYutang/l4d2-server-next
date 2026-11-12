@@ -337,7 +337,7 @@ func TestUploadImportCannotRepeatAfterCleanupFailure(t *testing.T) {
 	removeUploadTempDir = func(string) error { return os.ErrPermission }
 	c, w := uploadActionContext(id, "merge")
 	UploadMerge(c)
-	assertUploadResponse(t, w, 500, "清理临时文件失败")
+	assertUploadResponse(t, w, 500, "地图已导入成功，但清理上传临时文件失败")
 	assertUploadFile(t, filepath.Join(addons, "map.vpk"), []byte("ABCDEFG"))
 	if _, err := os.Stat(filepath.Join(path, uploadImportMarker)); err != nil {
 		t.Fatal("cleanup failure lost the import marker")

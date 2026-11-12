@@ -130,6 +130,8 @@ func setupRemoveTestPaths(t *testing.T) (string, string) {
 
 	oldAddonsBasePath := consts.AddonsBasePath
 	oldMapListFilePath := consts.MapListFilePath
+	oldManagerDataPath := consts.ManagerDataPath
+	oldMapVPKInspectionsPath := consts.MapVPKInspectionsPath
 	rootDir := t.TempDir()
 	addonsPath := filepath.Join(rootDir, "addons")
 	if err := os.MkdirAll(addonsPath, 0755); err != nil {
@@ -137,12 +139,16 @@ func setupRemoveTestPaths(t *testing.T) (string, string) {
 	}
 	consts.AddonsBasePath = addonsPath
 	consts.MapListFilePath = filepath.Join(addonsPath, "maplist.txt")
+	consts.ManagerDataPath = filepath.Join(rootDir, "data")
+	consts.MapVPKInspectionsPath = filepath.Join(rootDir, "data", "map_vpk_inspections.json")
 	if err := os.WriteFile(consts.MapListFilePath, nil, 0644); err != nil {
 		t.Fatalf("create maplist: %v", err)
 	}
 	t.Cleanup(func() {
 		consts.AddonsBasePath = oldAddonsBasePath
 		consts.MapListFilePath = oldMapListFilePath
+		consts.ManagerDataPath = oldManagerDataPath
+		consts.MapVPKInspectionsPath = oldMapVPKInspectionsPath
 	})
 	return rootDir, addonsPath
 }

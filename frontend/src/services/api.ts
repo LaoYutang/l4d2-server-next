@@ -438,6 +438,35 @@ export interface MapSummaryResponse {
   items: Record<string, MapSummaryItem>;
 }
 
+export interface MapLifecycleItem {
+  name: string;
+  id: string;
+  revision: string;
+  size: number;
+  size_label: string;
+  uploaded_at: string | null;
+  locked: boolean;
+  missing: boolean;
+  error?: string;
+}
+
+export interface MapDeleteResult {
+  deleted: string[];
+  skipped_locked: string[];
+  skipped_unknown_time: string[];
+  skipped_changed: string[];
+  pending_cleanup: string[];
+  failed: Array<{ name: string; error: string }>;
+}
+
+export interface MapCleanupConfig {
+  enabled: boolean;
+  retention_days: number;
+  check_time: string;
+  timezone: string;
+  next_check_at: string;
+}
+
 export type PluginExportStatus = 'pending' | 'compressing' | 'completed' | 'failed' | 'cancelled';
 
 export interface PluginExportProgress {
@@ -1184,10 +1213,32 @@ class ApiService {
     return response.json();
   }
 
-  async clearMaps() {
+  async clearMaps(): Promise<MapDeleteResult> {
     const response = await this.post('/clear');
-    if (!response.ok) throw new Error(await response.text());
-    return response.text();
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async getMapLifecycleList(): Promise<MapLifecycleItem[]> {
+    const response = await this.post('/maps/list');
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async setMapLocked(map: string, locked: boolean, expectedRevision?: string): Promise<MapLifecycleItem> {
+    const response = await this.postJson('/maps/lock', {
+      map,
+      locked,
+      ...(expectedRevision ? { expected_revision: expectedRevision } : {}),
+    });
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async deleteMaps(maps: string[], revisions?: Record<string, string>): Promise<MapDeleteResult> {
+    const response = await this.postJson('/maps/remove-batch', { maps, ...(revisions ? { revisions } : {}) });
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
   }
 
   async getMapList() {
@@ -2215,6 +2266,18 @@ class ApiService {
 
   async getMapImportPolicy(): Promise<MapImportPolicy> {
     const response = await this.post('/maps/import-policy');
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async getMapCleanupConfig(): Promise<MapCleanupConfig> {
+    const response = await this.post('/maps/cleanup/config');
+    if (!response.ok) throw new Error(await this.readErrorMessage(response));
+    return response.json();
+  }
+
+  async setMapCleanupConfig(config: Pick<MapCleanupConfig, 'enabled' | 'retention_days'>): Promise<MapCleanupConfig> {
+    const response = await this.postJson('/config/map-cleanup', config);
     if (!response.ok) throw new Error(await this.readErrorMessage(response));
     return response.json();
   }

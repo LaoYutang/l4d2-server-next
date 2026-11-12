@@ -555,7 +555,7 @@ func UploadMerge(c *gin.Context) {
 		return
 	}
 	if err := removeUploadTempDir(uploadId); err != nil {
-		FailWithError(c, http.StatusInternalServerError, "清理临时文件失败: %v", err)
+		FailWithError(c, http.StatusInternalServerError, "地图已导入成功，但清理上传临时文件失败，请刷新地图列表: %v", err)
 		return
 	}
 	defer LogOp(c, fmt.Sprintf("分片上传合并完成: %s，文件数: %d", filename, len(files)))()

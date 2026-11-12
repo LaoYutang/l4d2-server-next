@@ -36,7 +36,7 @@ func LogOp(c *gin.Context, detail string) func() {
 	detail = sanitizeAuditDetail(detail)
 	return func() {
 		panicValue := recover()
-		success := panicValue == nil && c.Writer.Status() >= 200 && c.Writer.Status() < 300
+		success := panicValue == nil && c.Writer.Status() >= 200 && c.Writer.Status() < 300 && !c.GetBool("audit_operation_failed")
 		result := "FAILED"
 		if success {
 			result = "SUCCESS"
