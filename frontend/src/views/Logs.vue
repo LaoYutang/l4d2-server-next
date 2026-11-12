@@ -10,6 +10,7 @@
   import { useAuthStore } from '../stores/auth';
   import { message, Modal } from 'ant-design-vue';
   import {
+    ArrowLeftOutlined,
     ClearOutlined,
     CompressOutlined,
     DeleteOutlined,
@@ -39,6 +40,10 @@
   const isPaused = ref(false);
   const isLoading = ref(false);
   const isLogExpanded = ref(false);
+  const mobileMedia = window.matchMedia('(max-width: 1023px)');
+  const isMobileView = ref(mobileMedia.matches);
+  const logError = ref('');
+  const listError = ref('');
   const logContainer = ref<HTMLElement | null>(null);
   const shouldAutoScroll = ref(true);
 
@@ -52,9 +57,13 @@
   const cleanupResult = ref<SourceModLogDeleteResult | null>(null);
 
   let logStream: { close: () => void } | null = null;
+  let logStreamSession = 0;
+  let fileListRequestId = 0;
+  let disposed = false;
   let cleanupPreviewRequestId = 0;
 
   const isAdmin = computed(() => authStore.isAdmin);
+  const isViewerFocused = computed(() => isLogExpanded.value || (isMobileView.value && !!selectedFile.value));
   const allLogFiles = computed(() => [
     ...categories.value.L,
     ...categories.value.errors,
@@ -89,6 +98,7 @@
   };
 
   const closeLogStream = () => {
+    logStreamSession += 1;
     if (logStream) {
       logStream.close();
       logStream = null;
@@ -99,14 +109,19 @@
     closeLogStream();
     selectedFile.value = '';
     logLines.value = [];
+    logError.value = '';
     isPaused.value = false;
+    isLogExpanded.value = false;
     shouldAutoScroll.value = true;
   };
 
   const loadFileList = async () => {
+    const requestId = ++fileListRequestId;
     isLoading.value = true;
+    listError.value = '';
     try {
       const data = await api.getSourceModLogs();
+      if (disposed || requestId !== fileListRequestId) return;
       installed.value = data.installed;
       categories.value = {
         L: data.categories?.L || [],
@@ -117,9 +132,12 @@
         clearSelectedLog();
       }
     } catch (e: any) {
-      message.error(e.message || '获取日志列表失败');
+      if (!disposed && requestId === fileListRequestId) {
+        listError.value = e.message || '获取日志列表失败';
+        message.error(listError.value);
+      }
     } finally {
-      isLoading.value = false;
+      if (!disposed && requestId === fileListRequestId) isLoading.value = false;
     }
   };
 
@@ -136,15 +154,19 @@
   };
 
   const selectFile = (filename: string) => {
+    if (disposed || !filename) return;
     closeLogStream();
+    const session = logStreamSession;
     selectedFile.value = filename;
     logLines.value = [];
+    logError.value = '';
     isPaused.value = false;
     shouldAutoScroll.value = true;
 
     logStream = api.streamLog(
       filename,
       (line) => {
+        if (disposed || session !== logStreamSession || selectedFile.value !== filename) return;
         if (!isPaused.value && line !== '') {
           logLines.value.push(line);
           if (logLines.value.length > MAX_LOG_LINES) {
@@ -153,6 +175,8 @@
         }
       },
       (err) => {
+        if (disposed || session !== logStreamSession || selectedFile.value !== filename) return;
+        logError.value = err;
         message.error(err);
       }
     );
@@ -304,6 +328,11 @@
     nextTick(scrollToBottom);
   };
 
+  const handleViewportChange = (event: MediaQueryListEvent) => {
+    isMobileView.value = event.matches;
+    nextTick(scrollToBottom);
+  };
+
   watch(
     () => logLines.value.length,
     () => {
@@ -321,10 +350,14 @@
   );
 
   onMounted(() => {
+    mobileMedia.addEventListener('change', handleViewportChange);
     loadFileList();
   });
 
   onUnmounted(() => {
+    disposed = true;
+    fileListRequestId += 1;
+    mobileMedia.removeEventListener('change', handleViewportChange);
     closeLogStream();
     cleanupPreviewRequestId++;
   });
@@ -335,7 +368,7 @@
     <!-- Header -->
     <Transition name="log-header">
       <div
-        v-if="!isLogExpanded"
+        v-if="!isViewerFocused"
         class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 overflow-hidden"
       >
         <div>
@@ -351,13 +384,13 @@
 
     <!-- Main Content -->
     <div
-      class="flex flex-col lg:flex-row gap-4 transition-all duration-300 ease-out"
-      :class="{ 'mt-6': !isLogExpanded }"
-      :style="{ height: isLogExpanded ? 'var(--logs-expanded-height)' : 'calc(100vh - 220px)' }"
+      class="logs-workspace flex min-h-0 min-w-0 flex-col lg:flex-row gap-4 transition-all duration-300 ease-out"
+      :class="{ 'mt-6': !isViewerFocused }"
+      :style="{ height: isViewerFocused ? 'var(--logs-expanded-height)' : 'var(--logs-standard-height)' }"
     >
       <!-- Sidebar -->
       <Transition name="log-sidebar">
-        <div v-if="!isLogExpanded" class="log-sidebar w-full lg:w-64 flex-shrink-0">
+        <div v-if="!isViewerFocused" class="log-sidebar min-h-0 min-w-0 w-full lg:w-64 flex-shrink-0">
           <a-card
             class="h-full overflow-hidden shadow-xl border-0"
             :body-style="{
@@ -366,9 +399,10 @@
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
+              gap: '12px',
             }"
           >
-            <div class="flex items-center justify-between gap-2 mb-3">
+            <div class="flex items-center justify-between gap-2">
               <span class="font-bold text-gray-800 dark:text-gray-100">日志文件列表</span>
               <div class="flex items-center flex-shrink-0">
                 <a-tooltip v-if="isAdmin" title="按类型和时间批量清理历史日志">
@@ -392,6 +426,7 @@
                     size="small"
                     @click="loadFileList"
                     :loading="isLoading"
+                    aria-label="刷新列表"
                     class="!flex !items-center !justify-center"
                   >
                     <template #icon><ReloadOutlined /></template>
@@ -400,21 +435,25 @@
               </div>
             </div>
 
+            <a-alert v-if="listError" class="log-list-error" type="error" show-icon message="日志列表加载失败" :description="listError" />
+
             <div v-if="!installed" class="text-center py-8 text-gray-500 dark:text-gray-400">
               <FileTextOutlined class="text-4xl mb-2" />
               <p>请安装 SourceMod</p>
             </div>
 
-            <div v-else class="flex-1 overflow-y-auto space-y-3">
+            <div v-else class="log-file-list flex-1 min-h-0 min-w-0 overflow-y-auto space-y-3">
               <!-- L Logs -->
               <div v-if="categories.L?.length > 0">
                 <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-1 py-1">
                   运行日志
                 </div>
-                <div
+                <button
                   v-for="file in categories.L"
                   :key="file.name"
-                  class="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition-colors"
+                  type="button"
+                  class="log-file-item flex w-full min-w-0 items-center justify-between border-0 px-2 py-1.5 rounded cursor-pointer text-left text-sm transition-colors"
+                  :aria-pressed="selectedFile === file.name"
                   :class="
                     selectedFile === file.name
                       ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
@@ -429,7 +468,7 @@
                   <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{
                     formatFileSize(file.size)
                   }}</span>
-                </div>
+                </button>
               </div>
 
               <!-- Error Logs -->
@@ -437,10 +476,12 @@
                 <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-1 py-1">
                   错误日志
                 </div>
-                <div
+                <button
                   v-for="file in categories.errors"
                   :key="file.name"
-                  class="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition-colors"
+                  type="button"
+                  class="log-file-item flex w-full min-w-0 items-center justify-between border-0 px-2 py-1.5 rounded cursor-pointer text-left text-sm transition-colors"
+                  :aria-pressed="selectedFile === file.name"
                   :class="
                     selectedFile === file.name
                       ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
@@ -455,7 +496,7 @@
                   <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{
                     formatFileSize(file.size)
                   }}</span>
-                </div>
+                </button>
               </div>
 
               <!-- Other Logs -->
@@ -463,10 +504,12 @@
                 <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-1 py-1">
                   其他日志
                 </div>
-                <div
+                <button
                   v-for="file in categories.other"
                   :key="file.name"
-                  class="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition-colors"
+                  type="button"
+                  class="log-file-item flex w-full min-w-0 items-center justify-between border-0 px-2 py-1.5 rounded cursor-pointer text-left text-sm transition-colors"
+                  :aria-pressed="selectedFile === file.name"
                   :class="
                     selectedFile === file.name
                       ? 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
@@ -481,7 +524,7 @@
                   <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{
                     formatFileSize(file.size)
                   }}</span>
-                </div>
+                </button>
               </div>
 
               <div
@@ -500,7 +543,7 @@
       </Transition>
 
       <!-- Content -->
-      <div class="flex-1 min-h-0 min-w-0">
+      <div v-show="!isMobileView || !!selectedFile" class="log-viewer flex-1 min-h-0 min-w-0">
         <a-card
           class="h-full overflow-hidden shadow-xl border-0"
           :body-style="{
@@ -513,10 +556,10 @@
         >
           <!-- Toolbar -->
           <div
-            class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-colors"
+            class="log-toolbar flex flex-col xl:flex-row xl:items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-colors"
           >
             <div class="flex items-center gap-2 min-w-0">
-              <span class="font-mono text-sm text-gray-700 dark:text-gray-300 truncate">
+              <span class="log-file-name min-w-0 flex-1 font-mono text-sm text-gray-700 dark:text-gray-300 truncate" :title="selectedFile">
                 {{ selectedFile || '请选择日志文件' }}
               </span>
               <a-tag v-if="isPaused" color="orange" class="ml-2 flex-shrink-0">已暂停</a-tag>
@@ -526,6 +569,17 @@
             </div>
             <div class="flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
               <a-button
+                v-if="isMobileView && selectedFile"
+                size="small"
+                aria-label="返回列表"
+                class="!flex !items-center !justify-center"
+                @click="clearSelectedLog"
+              >
+                <template #icon><ArrowLeftOutlined /></template>
+                返回列表
+              </a-button>
+              <a-button
+                v-if="!isMobileView"
                 size="small"
                 @click="toggleLogExpanded"
                 :disabled="!selectedFile"
@@ -578,10 +632,16 @@
             </div>
           </div>
 
+          <a-alert v-if="logError" class="log-stream-error" type="error" show-icon message="日志读取失败" :description="logError">
+            <template #action>
+              <a-button size="small" @click="selectFile(selectedFile)">重试</a-button>
+            </template>
+          </a-alert>
+
           <!-- Log Display -->
           <div
             ref="logContainer"
-            class="flex-1 overflow-auto p-4 font-mono text-sm bg-[#1e1e1e] text-gray-300 space-y-0.5 min-w-0"
+            class="log-output flex-1 min-h-0 overflow-auto p-4 font-mono text-sm bg-[#1e1e1e] text-gray-300 space-y-0.5 min-w-0"
             @scroll="handleScroll"
           >
             <template v-if="logLines.length > 0">
@@ -598,7 +658,10 @@
               class="flex flex-col items-center justify-center h-full opacity-30 select-none"
             >
               <FileTextOutlined class="text-6xl mb-4" />
-              <p>等待日志内容...</p>
+              <p v-if="logError">请选择其他日志或点击重试</p>
+              <p v-else-if="isPaused">日志接收已暂停</p>
+              <p v-else-if="selectedLogFile?.size === 0">当前日志为空，等待新内容...</p>
+              <p v-else>等待日志内容...</p>
             </div>
             <div
               v-else
@@ -774,13 +837,62 @@
 
 <style scoped>
   .logs-page {
-    --logs-expanded-height: calc(100dvh - 128px);
+    --logs-viewport-height: 100vh;
+    --logs-expanded-height: calc(var(--logs-viewport-height) - 128px);
+    --logs-standard-height: calc(var(--logs-viewport-height) - 220px);
+    min-width: 0;
   }
 
-  @media (min-width: 768px) {
+  @supports (height: 100dvh) {
     .logs-page {
-      --logs-expanded-height: calc(100dvh - 96px);
+      --logs-viewport-height: 100dvh;
     }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .logs-page {
+      --logs-expanded-height: calc(var(--logs-viewport-height) - 160px);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .logs-page {
+      --logs-expanded-height: calc(var(--logs-viewport-height) - 96px);
+    }
+  }
+
+  @media (max-width: 1023px) and (max-height: 500px) {
+    .logs-page {
+      --logs-standard-height: max(16rem, calc(var(--logs-viewport-height) - 220px));
+      --logs-expanded-height: max(18rem, calc(var(--logs-viewport-height) - 128px));
+    }
+  }
+
+  .log-toolbar {
+    flex-shrink: 0;
+  }
+
+  .log-file-item:focus-visible {
+    outline: 2px solid #1677ff;
+    outline-offset: -2px;
+  }
+
+  .log-stream-error,
+  .log-list-error {
+    min-width: 0;
+    max-height: 45%;
+    flex-shrink: 0;
+    overflow: auto;
+    overflow-wrap: anywhere;
+  }
+
+  .log-stream-error :deep(.ant-alert-content),
+  .log-list-error :deep(.ant-alert-content) {
+    min-width: 0;
+  }
+
+  .log-output {
+    overscroll-behavior: contain;
   }
 
   .log-header-enter-active,
@@ -842,6 +954,20 @@
   }
 
   @media (max-width: 1023px) {
+    .log-sidebar {
+      flex: 1 1 0%;
+      min-height: 0;
+    }
+
+    .log-file-item,
+    .log-toolbar :deep(.ant-btn),
+    .log-sidebar :deep(.ant-btn),
+    .log-stream-error :deep(.ant-btn) {
+      min-width: 2.5rem;
+      min-height: 2.5rem;
+      height: auto;
+    }
+
     .log-sidebar-enter-from,
     .log-sidebar-leave-to {
       max-height: 0;
@@ -850,8 +976,24 @@
 
     .log-sidebar-enter-to,
     .log-sidebar-leave-from {
-      max-height: calc(100vh - 220px);
+      max-height: var(--logs-standard-height);
       transform: translateY(0);
+    }
+  }
+
+  @media (max-width: 639px) {
+    .log-stream-error {
+      flex-wrap: wrap;
+      row-gap: 0.5rem;
+    }
+
+    .log-stream-error :deep(.ant-alert-action) {
+      flex-basis: 100%;
+      margin-inline-start: 0;
+    }
+
+    .log-stream-error :deep(.ant-alert-action .ant-btn) {
+      width: 100%;
     }
   }
 </style>
