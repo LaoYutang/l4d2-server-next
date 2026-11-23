@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import vm from 'node:vm';
+import { computed, reactive, ref } from 'vue';
 
 const ts = createRequire(import.meta.url)('typescript');
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -26,6 +27,15 @@ const result = (overrides = {}) => ({
 const utilityContext = { exports: {} };
 vm.runInNewContext(compile(source('../src/utils/mapLifecycle.ts')), utilityContext);
 const utilities = utilityContext.exports;
+
+function mapViewCode(...names) {
+  const script = source('../src/views/Maps.vue').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
+  const ast = ts.createSourceFile('Maps.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const statements = ast.statements.filter((node) => ts.isVariableStatement(node) &&
+    node.declarationList.declarations.some((declaration) => names.includes(declaration.name.getText(ast))));
+  assert.equal(statements.length, names.length);
+  return statements.map((statement) => statement.getText(ast)).join('\n');
+}
 
 function lifecycle(api) {
   let dispose;
@@ -163,13 +173,30 @@ test('disposed components ignore late list responses', async () => {
   assert.equal(state.maps.value.length, 0);
 });
 
+test('local maps keep reverse list order across searches and pages', () => {
+  const names = ['night-train.vpk', 'daylight.vpk', 'harbor.vpk', 'night-fall.vpk'];
+  const sourceMaps = Object.freeze(names.map((name) => item(name)));
+  const searchQuery = ref('');
+  const paginationConfig = reactive({ current: 1, pageSize: 2 });
+  const code = mapViewCode('maps', 'filteredMaps', 'currentPageMaps');
+  const page = vm.runInNewContext(compile(`${code}\ncurrentPageMaps;`), {
+    computed, lifecycleMaps: { value: sourceMaps }, searchQuery, paginationConfig,
+    mapSummaries: { value: { 'harbor.vpk': { campaigns: ['Night Harbor'] } } },
+  });
+  const pageNames = () => Array.from(page.value, (map) => map.name);
+
+  assert.deepEqual(pageNames(), ['night-fall.vpk', 'harbor.vpk']);
+  paginationConfig.current = 2;
+  assert.deepEqual(pageNames(), ['daylight.vpk', 'night-train.vpk']);
+
+  searchQuery.value = 'NiGhT';
+  paginationConfig.current = 1;
+  assert.deepEqual(pageNames(), ['night-fall.vpk', 'harbor.vpk']);
+  paginationConfig.current = 2;
+  assert.deepEqual(pageNames(), ['night-train.vpk']);
+});
+
 test('confirmation freezes both selected names and revisions before the user clicks OK', async () => {
-  const component = source('../src/views/Maps.vue');
-  const script = component.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
-  const ast = ts.createSourceFile('Maps.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const statement = ast.statements.find((node) => ts.isVariableStatement(node) &&
-    node.declarationList.declarations.some((node) => node.name.getText(ast) === 'confirmDeleteMaps'));
-  assert.ok(statement);
   let confirmation;
   const calls = [];
   const context = {
@@ -180,7 +207,7 @@ test('confirmation freezes both selected names and revisions before the user cli
     h() {},
     removeMaps: async (...args) => calls.push(args),
   };
-  vm.runInNewContext(compile(`${statement.getText(ast)}\nglobalThis.confirm = confirmDeleteMaps;`), context);
+  vm.runInNewContext(compile(`${mapViewCode('confirmDeleteMaps')}\nglobalThis.confirm = confirmDeleteMaps;`), context);
   const selected = ['a.vpk'];
   context.confirm(selected);
   selected.push('unexpected.vpk');
@@ -190,11 +217,6 @@ test('confirmation freezes both selected names and revisions before the user cli
 });
 
 test('old map summaries cannot overwrite a replaced map or clear its newer loading state', async () => {
-  const script = source('../src/views/Maps.vue').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
-  const ast = ts.createSourceFile('Maps.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const statement = ast.statements.find((node) => ts.isVariableStatement(node) &&
-    node.declarationList.declarations.some((node) => node.name.getText(ast) === 'loadMapSummaries'));
-  assert.ok(statement);
   const oldResponse = deferred();
   const newResponse = deferred();
   let calls = 0;
@@ -204,7 +226,7 @@ test('old map summaries cannot overwrite a replaced map or clear its newer loadi
     mapSummaries: { value: {} }, mapSummaryLoading: { value: {} },
     api: { getMapSummaries: () => (++calls === 1 ? oldResponse.promise : newResponse.promise) },
   };
-  vm.runInNewContext(compile(`${statement.getText(ast)}\nglobalThis.load = loadMapSummaries;`), context);
+  vm.runInNewContext(compile(`${mapViewCode('loadMapSummaries')}\nglobalThis.load = loadMapSummaries;`), context);
   const oldRead = context.load(['a.vpk']);
   context.lifecycleMaps.value = [item('a.vpk', false, 'new')];
   const newRead = context.load(['a.vpk']);
