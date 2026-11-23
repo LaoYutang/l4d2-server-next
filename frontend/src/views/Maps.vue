@@ -51,7 +51,7 @@
   const maps = computed(() => lifecycleMaps.value.map((item) => ({
     ...item,
     size: item.missing ? 'unknown' : item.size_label || formatBytes(item.size),
-  })));
+  })).reverse());
   const lockedMapCount = computed(() => lifecycleMaps.value.filter((item) => item.locked).length);
   const historicalMapCount = computed(() => lifecycleMaps.value.filter((item) => !item.uploaded_at).length);
   const mapSummaries = ref<Record<string, MapSummaryItem>>({});
