@@ -97,8 +97,8 @@ function run({ input = '', entry = 'main', failure = '', uid = '0', fixture = ''
   }
 }
 
-test('script version is 1.1.0', () => {
-  assert.match(source, /^readonly SCRIPT_VERSION="1\.1\.0"$/m);
+test('script version is 1.1.1', () => {
+  assert.match(source, /^readonly SCRIPT_VERSION="1\.1\.1"$/m);
 });
 
 for (const [label, input, defaultValue, accepted] of [
