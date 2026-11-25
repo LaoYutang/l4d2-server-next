@@ -6,7 +6,7 @@
 set -o pipefail
 
 # ─── 常量 ───
-readonly SCRIPT_VERSION="1.1.0"
+readonly SCRIPT_VERSION="1.1.1"
 readonly BASE_DIR="/data/l4d2"
 readonly CONFIG_DIR="${BASE_DIR}/.config"
 readonly INSTANCE_DIR="${CONFIG_DIR}/instances"
@@ -380,7 +380,7 @@ generate_compose() {
             printf '%s\n' "      - /etc/localtime:/etc/localtime:ro"
             printf '%s\n' "      - /etc/timezone:/etc/timezone:ro"
             printf '%s\n' "    environment:"
-            list_env "L4D2_RESTART_BY_RCON" "true"
+            list_env "L4D2_CONTAINER_NAME" "${name}"
             list_env "L4D2_MANAGER_PASSWORD" "${ADMIN_PASSWORD}"
             list_env "L4D2_RCON_PASSWORD" "${RCON_PASSWORD}"
             list_env "L4D2_RCON_URL" "${name}:${GAME_PORT}"
