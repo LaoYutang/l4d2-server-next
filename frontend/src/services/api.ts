@@ -35,8 +35,10 @@ export interface AuthCodeListResult {
   cleanup_count: number;
   server_time: string;
 }
+export type SelfServiceConfigUpdate = { enable: boolean } | { access_type: TempAccessType };
 export interface SelfServiceStatus {
   enabled: boolean;
+  access_type: TempAccessType;
   in_cooldown: boolean;
   remaining_seconds: number;
   last_generated_time: string;
@@ -2193,8 +2195,8 @@ class ApiService {
     return response.json();
   }
 
-  async setSelfServiceConfig(enable: boolean) {
-    const response = await this.postJson('/config/self-service', { enable });
+  async setSelfServiceConfig(update: SelfServiceConfigUpdate) {
+    const response = await this.postJson('/config/self-service', update);
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   }

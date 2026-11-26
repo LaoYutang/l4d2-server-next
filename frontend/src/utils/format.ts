@@ -1,3 +1,8 @@
+import type { TempAccessType } from '../services/api';
+
+export const accessLabel = (type: TempAccessType) =>
+  type === 'map_upload_only' ? '仅地图上传与下载' : '临时权限';
+
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 
 /**

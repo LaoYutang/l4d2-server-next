@@ -3,7 +3,8 @@
   import { useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/auth';
   import { useThemeStore } from '../stores/theme';
-  import { api } from '../services/api';
+  import { api, type AuthCodeCreated, type TempAccessType } from '../services/api';
+  import { accessLabel } from '../utils/format';
   import {
     LockOutlined,
     LoginOutlined,
@@ -28,7 +29,8 @@
   const selfServiceCooldown = ref(false);
   const selfServiceRemaining = ref(0);
   const selfServiceLoading = ref(false);
-  const selfServiceCode = ref('');
+  const selfServiceAccessType = ref<TempAccessType>('temporary');
+  const selfServiceCode = ref<AuthCodeCreated | null>(null);
   const copied = ref(false);
   let cooldownTimer: number | null = null;
   let syncTimer: number | null = null;
@@ -54,6 +56,7 @@
     try {
       const status = await api.getSelfServiceStatus();
       selfServiceEnabled.value = status.enabled;
+      selfServiceAccessType.value = status.access_type;
       selfServiceCooldown.value = status.in_cooldown;
       selfServiceRemaining.value = status.remaining_seconds;
 
@@ -96,7 +99,7 @@
   const copySelfServiceCode = async () => {
     if (!selfServiceCode.value) return;
     
-    const success = await copyToClipboard(selfServiceCode.value);
+    const success = await copyToClipboard(selfServiceCode.value.code);
     if (success) {
       copied.value = true;
       message.success('已复制到剪贴板');
@@ -113,8 +116,7 @@
     copied.value = false;
     try {
       const res = await api.generateSelfServiceCode();
-      selfServiceCode.value = res.code;
-      // password.value = res.code; // Do not auto-fill
+      selfServiceCode.value = res;
 
       // Auto copy
       try {
@@ -213,7 +215,7 @@
 
       <!-- Self Service Card -->
       <div
-        v-if="selfServiceEnabled"
+        v-if="selfServiceEnabled || selfServiceCode"
         class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700"
       >
         <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
@@ -224,23 +226,21 @@
             <a-button type="link" size="small" :disabled="selfServiceLoading" @click="fetchSelfServiceStatus">刷新领取状态</a-button>
           </div>
 
-          <div v-if="!selfServiceCooldown && !selfServiceCode">
-            <p class="text-xs text-blue-600/80 dark:text-blue-400/80 mb-3">
-              可申请 1 小时有效期的临时访问权限。
-            </p>
-          </div>
+          <p v-if="selfServiceEnabled" class="text-xs text-blue-600/80 dark:text-blue-400/80 mb-3">
+            新领取的授权码为「{{ accessLabel(selfServiceAccessType) }}」，有效期 1 小时。
+          </p>
 
-          <div v-else-if="selfServiceCode">
+          <div v-if="selfServiceCode">
             <div
               class="flex items-center gap-2 text-green-600 dark:text-green-400 text-xs font-bold mb-2"
             >
-              <CheckCircleOutlined /> 获取成功
+              <CheckCircleOutlined /> 已领取「{{ accessLabel(selfServiceCode.access_type) }}」授权码
             </div>
             <div class="flex gap-2 mb-2">
               <p
                 class="flex-1 text-xs text-gray-500 dark:text-gray-400 break-all font-mono bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700 flex items-center justify-center text-center"
               >
-                {{ selfServiceCode }}
+                {{ selfServiceCode.code }}
               </p>
               <a-button @click="copySelfServiceCode" class="!flex !items-center !justify-center">
                 <template #icon>
@@ -250,11 +250,11 @@
               </a-button>
             </div>
             <p class="text-[10px] text-red-500 dark:text-red-400">
-              请务必妥善保存！页面刷新后将无法再次查看。
+              有效至 {{ new Date(selfServiceCode.expires_at).toLocaleString() }}。请复制保存，刷新后无法再次查看。
             </p>
           </div>
 
-          <div v-else class="text-center">
+          <div v-else-if="selfServiceCooldown" class="text-center">
             <p class="text-xs text-orange-600 dark:text-orange-400 mb-2 font-medium">
               自助授权领取冷却中
             </p>
@@ -266,7 +266,7 @@
             </div>
           </div>
           <a-button
-            v-if="!selfServiceCooldown"
+            v-if="selfServiceEnabled && !selfServiceCooldown"
             type="primary"
             ghost
             size="small"
@@ -275,7 +275,7 @@
             @click="generateSelfServiceCode"
             :loading="selfServiceLoading"
           >
-            {{ selfServiceCode ? '获取新的临时授权码' : '获取临时授权码' }}
+            {{ selfServiceCode ? '获取新的授权码' : '获取授权码' }}
           </a-button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -183,24 +184,54 @@ func GenerateSelfServiceCode(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// An omitted setting keeps its current value. An explicit null is invalid.
+type selfServiceSetting[T any] struct{ value *T }
+
+func (setting *selfServiceSetting[T]) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &setting.value); err != nil {
+		return err
+	}
+	if setting.value == nil {
+		return errors.New("自助授权设置不能为 null")
+	}
+	return nil
+}
+
 func SetSelfServiceConfig(c *gin.Context) {
 	if !requireAuthCodeAdmin(c) {
 		return
 	}
 	var req struct {
-		Enable bool `json:"enable"`
+		Enable     selfServiceSetting[bool]   `json:"enable"`
+		AccessType selfServiceSetting[string] `json:"access_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		defer LogOp(c, "设置自助授权配置")()
 		FailWithError(c, 400, "参数错误")
 		return
 	}
-	detail := "关闭自助授权配置"
-	if req.Enable {
-		detail = "开启自助授权配置"
+	enable, accessType := req.Enable.value, req.AccessType.value
+	detail := "设置自助授权配置"
+	if enable != nil {
+		detail = "关闭自助授权配置"
+		if *enable {
+			detail = "开启自助授权配置"
+		}
+	}
+	if accessType != nil {
+		switch *accessType {
+		case logic.AuthAccessTemporary, logic.AuthAccessMapUpload:
+			detail += "，权限类型=" + *accessType
+		}
 	}
 	defer LogOp(c, detail)()
-	if err := logic.SetSelfServiceEnable(req.Enable); err != nil {
-		FailWithError(c, 500, "保存配置失败")
+	if err := logic.UpdateSelfServiceConfig(enable, accessType); err != nil {
+		var validation *logic.AuthValidationError
+		if errors.As(err, &validation) {
+			FailWithError(c, http.StatusBadRequest, "%s", validation.Message)
+		} else {
+			FailWithError(c, 500, "保存配置失败")
+		}
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

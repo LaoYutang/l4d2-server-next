@@ -17,14 +17,15 @@ const DefaultMapHotReloadCommand = "update_addon_paths; mission_reload"
 const SteamCDNHost = "cdn.steamusercontent.com"
 
 type ManagerConfig struct {
-	EnableSelfService    bool            `json:"enable_self_service"`
-	LastSelfServiceTime  time.Time       `json:"last_self_service_time"`
-	EnablePlayerStats    bool            `json:"enable_player_stats"`
-	EnableMonitorHistory bool            `json:"enable_monitor_history"`
-	EnableVPKTrim        bool            `json:"enable_vpk_trim"`
-	MapImportPolicy      MapImportPolicy `json:"map_import_policy"`
-	MapHotReloadCommand  string          `json:"map_hot_reload_command"`
-	SteamCDNIP           string          `json:"steam_cdn_ip,omitempty"`
+	EnableSelfService     bool            `json:"enable_self_service"`
+	SelfServiceAccessType string          `json:"self_service_access_type"`
+	LastSelfServiceTime   time.Time       `json:"last_self_service_time"`
+	EnablePlayerStats     bool            `json:"enable_player_stats"`
+	EnableMonitorHistory  bool            `json:"enable_monitor_history"`
+	EnableVPKTrim         bool            `json:"enable_vpk_trim"`
+	MapImportPolicy       MapImportPolicy `json:"map_import_policy"`
+	MapHotReloadCommand   string          `json:"map_hot_reload_command"`
+	SteamCDNIP            string          `json:"steam_cdn_ip,omitempty"`
 	// DiskUsageLimitPercent 是地图上传与下载任务允许的磁盘使用率上限。
 	DiskUsageLimitPercent int                `json:"disk_usage_limit_percent"`
 	MapCleanup            MapCleanupSettings `json:"map_cleanup"`
@@ -46,6 +47,7 @@ func LoadManagerConfig() {
 
 	managerConfig = &ManagerConfig{
 		EnableSelfService:     false,
+		SelfServiceAccessType: AuthAccessTemporary,
 		EnablePlayerStats:     true,
 		EnableMonitorHistory:  true,
 		EnableVPKTrim:         true,
@@ -67,13 +69,26 @@ func LoadManagerConfig() {
 	}
 
 	loaded := *managerConfig
-	if err := json.Unmarshal(data, &loaded); err != nil {
+	stored := struct {
+		*ManagerConfig
+		AccessType json.RawMessage `json:"self_service_access_type"`
+	}{ManagerConfig: &loaded}
+	if err := json.Unmarshal(data, &stored); err != nil {
 		managerConfigLoadError = fmt.Errorf("解析面板配置失败: %w", err)
 		return
 	}
 	if err := validateStoredMapCleanupConfig(data, loaded.MapCleanup); err != nil {
 		managerConfigLoadError = err
 		return
+	}
+	// Only a missing field is a legacy config. A malformed scope cannot grant a code.
+	if stored.AccessType != nil {
+		var accessType string
+		if err := json.Unmarshal(stored.AccessType, &accessType); err != nil || !validAuthAccessType(accessType) {
+			loaded.EnableSelfService = false
+		} else {
+			loaded.SelfServiceAccessType = accessType
+		}
 	}
 	managerConfig = &loaded
 
@@ -135,14 +150,32 @@ func GetSelfServiceConfig() ManagerConfig {
 }
 
 func SetSelfServiceEnable(enable bool) error {
+	return UpdateSelfServiceConfig(&enable, nil)
+}
+
+func UpdateSelfServiceConfig(enable *bool, accessType *string) error {
+	if enable == nil && accessType == nil {
+		return &AuthValidationError{"请提供自助授权开关或权限类型"}
+	}
+	if accessType != nil && !validAuthAccessType(*accessType) {
+		return &AuthValidationError{"无效的授权类型"}
+	}
 	managerConfigMutex.Lock()
 	defer managerConfigMutex.Unlock()
-	previous := managerConfig.EnableSelfService
-	managerConfig.EnableSelfService = enable
-	if err := saveManagerConfig(); err != nil {
-		managerConfig.EnableSelfService = previous
+	if managerConfigLoadError != nil {
+		return managerConfigLoadError
+	}
+	candidate := *managerConfig
+	if enable != nil {
+		candidate.EnableSelfService = *enable
+	}
+	if accessType != nil {
+		candidate.SelfServiceAccessType = *accessType
+	}
+	if err := persistManagerConfig(&candidate); err != nil {
 		return err
 	}
+	managerConfig = &candidate
 	return nil
 }
 
