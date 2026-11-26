@@ -2,8 +2,9 @@
   import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
   import { message, Modal } from 'ant-design-vue';
   import { CopyOutlined, DeleteOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue';
-  import { api, type AuthCodeCreated, type AuthCodeItem, type AuthCodeListParams, type AuthCodeStatus, type SelfServiceStatus, type TempAccessType } from '../services/api';
+  import { api, type AuthCodeCreated, type AuthCodeItem, type AuthCodeListParams, type AuthCodeStatus, type SelfServiceConfigUpdate, type SelfServiceStatus, type TempAccessType } from '../services/api';
   import { copyToClipboard } from '../utils/clipboard';
+  import { accessLabel } from '../utils/format';
 
   const records = ref<AuthCodeItem[]>([]);
   const loading = ref(false);
@@ -27,7 +28,6 @@
     { label: '已过期', value: counts.value.expired },
     { label: '已撤销', value: counts.value.revoked },
   ]);
-  const accessLabel = (type: TempAccessType) => type === 'map_upload_only' ? '仅地图上传与下载' : '临时权限';
   const formatTime = (value: string | null) => value ? new Date(value).toLocaleString() : '—';
   const statusOf = (record: AuthCodeItem): AuthCodeStatus => record.revoked_at ? 'revoked' : new Date(record.expires_at).getTime() <= clock.value + serverOffset.value ? 'expired' : 'active';
   const localTime = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
@@ -85,12 +85,17 @@
     filters.page_size = size;
     void loadRecords();
   };
-  const toggleSelfService = async (checked: boolean | string | number) => {
+  const updateSelfService = async (update: SelfServiceConfigUpdate) => {
+    if (!selfService.value || settingSelfService.value) return;
     settingSelfService.value = true;
     ++selfSequence;
     try {
-      await api.setSelfServiceConfig(Boolean(checked));
-      message.success(checked ? '已开启自助授权' : '已关闭自助授权');
+      await api.setSelfServiceConfig(update);
+      if ('access_type' in update) {
+        message.success(`新领取的自助码将使用「${accessLabel(update.access_type)}」`);
+      } else {
+        message.success(update.enable ? '已开启自助授权' : '已关闭自助授权');
+      }
     } catch (error) {
       message.error(errorMessage(error));
     } finally {
@@ -219,7 +224,7 @@
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="font-medium">登录页自助授权</div>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">开启后，访客可领取有效期为 1 小时的临时授权码，每次领取后全局冷却 1 小时。撤销最近领取的自助码后可立即重新领取。</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">开启后，访客可领取有效期为 1 小时的授权码，每次领取后全局冷却 1 小时。撤销最近领取的自助码后可立即重新领取。</p>
           <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
             <template v-if="!selfService">状态暂不可用</template>
             <template v-else-if="remainingSeconds">冷却剩余 {{ cooldownLabel }}</template>
@@ -227,8 +232,16 @@
             <span v-if="selfService && selfService.last_generated_time && !selfService.last_generated_time.startsWith('0001')"> · 上次领取：{{ formatTime(selfService.last_generated_time) }}</span>
           </p>
         </div>
-        <a-switch :checked="selfService?.enabled || false" :disabled="!selfService" :loading="settingSelfService" checked-children="开" un-checked-children="关" @update:checked="toggleSelfService" />
+        <a-switch :checked="selfService?.enabled || false" :disabled="!selfService || settingSelfService" :loading="settingSelfService" aria-label="登录页自助授权" checked-children="开" un-checked-children="关" @update:checked="updateSelfService({ enable: Boolean($event) })" />
       </div>
+      <fieldset class="mt-4">
+        <legend class="field-label">新领取的授权码权限</legend>
+        <a-radio-group :value="selfService?.access_type" :disabled="!selfService || settingSelfService" @change="updateSelfService({ access_type: $event.target.value })">
+          <a-radio value="temporary">临时权限</a-radio>
+          <a-radio value="map_upload_only">仅地图上传与下载</a-radio>
+        </a-radio-group>
+        <p class="field-help text-gray-500 dark:text-gray-400">切换后，已领取的授权码保留原权限和到期时间。</p>
+      </fieldset>
     </a-card>
 
     <a-card :bordered="false">

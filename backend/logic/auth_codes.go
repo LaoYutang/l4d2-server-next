@@ -92,6 +92,7 @@ type AuthCodeListResult struct {
 
 type SelfServiceStatus struct {
 	Enabled           bool      `json:"enabled"`
+	AccessType        string    `json:"access_type"`
 	InCooldown        bool      `json:"in_cooldown"`
 	RemainingSeconds  int       `json:"remaining_seconds"`
 	LastGeneratedTime time.Time `json:"last_generated_time"`
@@ -329,12 +330,16 @@ func (s *AuthCodeStore) publish(record model.AuthCode) {
 	s.byFingerprint[record.Fingerprint] = record.ID
 }
 
+func validAuthAccessType(accessType string) bool {
+	return accessType == AuthAccessTemporary || accessType == AuthAccessMapUpload
+}
+
 func (s *AuthCodeStore) newRecord(req CreateAuthCodeRequest, source string) (model.AuthCode, string, error) {
 	now := s.now().UTC()
 	if req.AccessType == "" {
 		req.AccessType = AuthAccessTemporary
 	}
-	if req.AccessType != AuthAccessTemporary && req.AccessType != AuthAccessMapUpload {
+	if !validAuthAccessType(req.AccessType) {
 		return model.AuthCode{}, "", &AuthValidationError{"无效的授权类型"}
 	}
 	remark, err := normalizeAuthRemark(req.Remark)
@@ -622,7 +627,8 @@ func (s *AuthCodeStore) SelfServiceStatus() (SelfServiceStatus, error) {
 	last := s.lastSelfServiceTime
 	cleared := s.selfServiceCooldownCleared
 	s.mu.RUnlock()
-	status := SelfServiceStatus{Enabled: GetSelfServiceConfig().EnableSelfService, LastGeneratedTime: last}
+	config := GetSelfServiceConfig()
+	status := SelfServiceStatus{Enabled: config.EnableSelfService, AccessType: config.SelfServiceAccessType, LastGeneratedTime: last}
 	remaining := time.Hour - s.now().Sub(last)
 	if status.Enabled && !cleared && remaining > 0 {
 		status.InCooldown = true
@@ -640,10 +646,11 @@ func (s *AuthCodeStore) GenerateSelfService() (CreatedAuthCode, error) {
 	if !s.ready() {
 		return CreatedAuthCode{}, ErrAuthUnavailable
 	}
-	if !GetSelfServiceConfig().EnableSelfService {
+	config := GetSelfServiceConfig()
+	if !config.EnableSelfService {
 		return CreatedAuthCode{}, ErrSelfServiceDisabled
 	}
-	record, code, err := s.newRecord(CreateAuthCodeRequest{Remark: "自助领取"}, "self_service")
+	record, code, err := s.newRecord(CreateAuthCodeRequest{Remark: "自助领取", AccessType: config.SelfServiceAccessType}, "self_service")
 	if err != nil {
 		return CreatedAuthCode{}, err
 	}
